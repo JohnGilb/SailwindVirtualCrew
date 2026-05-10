@@ -29,23 +29,23 @@ Strongly inspired by:
 #### Deckhand
 
 - Can operate winches.
-- You can issue commands like:
-  - "lower all sails"
+- You can issue commands like "lower all sails"
 - They take on the jobs, move to the winches (based on Dexterity), and operate them (based on Strength).
-- If you have a big ship, you may want to get more than one deckhand.
+- If you have a big ship, you may want to get more than one deckhand, or you'll be waiting a long time for them to finish all the jobs!
 
 #### Pilot
 
 - Can operate the helm.
 - You click on a virtual compass and they attempt to hold that heading.
-- Pilots with more Intelligence do a better job of getting your requested heading just right.
+- Pilots with more Intelligence do a better job of getting your requested heading correct.
 - Their PID controls can be tuned by the player.
-- They can also respond to simple commands like:
-  - "Starboard 15 degrees"
+- They can also respond to simple commands like: "Starboard 15 degrees"
 
 #### Navigator
 
 - Can operate navigation tools.
+- Navigators with better Intelligence take more precise measurements.
+  - Special case: Intelligence 1 navigators have basically no idea where they are.
 
 ##### Quadrant
 - Can only be used between 20:00-04:00 local time.
@@ -63,9 +63,7 @@ Strongly inspired by:
 - Can be used between 08:00-16:00 local time.
 - Gets longitude and latitude.
 
-- Navigators with better Intelligence take more precise measurements.
-- Special case:
-  - Intelligence 1 navigators have basically no idea where they are.
+
 
 ---
 
@@ -125,31 +123,25 @@ Strongly inspired by:
 
 ### UI / UX
 
-- For now, all features are accessed via windows.
-- Long-term goal:
-  - Achieve the same immersion Sailwind generally aims for.
-  - Character models on board, etc.
+For now, all features are accessed via windows; long-term the goal would be to achieve the same immersion Sailwind generally aims for (character models on board
 
 ---
 
 ## Known Issues
 
-- When combined with the CargoController mod:
-  - Mod text is all changed to Sailwind font.
-  - Causes sizing and reflow issues.
+- When combined with the CargoController mod, mod text is all changed to Sailwind font. This causes sizing and reflow issues.
 - The following roles can still be hired but currently serve no function:
   - Chief Officer
   - Chef
   - Quartermaster
   - Supercargo
-- Window sizes are wrong and initial placement is bad.
+- Window sizes are wrong and initial placement is poor.
 
 ---
 
 ## Suspected Issues
 
 - Very little testing has been done around adding/removing sails from the ship.
-- Bugs are likely present there.
 
 ---
 
@@ -160,16 +152,14 @@ Press `B` to bring up the windows, and press `Tab` to free the mouse so you can 
 ### Sail Management
 
 - Sails default to the name of the mast and the name of the sail.
-  - This is difficult to read.
-- You can rename sails to make quick access easier.
+  - This is difficult to read, so you can rename sails to make quick access easier.
 - Sails can be placed into groups so you can command several of them at once.
 
 ### Piloting
 
 - Click on the heading you want on the compass diagram.
 - Press `Start Piloting`.
-- If you interact with the helm:
-  - This should disengage the pilot.
+- If you interact with the helm, this should disengage the pilot.
 - You can also stop piloting via the window.
 
 ### Navigation
@@ -181,8 +171,5 @@ Press `B` to bring up the windows, and press `Tab` to free the mouse so you can 
 
 - In the Developer page:
   - Press `Access Developer powers`
-- This enables:
-  - 3 randomized deckhands
-  - 1 navigator
-  - 1 pilot
+- This should have a button to add 3 randomized deckhands, 1 navigator, and 1 pilot to your ship.
 - Also enables various extra information on many panels.
