@@ -195,6 +195,12 @@ namespace SailwindVirtualCrew
             return new Crewman(name, role, rng);
         }
 
+        public Crewman CreateRandomCrewman(ShipRole role)
+        {
+            string name = CrewNamePool[rng.Next(CrewNamePool.Length)];
+            return new Crewman(name, role, rng);
+        }
+
         public void HireCrew(Crewman c)
         {
             AvailableAtPort.Remove(c);

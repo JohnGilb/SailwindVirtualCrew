@@ -75,6 +75,8 @@
   <ItemGroup>
     <Compile Include="Windows\CrewRosterWindow.cs" />
     <Compile Include="Crewman.cs" />
+    <Compile Include="DeveloperMode.cs" />
+    <Compile Include="Windows\DeveloperWindow.cs" />
     <Compile Include="Requests\NavigateRequest.cs" />
     <Compile Include="Requests\NavigationResult.cs" />
     <Compile Include="Windows\NavigatorWindow.cs" />

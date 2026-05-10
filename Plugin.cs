@@ -64,6 +64,7 @@ namespace SailwindVirtualCrew
             DeployOthers = Config.Bind("CrewHotkeys", "DeployOthers", new KeyboardShortcut(KeyCode.I));
             ReefOthers = Config.Bind("CrewHotkeys", "ReefOthers", new KeyboardShortcut(KeyCode.O));
 
+            gameObject.AddComponent<DeveloperWindow>();
             gameObject.AddComponent<CrewWindow>();
             gameObject.AddComponent<SailGroupsWindow>();
             gameObject.AddComponent<SailGroupMembersWindow>();

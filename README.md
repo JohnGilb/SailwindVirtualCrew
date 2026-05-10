@@ -82,6 +82,10 @@ Strongly inspired by:
 
 ### Crew Roles
 
+#### Deckhands
+
+- Can be commanded to bail out water
+
 #### Pilots
 
 - Should only be able to pilot for a duration based on their Constitution.
@@ -102,6 +106,7 @@ Strongly inspired by:
   - Periodically call for the sails to be trimmed.
   - Instruct the Navigator to take their measurements at the proper times.
   - Rotate out pilots as they become tired.
+- Checks hull status and issues repairs at sea.
 - Their Charisma acts as a buff (or detriment) to the statistics of other crew members.
 
 #### Chef
@@ -114,6 +119,7 @@ Strongly inspired by:
 - New role.
 - Helps move supplies around the boat.
 - Activates/enables the CargoController mod.
+- Manages repairs
 
 #### Supercargo
 

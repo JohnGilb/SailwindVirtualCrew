@@ -129,7 +129,7 @@ namespace SailwindVirtualCrew
         {
             var pilot = VirtualCrewManager.Instance.Pilot;
             if (pilot == null) return 0f;
-            float range = 7f - pilot.Intelligence;
+            float range = (6f - pilot.Intelligence)*2;
             return Random.Range(-range, range);
         }
 
@@ -165,10 +165,11 @@ namespace SailwindVirtualCrew
             GUI.Label(new Rect(circ.x + 2,     cy - 7,         12, 14), "W");
 
             // Draw order: current (white) first, then ordered (green), then helm (yellow) on top.
-            DrawCompassDot(circ, currentHeading, currentDotTex);
+            if (DeveloperMode.IsEnabled)
+                DrawCompassDot(circ, currentHeading, currentDotTex);
             if (hasPlayerSelection)
                 DrawCompassDot(circ, playerSelectedHeading, orderedDotTex);
-            if (helmTarget.HasValue)
+            if (DeveloperMode.IsEnabled && helmTarget.HasValue)
                 DrawCompassDot(circ, helmTarget.Value, goalDotTex);
 
             // Click inside the ring to set a target heading.
@@ -188,31 +189,46 @@ namespace SailwindVirtualCrew
             GUILayout.EndHorizontal();
 
             // ── Heading readout ────────────────────────────────────────────
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Ordered:", GUILayout.Width(56));
-            GUI.enabled = false;
-            GUILayout.TextField(hasPlayerSelection ? $"{playerSelectedHeading:000.0}°" : "—", GUILayout.Width(70));
-            GUI.enabled = true;
-            GUILayout.Space(6);
-            GUILayout.Label("Helm:", GUILayout.Width(38));
-            GUI.enabled = false;
-            GUILayout.TextField(helmTarget.HasValue ? $"{helmTarget.Value:000.0}°" : "—", GUILayout.Width(70));
-            GUI.enabled = true;
-            GUILayout.Space(6);
-            if (GUILayout.Button("Clear"))
+            if (DeveloperMode.IsEnabled)
             {
-                controller.ClearTarget();
-                hasPlayerSelection = false;
-                if (autopilotEngaged) { ReleaseWheel(); autopilotEngaged = false; }
-            }
-            GUILayout.EndHorizontal();
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Ordered:", GUILayout.Width(56));
+                GUI.enabled = false;
+                GUILayout.TextField(hasPlayerSelection ? $"{playerSelectedHeading:000.0}°" : "—", GUILayout.Width(70));
+                GUI.enabled = true;
+                GUILayout.Space(6);
+                GUILayout.Label("Helm:", GUILayout.Width(38));
+                GUI.enabled = false;
+                GUILayout.TextField(helmTarget.HasValue ? $"{helmTarget.Value:000.0}°" : "—", GUILayout.Width(70));
+                GUI.enabled = true;
+                GUILayout.Space(6);
+                if (GUILayout.Button("Clear"))
+                {
+                    controller.ClearTarget();
+                    hasPlayerSelection = false;
+                    if (autopilotEngaged) { ReleaseWheel(); autopilotEngaged = false; }
+                }
+                GUILayout.EndHorizontal();
 
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Current:", GUILayout.Width(56));
-            GUI.enabled = false;
-            GUILayout.TextField($"{currentHeading:000.0}°", GUILayout.Width(70));
-            GUI.enabled = true;
-            GUILayout.EndHorizontal();
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Current:", GUILayout.Width(56));
+                GUI.enabled = false;
+                GUILayout.TextField($"{currentHeading:000.0}°", GUILayout.Width(70));
+                GUI.enabled = true;
+                GUILayout.EndHorizontal();
+            }
+            else
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("Clear"))
+                {
+                    controller.ClearTarget();
+                    hasPlayerSelection = false;
+                    if (autopilotEngaged) { ReleaseWheel(); autopilotEngaged = false; }
+                }
+                GUILayout.EndHorizontal();
+            }
 
             // ── Relative adjustment buttons ────────────────────────────────
             GUI.enabled = hasPlayerSelection;

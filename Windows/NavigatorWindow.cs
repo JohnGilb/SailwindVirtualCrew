@@ -38,10 +38,11 @@ namespace SailwindVirtualCrew
 
         private bool overrideTimeWindows = false;
 
-        private bool CanUseQuadrant      => hasQuadrant      && (overrideTimeWindows || InQuadrantWindow);
-        private bool CanUseSunCompass    => hasSunCompass    && (overrideTimeWindows || InSunCompassWindow);
-        private bool CanUseChronometer   => hasChronometer   && (overrideTimeWindows || InChronometerWindow);
-        private bool CanUseChronocompass => hasChronocompass && (overrideTimeWindows || InChronocompassWindow);
+        private bool EffectiveOverride    => DeveloperMode.IsEnabled && overrideTimeWindows;
+        private bool CanUseQuadrant      => hasQuadrant      && (EffectiveOverride || InQuadrantWindow);
+        private bool CanUseSunCompass    => hasSunCompass    && (EffectiveOverride || InSunCompassWindow);
+        private bool CanUseChronometer   => hasChronometer   && (EffectiveOverride || InChronometerWindow);
+        private bool CanUseChronocompass => hasChronocompass && (EffectiveOverride || InChronocompassWindow);
 
         private void Update()
         {
@@ -58,12 +59,12 @@ namespace SailwindVirtualCrew
             var pending   = manager.NavigateRequests.Count > 0
                             ? manager.NavigateRequests[0] : null;
 
-            float contentHeight = ButtonHeight * 2     // name + stats
-                                + 4f + ButtonHeight    // space + "Equipment:"
-                                + 6 * ButtonHeight     // 6 toggles
-                                + 4f                   // space
-                                + ButtonHeight         // override toggle
-                                + 4 * ButtonHeight;    // 4 instrument buttons
+            float contentHeight = ButtonHeight * 2                            // name + stats
+                                + 4f + ButtonHeight                        // space + "Equipment:"
+                                + 6 * ButtonHeight                         // 6 toggles
+                                + 4f                                       // space
+                                + (DeveloperMode.IsEnabled ? ButtonHeight : 0f) // override toggle
+                                + 4 * ButtonHeight;                        // 4 instrument buttons
 
             if (pending != null)
                 contentHeight += pending.Status == WorkRequestStatus.InProgress
@@ -98,7 +99,10 @@ namespace SailwindVirtualCrew
             }
 
             GUILayout.Label($"Navigator: {navigator.Name}");
-            GUILayout.Label($"Dexterity: {navigator.AdvDexterity}   Intelligence: {navigator.AdvIntelligence}");
+            if (DeveloperMode.IsEnabled)
+                GUILayout.Label($"Dexterity: {navigator.Dexterity}   Intelligence: {navigator.Intelligence}");
+            else
+                GUILayout.Label($"Dexterity: {navigator.AdvDexterity}   Intelligence: {navigator.AdvIntelligence}");
 
             // ── Equipment ───────────────────────────────────────────────────
             GUILayout.Space(4);
@@ -112,7 +116,8 @@ namespace SailwindVirtualCrew
 
             // ── Instrument buttons ──────────────────────────────────────────
             GUILayout.Space(4);
-            overrideTimeWindows = GUILayout.Toggle(overrideTimeWindows, "Override time windows");
+            if (DeveloperMode.IsEnabled)
+                overrideTimeWindows = GUILayout.Toggle(overrideTimeWindows, "Override time windows");
             bool navFree = !navigator.IsOccupied && pending == null;
 
             // Quadrant — latitude, local 20:00–04:00

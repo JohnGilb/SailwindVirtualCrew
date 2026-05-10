@@ -84,6 +84,22 @@ namespace SailwindVirtualCrew
             }
         }
 
+        // Returns the two role-specific true stats (developer mode only).
+        public string TrueStatLine()
+        {
+            switch (Role)
+            {
+                case ShipRole.Deckhand:      return $"S{Strength}  D{Dexterity}";
+                case ShipRole.Navigator:     return $"D{Dexterity}  I{Intelligence}";
+                case ShipRole.Pilot:         return $"I{Intelligence}  Co{Constitution}";
+                case ShipRole.ChiefOfficer:  return $"W{Wisdom}  Ch{Charisma}";
+                case ShipRole.Chef:          return $"D{Dexterity}  W{Wisdom}";
+                case ShipRole.Quartermaster: return $"S{Strength}  W{Wisdom}";
+                case ShipRole.Supercargo:    return $"I{Intelligence}  Ch{Charisma}";
+                default:                     return $"S{Strength}  D{Dexterity}";
+            }
+        }
+
         public CrewmanSaveData ToSaveData() => new CrewmanSaveData
         {
             name = Name, role = Role,

@@ -108,6 +108,7 @@ namespace SailwindVirtualCrew
             GUI.DragWindow();
         }
 
-        private static string StatLine(Crewman c) => c.AdvertisedStatLine();
+        private static string StatLine(Crewman c) =>
+            DeveloperMode.IsEnabled ? c.TrueStatLine() : c.AdvertisedStatLine();
     }
 }
