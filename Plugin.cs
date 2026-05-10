@@ -16,7 +16,7 @@ namespace SailwindVirtualCrew
     {
         public const string PLUGIN_ID = "com.zorkinian.virtualcrew";
         public const string PLUGIN_NAME = "VirtualCrew";
-        public const string PLUGIN_VERSION = "0.0.4";
+        public const string PLUGIN_VERSION = "0.0.5";
 
         //--settings--
         internal static ConfigEntry<bool> exampleSetting;
@@ -206,8 +206,8 @@ namespace SailwindVirtualCrew
                                 Console.WriteLine("---");
                             }
                         }
-                        else if (sail.name.Contains("jib")) {
-                            Console.WriteLine("Attempting to add jib sail");
+                        else if (sail.name.Contains("jib") || sail.name.Contains("genoa")) {
+                            Console.WriteLine("Attempting to add jib/genoa sail");
                             halyardCandidate = winchDictionary[connections.reefController];
                             portSheetCandidate = winchDictionary[connections.angleControllerLeft];
                             starboardSheetCandidate = winchDictionary[connections.angleControllerRight];
