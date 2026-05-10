@@ -2,6 +2,9 @@
 
 SailwindVirtualCrew adds crew as both an automation element and a new aspect of in-game progression to Sailwind. As part of your journey, you can collect and curate a crew to assist in managing your ship, your navigation, and quality of life.
 
+Depends on: 
+- ModSaveBackups (<https://github.com/bryon82/ModSaveBackups>)
+
 Strongly inspired by:
 - AutoSail (<https://github.com/kerseb/AutoSails>)
 - AutoPilot (<https://github.com/kerseb/AutoPilot>)
