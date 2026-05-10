@@ -248,7 +248,10 @@ namespace SailwindVirtualCrew
 
             // ── Autopilot engage/disengage ─────────────────────────────────
             GUILayout.BeginHorizontal();
-            GUI.enabled = hasPlayerSelection && steeringWheel != null;
+
+            bool pilotExists = VirtualCrewManager.Instance.Pilot != null;
+            GUI.enabled = hasPlayerSelection && steeringWheel != null && pilotExists;
+
             if (autopilotEngaged)
             {
                 if (GUILayout.Button("Disengage Autopilot"))
