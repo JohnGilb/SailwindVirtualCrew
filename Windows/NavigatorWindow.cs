@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -200,6 +201,51 @@ namespace SailwindVirtualCrew
             float fillWidth = (bar.width - 4) * Mathf.Clamp01(progress / 100f);
             if (fillWidth > 0f)
                 GUI.DrawTexture(new Rect(bar.x + 2, bar.y + 2, fillWidth, bar.height - 4), fillTexture);
+        }
+
+        private void scanForTools()
+        {
+            Vector3 playerPos = GameState.currentBoat.transform.position;
+            float maxDistSqr = 100f * 100f; // Use square magnitude for performance
+
+            // Target item names as defined in the game's prefab system
+            string[] targetItems = { "quadrant", "sun compass", "chronometer", "chronocompass" };
+
+            // It is more efficient to find all instances of ShipItem in the scene 
+            // or use the PrefabsDirectory if it maintains a runtime list.
+            ShipItem[] allItems = GameObject.FindObjectsOfType<ShipItem>();
+
+            foreach (ShipItem item in allItems)
+            {
+                Console.WriteLine("item:" + item.name);
+                if (System.Array.Exists(targetItems, name => name == item.name))
+                {
+                    // Check 1: Is it in the personal inventory or held?
+                    bool inInventory = item.GetCurrentInventorySlot() != -1 || item.held != null;
+
+                    if (inInventory)
+                    {
+                        Console.WriteLine("----This is an inventory item!");
+                    }
+
+                    // Check 2: Is it within 100 meters?
+                    float distSqr = (item.transform.position - playerPos).sqrMagnitude;
+
+                    Console.WriteLine(string.Format("Item name:{0}, InventoryPos:{1}, Distance:{2:F2}", item.name, item.GetCurrentInventorySlot(), distSqr));
+
+                    bool isClose = distSqr <= maxDistSqr;
+
+                    if (isClose)
+                    {
+                        Console.WriteLine("----This is within 100 meters!");
+                    }
+
+                    if (inInventory || isClose)
+                    {
+                        Console.WriteLine("----This can be used for navigation!");
+                    }
+                }
+            }
         }
     }
 }

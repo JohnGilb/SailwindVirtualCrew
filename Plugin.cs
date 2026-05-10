@@ -36,6 +36,7 @@ namespace SailwindVirtualCrew
         private ConfigEntry<KeyboardShortcut> ReefSquares;
         private ConfigEntry<KeyboardShortcut> DeployOthers;
         private ConfigEntry<KeyboardShortcut> ReefOthers;
+        private ConfigEntry<KeyboardShortcut> ScanItems;
 
         public static Plugin Instance { get; private set; }
 
@@ -64,6 +65,8 @@ namespace SailwindVirtualCrew
 
             DeployOthers = Config.Bind("CrewHotkeys", "DeployOthers", new KeyboardShortcut(KeyCode.I));
             ReefOthers = Config.Bind("CrewHotkeys", "ReefOthers", new KeyboardShortcut(KeyCode.O));
+
+            ScanItems = Config.Bind("CrewHotkeys", "ScanItems", new KeyboardShortcut(KeyCode.P));
 
             gameObject.AddComponent<DeveloperWindow>();
             gameObject.AddComponent<CrewWindow>();
@@ -323,6 +326,59 @@ namespace SailwindVirtualCrew
                 Console.WriteLine("Reef others");
                 VirtualCrewManager.Instance.isCrewActive = true;
                 VirtualCrewManager.Instance.reefOthers();
+            }
+
+            if (ScanItems.Value.IsDown())
+            {
+                Console.WriteLine("===============");
+                Console.WriteLine("Scanning for items");
+                Console.WriteLine("===============");
+
+                Vector3 playerPos = GameState.currentBoat.transform.position;
+                float maxDistSqr = 100f * 100f; // Use square magnitude for performance
+
+                // Target item names as defined in the game's prefab system
+                string[] targetItems = { "quadrant", "sun compass", "chronometer", "chronocompass" };
+
+                // It is more efficient to find all instances of ShipItem in the scene 
+                // or use the PrefabsDirectory if it maintains a runtime list.
+                ShipItem[] allItems = GameObject.FindObjectsOfType<ShipItem>();
+
+                foreach (ShipItem item in allItems)
+                {
+                    Console.WriteLine("item:" + item.name);
+                    if (System.Array.Exists(targetItems, name => name == item.name))
+                    {
+                        // Check 1: Is it in the personal inventory or held?
+                        bool inInventory = item.GetCurrentInventorySlot() != -1 || item.held != null;
+
+                        if (inInventory) {
+                            Console.WriteLine("----This is an inventory item!");
+                        }
+
+                        // Check 2: Is it within 100 meters?
+                        float distSqr = (item.transform.position - playerPos).sqrMagnitude;
+
+                        Console.WriteLine(string.Format("Item name:{0}, InventoryPos:{1}, Distance:{2:F2}", item.name, item.GetCurrentInventorySlot(), distSqr));
+
+                        bool isClose = distSqr <= maxDistSqr;
+
+                        if (isClose)
+                        {
+                            Console.WriteLine("----This is within 100 meters!");
+                        }
+
+                        if (inInventory || isClose)
+                        {
+                            Console.WriteLine("----This can be used for navigation!");
+                        }
+                    }
+                }
+
+
+                Console.WriteLine("===============");
+                Console.WriteLine("Scanning complete");
+                Console.WriteLine("===============");
             }
 
             // If we release any buttons, stop automating the ship

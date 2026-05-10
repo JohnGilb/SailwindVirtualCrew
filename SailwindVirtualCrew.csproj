@@ -73,6 +73,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="LocatorUtils.cs" />
     <Compile Include="Windows\CrewRosterWindow.cs" />
     <Compile Include="Crewman.cs" />
     <Compile Include="DeveloperMode.cs" />
