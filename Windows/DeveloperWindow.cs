@@ -20,7 +20,7 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 26f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 26f; // add basic crew button
+                height += 26f * 2; // add basic crew + refresh ports buttons
 
             windowRect.height = height;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Developer Tools");
@@ -39,6 +39,8 @@ namespace SailwindVirtualCrew
             {
                 if (GUILayout.Button("Add Basic Crew"))
                     AddBasicCrew();
+                if (GUILayout.Button("Refresh Crew at Ports"))
+                    VirtualCrewManager.Instance.RefreshPortCrewPools();
             }
 
             GUI.DragWindow();

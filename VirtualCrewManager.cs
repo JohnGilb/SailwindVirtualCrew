@@ -34,6 +34,7 @@ namespace SailwindVirtualCrew
         public Port CurrentPort { get; private set; }
         public List<Crewman> AvailableAtPort { get; private set; } = new List<Crewman>();
         public Dictionary<string, List<Crewman>> PortCrewPools { get; private set; } = new Dictionary<string, List<Crewman>>();
+        private Dictionary<string, bool> portIsHub = new Dictionary<string, bool>();
 
         private static readonly string[] CrewNamePool =
         {
@@ -60,6 +61,28 @@ namespace SailwindVirtualCrew
             SailGroups = new List<SailGroup>();
             Crew = new List<Crewman>();
             Reset();
+            Sun.OnNewDay += OnNewDay;
+        }
+
+        private void OnNewDay()
+        {
+            if (GameState.day % 7 == 0)
+                RefreshPortCrewPools();
+        }
+
+        public void RefreshPortCrewPools()
+        {
+            foreach (var key in PortCrewPools.Keys)
+            {
+                bool hub = portIsHub.TryGetValue(key, out var h) && h;
+                int count = hub ? 5 : 1;
+                var pool = new List<Crewman>();
+                for (int i = 0; i < count; i++)
+                    pool.Add(GenerateRandomCrewman(hub));
+                PortCrewPools[key] = pool;
+            }
+            if (CurrentPort != null && PortCrewPools.TryGetValue(CurrentPort.GetPortName(), out var current))
+                AvailableAtPort = current;
         }
 
         public void SetCurrentVessel(string key)
@@ -162,6 +185,7 @@ namespace SailwindVirtualCrew
         {
             CurrentPort = port;
             string key = port.GetPortName();
+            portIsHub[key] = port.hubPort;
             if (!PortCrewPools.ContainsKey(key))
             {
                 int count = port.hubPort ? 5 : 1;
