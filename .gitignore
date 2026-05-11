@@ -428,3 +428,4 @@ FodyWeavers.xsd
 *.msm
 *.msp
 /.claude
+/CLAUDE.md

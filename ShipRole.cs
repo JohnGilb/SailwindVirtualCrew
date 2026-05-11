@@ -8,6 +8,7 @@ namespace SailwindVirtualCrew
         ChiefOfficer,
         Chef,
         Quartermaster,
-        Supercargo
+        Supercargo,
+        Lookout
     }
 }

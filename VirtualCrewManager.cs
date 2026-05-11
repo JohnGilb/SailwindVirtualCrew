@@ -159,6 +159,7 @@ namespace SailwindVirtualCrew
 
         public Crewman Pilot     => Crew.FirstOrDefault(c => c.Role == ShipRole.Pilot);
         public Crewman Navigator => Crew.FirstOrDefault(c => c.Role == ShipRole.Navigator);
+        public Crewman Lookout   => Crew.FirstOrDefault(c => c.Role == ShipRole.Lookout);
 
         /// <summary>
         ///  Deprecated for now, since we have developer commands to add randomized crew
@@ -207,12 +208,13 @@ namespace SailwindVirtualCrew
 
 
         // Weights × 2 so 2.5 % entries become integers; total = 200.
-        private static readonly int[] SimpleWeights = { 160, 10, 10, 5, 5, 5, 5 };
-        private static readonly int[] HubWeights    = { 120, 20, 20, 10, 10, 10, 10 };
+        private static readonly int[] SimpleWeights = { 150, 10, 10, 5, 5, 5, 5, 10 };
+        private static readonly int[] HubWeights    = { 110, 20, 20, 10, 10, 10, 10, 10 };
         private static readonly ShipRole[] WeightedRoles =
         {
             ShipRole.Deckhand, ShipRole.Navigator, ShipRole.Pilot,
-            ShipRole.ChiefOfficer, ShipRole.Chef, ShipRole.Quartermaster, ShipRole.Supercargo
+            ShipRole.ChiefOfficer, ShipRole.Chef, ShipRole.Quartermaster, ShipRole.Supercargo,
+            ShipRole.Lookout
         };
 
         private Crewman GenerateRandomCrewman(bool hub)

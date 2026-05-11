@@ -58,6 +58,7 @@ namespace SailwindVirtualCrew
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Deckhand));
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Pilot));
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Navigator));
+            mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Lookout));
         }
     }
 }

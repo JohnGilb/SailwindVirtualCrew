@@ -80,6 +80,7 @@ namespace SailwindVirtualCrew
                 case ShipRole.Chef:          return $"D{AdvDexterity}  W{AdvWisdom}";
                 case ShipRole.Quartermaster: return $"S{AdvStrength}  W{AdvWisdom}";
                 case ShipRole.Supercargo:    return $"I{AdvIntelligence}  Ch{AdvCharisma}";
+                case ShipRole.Lookout:       return $"D{AdvDexterity}  W{AdvWisdom}";
                 default:                     return $"S{AdvStrength}  D{AdvDexterity}";
             }
         }
@@ -96,6 +97,7 @@ namespace SailwindVirtualCrew
                 case ShipRole.Chef:          return $"D{Dexterity}  W{Wisdom}";
                 case ShipRole.Quartermaster: return $"S{Strength}  W{Wisdom}";
                 case ShipRole.Supercargo:    return $"I{Intelligence}  Ch{Charisma}";
+                case ShipRole.Lookout:       return $"D{Dexterity}  W{Wisdom}";
                 default:                     return $"S{Strength}  D{Dexterity}";
             }
         }
