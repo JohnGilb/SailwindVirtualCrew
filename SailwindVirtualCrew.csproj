@@ -75,6 +75,7 @@
   <ItemGroup>
     <Compile Include="IWindowPosition.cs" />
     <Compile Include="LocatorUtils.cs" />
+    <Compile Include="WeatherUtils.cs" />
     <Compile Include="Windows\CrewRosterWindow.cs" />
     <Compile Include="Crewman.cs" />
     <Compile Include="DeveloperMode.cs" />

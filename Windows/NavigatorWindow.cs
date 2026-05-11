@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace SailwindVirtualCrew
@@ -59,10 +60,21 @@ namespace SailwindVirtualCrew
         private bool CanUseChronometer   => hasChronometer   && (EffectiveOverride || InChronometerWindow);
         private bool CanUseChronocompass => hasChronocompass && (EffectiveOverride || InChronocompassWindow);
 
+        private WeatherState currentWeather = WeatherState.Clear;
+        private float weatherPollTimer = 0f;
+        private const float WeatherPollInterval = 30f;
+
         private void Update()
         {
             if (Plugin.ToggleCrewWindow.Value.IsDown())
                 showWindow = !showWindow;
+
+            weatherPollTimer -= Time.deltaTime;
+            if (weatherPollTimer <= 0f)
+            {
+                currentWeather   = WeatherUtils.GetWeatherState();
+                weatherPollTimer = WeatherPollInterval;
+            }
         }
 
         private void OnGUI()
@@ -78,6 +90,7 @@ namespace SailwindVirtualCrew
                                 + ButtonHeight                                   // Search for Tools button
                                 + 4f + ButtonHeight                              // space + "Equipment:"
                                 + 6 * ButtonHeight                               // 6 tool status labels
+                                + ButtonHeight                                   // weather label
                                 + 4f                                             // space
                                 + (DeveloperMode.IsEnabled ? ButtonHeight : 0f) // override toggle
                                 + 4 * ButtonHeight;                              // 4 instrument buttons
@@ -88,9 +101,17 @@ namespace SailwindVirtualCrew
                     : ButtonHeight;        // status label
 
             contentHeight += 4f + ButtonHeight; // space + "Recent Fixes:" label
-            contentHeight += recentResults.Count > 0
-                ? recentResults.Count * ButtonHeight * 2  // header line + coords line per result
-                : ButtonHeight; // "No fixes taken."
+            if (recentResults.Count > 0)
+            {
+                int totalLines = 0;
+                foreach (var r in recentResults)
+                    totalLines += r.Contains('\n') ? 2 : 1;
+                contentHeight += totalLines * ButtonHeight;
+            }
+            else
+            {
+                contentHeight += ButtonHeight; // "No fixes taken."
+            }
 
             windowRect.height = BaseContentHeight + contentHeight;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Navigator");
@@ -126,6 +147,7 @@ namespace SailwindVirtualCrew
 
             // ── Equipment status ────────────────────────────────────────────
             GUILayout.Space(4);
+            GUILayout.Label($"  Weather: {currentWeather}");
             GUILayout.Label("Equipment:");
             GUILayout.Label($"  {Check(hasChronocompass)} Chronocompass");
             GUILayout.Label($"  {Check(hasChronometer)}   Chronometer");
@@ -133,6 +155,7 @@ namespace SailwindVirtualCrew
             GUILayout.Label($"  {Check(hasQuadrant)}      Quadrant");
             GUILayout.Label($"  {Check(hasSunCompass)}    Sun Compass");
             GUILayout.Label($"  {Check(hasChipLog)}       Chip Log");
+            
 
             // ── Instrument buttons ──────────────────────────────────────────
             GUILayout.Space(4);
@@ -227,6 +250,11 @@ namespace SailwindVirtualCrew
 
         private void OnNavigationComplete(NavigationResult result)
         {
+            if (result.IsFailure)
+            {
+                AddResult(result.FailureMessage);
+                return;
+            }
             string coords = "";
             if (result.HasLatitude)  coords += result.LatitudeText;
             if (result.HasLatitude && result.HasLongitude) coords += "  ";

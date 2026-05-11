@@ -560,17 +560,29 @@ namespace SailwindVirtualCrew
                         float trueLat = coords.z;
                         float trueLon = coords.x;
 
-                        int intel    = nav.Navigator?.Intelligence ?? 3;
-                        float maxErr = intel == 1 ? 5f : (6 - intel) * 0.25f;
-                        float latErr = (float)(rng.NextDouble() * 2.0 - 1.0) * maxErr;
-                        float lonErr = (float)(rng.NextDouble() * 2.0 - 1.0) * maxErr;
+                        var weatherState = WeatherUtils.GetWeatherState();
 
-                        var result = new NavigationResult(
-                            nav.Method,
-                            GameState.day, Sun.sun.localTime,
-                            nav.CanEstimateLatitude,  trueLat + (nav.CanEstimateLatitude  ? latErr : 0f),
-                            nav.CanEstimateLongitude, trueLon + (nav.CanEstimateLongitude ? lonErr : 0f));
-                        nav.OnComplete?.Invoke(result);
+                        if (weatherState >= WeatherState.Cloudy)
+                        {
+                            nav.OnComplete?.Invoke(NavigationResult.Failure(nav.Method, weatherState));
+                        }
+                        else
+                        {
+                            bool partlyCloudy = weatherState == WeatherState.PartlyCloudy;
+                            int intel    = nav.Navigator?.Intelligence ?? 3;
+                            float maxErr = intel == 1 ? 5f : (6 - intel) * 0.25f;
+                            if (partlyCloudy) maxErr *= 1.5f;
+                            float latErr = (float)(rng.NextDouble() * 2.0 - 1.0) * maxErr;
+                            float lonErr = (float)(rng.NextDouble() * 2.0 - 1.0) * maxErr;
+
+                            var result = new NavigationResult(
+                                nav.Method,
+                                GameState.day, Sun.sun.localTime,
+                                partlyCloudy,
+                                nav.CanEstimateLatitude,  trueLat + (nav.CanEstimateLatitude  ? latErr : 0f),
+                                nav.CanEstimateLongitude, trueLon + (nav.CanEstimateLongitude ? lonErr : 0f));
+                            nav.OnComplete?.Invoke(result);
+                        }
                     }
                 }
             }

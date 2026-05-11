@@ -4,28 +4,43 @@ namespace SailwindVirtualCrew
 {
     public class NavigationResult
     {
-        public bool HasLatitude  { get; }
-        public bool HasLongitude { get; }
+        public bool HasLatitude   { get; }
+        public bool HasLongitude  { get; }
         public string LatitudeText  { get; }
         public string LongitudeText { get; }
-        public string Header { get; }
+        public string Header        { get; }
+        public string FailureMessage { get; }
+        public bool IsFailure => FailureMessage != null;
 
         public NavigationResult(NavigationMethod method, int day, float localTime,
-            bool hasLat, float lat, bool hasLon, float lon)
+            bool partlyCloudy, bool hasLat, float lat, bool hasLon, float lon)
         {
-            HasLatitude  = hasLat;
-            HasLongitude = hasLon;
+            HasLatitude   = hasLat;
+            HasLongitude  = hasLon;
             LatitudeText  = hasLat ? FormatLat(lat) : null;
             LongitudeText = hasLon ? FormatLon(lon) : null;
-            Header = FormatHeader(method, day, localTime);
+            Header = FormatHeader(method, day, localTime, partlyCloudy);
         }
 
-        private static string FormatHeader(NavigationMethod method, int day, float localTime)
+        public static NavigationResult Failure(NavigationMethod method, WeatherState weather)
+        {
+            string tool    = GetDeviceLabel(method);
+            string conditions = WeatherConditionLabel(weather);
+            return new NavigationResult($"I can't use the {tool}; I can't see through {conditions}!");
+        }
+
+        private NavigationResult(string failureMessage)
+        {
+            FailureMessage = failureMessage;
+        }
+
+        private static string FormatHeader(NavigationMethod method, int day, float localTime, bool partlyCloudy)
         {
             bool preciseTime = method == NavigationMethod.Chronometer
                             || method == NavigationMethod.Chronocompass;
-            string timeStr = preciseTime ? $"H{(int)localTime}" : GetTimePeriod(localTime);
-            return $"D{day} {timeStr} {GetDeviceLabel(method)}";
+            string timeStr  = preciseTime ? $"H{(int)localTime}" : GetTimePeriod(localTime);
+            string cloudy   = partlyCloudy ? " [Cloudy]" : "";
+            return $"D{day} {timeStr} {GetDeviceLabel(method)}{cloudy}";
         }
 
         private static string GetTimePeriod(float localTime)
@@ -45,6 +60,16 @@ namespace SailwindVirtualCrew
                 case NavigationMethod.Chronometer:   return "Chronometer";
                 case NavigationMethod.Chronocompass: return "Chronocompass";
                 default: return method.ToString();
+            }
+        }
+
+        private static string WeatherConditionLabel(WeatherState weather)
+        {
+            switch (weather)
+            {
+                case WeatherState.Rain:  return "the rain";
+                case WeatherState.Storm: return "the storm";
+                default:                 return "the clouds";
             }
         }
 
