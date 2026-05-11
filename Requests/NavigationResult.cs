@@ -13,13 +13,13 @@ namespace SailwindVirtualCrew
         public bool IsFailure => FailureMessage != null;
 
         public NavigationResult(NavigationMethod method, int day, float localTime,
-            bool partlyCloudy, bool hasLat, float lat, bool hasLon, float lon)
+            bool hasLat, float lat, bool hasLon, float lon)
         {
             HasLatitude   = hasLat;
             HasLongitude  = hasLon;
             LatitudeText  = hasLat ? FormatLat(lat) : null;
             LongitudeText = hasLon ? FormatLon(lon) : null;
-            Header = FormatHeader(method, day, localTime, partlyCloudy);
+            Header = FormatHeader(method, day, localTime);
         }
 
         public static NavigationResult Failure(NavigationMethod method, WeatherState weather)
@@ -34,13 +34,12 @@ namespace SailwindVirtualCrew
             FailureMessage = failureMessage;
         }
 
-        private static string FormatHeader(NavigationMethod method, int day, float localTime, bool partlyCloudy)
+        private static string FormatHeader(NavigationMethod method, int day, float localTime)
         {
             bool preciseTime = method == NavigationMethod.Chronometer
                             || method == NavigationMethod.Chronocompass;
             string timeStr  = preciseTime ? $"H{(int)localTime}" : GetTimePeriod(localTime);
-            string cloudy   = partlyCloudy ? " [Cloudy]" : "";
-            return $"D{day} {timeStr} {GetDeviceLabel(method)}{cloudy}";
+            return $"D{day} {timeStr} {GetDeviceLabel(method)}";
         }
 
         private static string GetTimePeriod(float localTime)
@@ -69,7 +68,7 @@ namespace SailwindVirtualCrew
             {
                 case WeatherState.Rain:  return "the rain";
                 case WeatherState.Storm: return "the storm";
-                default:                 return "the clouds";
+                default:                 return "the weather";
             }
         }
 
