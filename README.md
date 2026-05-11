@@ -32,6 +32,7 @@ Strongly inspired by:
 #### Deckhand
 
 - Can operate winches.
+- Can be commanded to bail out water
 - You can issue commands like "lower all sails"
 - They take on the jobs, move to the winches (based on Dexterity), and operate them (based on Strength).
 - If you have a big ship, you may want to get more than one deckhand, or you'll be waiting a long time for them to finish all the jobs!
@@ -77,8 +78,7 @@ Strongly inspired by:
 
 #### Deckhands
 
-- Can be commanded to bail out water
-- Can raise and lower anchors
+- - Can raise and lower anchors
 
 #### Pilots
 
