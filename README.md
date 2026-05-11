@@ -47,26 +47,16 @@ Strongly inspired by:
 #### Navigator
 
 - Can operate navigation tools.
+  - Can scan for tools you have on the ship or in your inventory.
 - Navigators with better Intelligence take more precise measurements.
   - Special case: Intelligence 1 navigators have basically no idea where they are.
+- Can only operate most tools once per day, representing their "best effort" with it.
 
-##### Quadrant
-- Can only be used between 20:00-04:00 local time.
-- Gets latitude.
-
-##### Sun Compass
-- Can only be used between 11:00-13:00 local time.
-- Gets latitude.
-
-##### Chronometer
-- Can only be used between 11:00-13:00 Global time.
-- Gets longitude.
-
-##### Chronocompass
-- Can be used between 08:00-16:00 local time.
-- Gets longitude and latitude.
-
-
+##### Tools
+- Quadrant: Can only be used between 20:00-04:00 local time. Gets latitude.
+- Sun Compass: Can only be used between 11:00-13:00 local time. Gets latitude.
+- Chronometer: Can only be used between 11:00-13:00 Global time. Gets longitude.
+- Chronocompass: Can be used between 08:00-16:00 local time. Gets longitude and latitude. Can be used more times per day.
 
 ---
 
@@ -88,17 +78,12 @@ Strongly inspired by:
 #### Deckhands
 
 - Can be commanded to bail out water
+- Can raise and lower anchors
 
 #### Pilots
 
 - Should only be able to pilot for a duration based on their Constitution.
 - If you want 24/7 automatic piloting, you'll probably need 2-3 pilots.
-
-#### Navigators
-
-- Should auto-detect what tools the player has nearby or in their personal inventory.
-- Should only be able to take one "measurement" per tool type per day (or night, for the quadrant).
-  - Represents their best effort using that tool.
 
 #### Chief Officer
 

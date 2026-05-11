@@ -4,6 +4,7 @@ namespace SailwindVirtualCrew
 {
     public class NavigationResult
     {
+        public NavigationMethod Method  { get; }
         public bool HasLatitude   { get; }
         public bool HasLongitude  { get; }
         public string LatitudeText  { get; }
@@ -15,6 +16,7 @@ namespace SailwindVirtualCrew
         public NavigationResult(NavigationMethod method, int day, float localTime,
             bool hasLat, float lat, bool hasLon, float lon)
         {
+            Method        = method;
             HasLatitude   = hasLat;
             HasLongitude  = hasLon;
             LatitudeText  = hasLat ? FormatLat(lat) : null;
@@ -26,11 +28,12 @@ namespace SailwindVirtualCrew
         {
             string tool    = GetDeviceLabel(method);
             string conditions = WeatherConditionLabel(weather);
-            return new NavigationResult($"I can't use the {tool}; I can't see through {conditions}!");
+            return new NavigationResult(method, $"I can't use the {tool}; I can't see through {conditions}!");
         }
 
-        private NavigationResult(string failureMessage)
+        private NavigationResult(NavigationMethod method, string failureMessage)
         {
+            Method = method;
             FailureMessage = failureMessage;
         }
 

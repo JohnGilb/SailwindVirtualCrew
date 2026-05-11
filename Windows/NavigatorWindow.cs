@@ -23,6 +23,10 @@ namespace SailwindVirtualCrew
         private bool hasSunCompass    = false;
         private bool hasChipLog       = false;
 
+        // Tool cooldowns: keyed by method; value is the in-game hour at which the cooldown expires.
+        private readonly Dictionary<NavigationMethod, float> toolCooldownEnd   = new Dictionary<NavigationMethod, float>();
+        private readonly Dictionary<NavigationMethod, float> toolCooldownTotal = new Dictionary<NavigationMethod, float>();
+
         private static readonly string[] ToolItemNames =
         {
             "chronocompass",
@@ -42,6 +46,7 @@ namespace SailwindVirtualCrew
         // Time windows for each method
         private static float LocalTime  => Sun.sun.localTime;
         private static float GlobalTime => Sun.sun.globalTime;
+        private static float GameHoursNow => GameState.day * 24f + Sun.sun.globalTime;
 
         // Quadrant: local 20:00–04:00 (wraps midnight)
         private static bool InQuadrantWindow     => LocalTime  >= 20f || LocalTime  < 4f;
@@ -55,10 +60,22 @@ namespace SailwindVirtualCrew
         private bool overrideTimeWindows = false;
 
         private bool EffectiveOverride    => DeveloperMode.IsEnabled && overrideTimeWindows;
-        private bool CanUseQuadrant      => hasQuadrant      && (EffectiveOverride || InQuadrantWindow);
-        private bool CanUseSunCompass    => hasSunCompass    && (EffectiveOverride || InSunCompassWindow);
-        private bool CanUseChronometer   => hasChronometer   && (EffectiveOverride || InChronometerWindow);
-        private bool CanUseChronocompass => hasChronocompass && (EffectiveOverride || InChronocompassWindow);
+        private bool CanUseQuadrant      => hasQuadrant      && (EffectiveOverride || (InQuadrantWindow      && !IsOnCooldown(NavigationMethod.Quadrant)));
+        private bool CanUseSunCompass    => hasSunCompass    && (EffectiveOverride || (InSunCompassWindow    && !IsOnCooldown(NavigationMethod.SunCompass)));
+        private bool CanUseChronometer   => hasChronometer   && (EffectiveOverride || (InChronometerWindow   && !IsOnCooldown(NavigationMethod.Chronometer)));
+        private bool CanUseChronocompass => hasChronocompass && (EffectiveOverride || (InChronocompassWindow && !IsOnCooldown(NavigationMethod.Chronocompass)));
+
+        private static float CooldownHours(NavigationMethod m) => m == NavigationMethod.Quadrant ? 8f : 2f;
+
+        private bool IsOnCooldown(NavigationMethod m) =>
+            toolCooldownEnd.TryGetValue(m, out float end) && GameHoursNow < end;
+
+        private void StartCooldown(NavigationMethod m)
+        {
+            float hours = CooldownHours(m);
+            toolCooldownEnd[m]   = GameHoursNow + hours;
+            toolCooldownTotal[m] = hours;
+        }
 
         private WeatherState currentWeather = WeatherState.Clear;
         private float weatherPollTimer = 0f;
@@ -99,6 +116,14 @@ namespace SailwindVirtualCrew
                 contentHeight += pending.Status == WorkRequestStatus.InProgress
                     ? 14f + ButtonHeight   // progress bar + label
                     : ButtonHeight;        // status label
+
+            foreach (NavigationMethod m in new[] {
+                NavigationMethod.Quadrant, NavigationMethod.SunCompass,
+                NavigationMethod.Chronometer, NavigationMethod.Chronocompass })
+            {
+                if (IsOnCooldown(m))
+                    contentHeight += ButtonHeight + 14f; // label + cooldown bar
+            }
 
             contentHeight += 4f + ButtonHeight; // space + "Recent Fixes:" label
             if (recentResults.Count > 0)
@@ -223,6 +248,15 @@ namespace SailwindVirtualCrew
                 }
             }
 
+            // ── Tool cooldowns ──────────────────────────────────────────────
+            foreach (NavigationMethod m in new[] {
+                NavigationMethod.Quadrant, NavigationMethod.SunCompass,
+                NavigationMethod.Chronometer, NavigationMethod.Chronocompass })
+            {
+                if (IsOnCooldown(m))
+                    DrawCooldownBar(m);
+            }
+
             // ── Recent fixes ────────────────────────────────────────────────
             GUILayout.Space(4);
             GUILayout.Label("Recent Fixes:");
@@ -250,6 +284,8 @@ namespace SailwindVirtualCrew
 
         private void OnNavigationComplete(NavigationResult result)
         {
+            StartCooldown(result.Method);
+
             if (result.IsFailure)
             {
                 AddResult(result.FailureMessage);
@@ -274,6 +310,45 @@ namespace SailwindVirtualCrew
         }
 
         private Texture2D fillTexture;
+        private Texture2D cooldownTexture;
+
+        private void DrawCooldownBar(NavigationMethod method)
+        {
+            if (!toolCooldownEnd.TryGetValue(method, out float end)) return;
+            float now       = GameHoursNow;
+            float remaining = end - now;
+            if (remaining <= 0f) return;
+
+            float total    = toolCooldownTotal.TryGetValue(method, out float t) ? t : remaining;
+            float progress = Mathf.Clamp01((total - remaining) / total);
+
+            string label = ToolLabel(method);
+            GUILayout.Label($"{label} exhausted for now");
+
+            if (cooldownTexture == null)
+            {
+                cooldownTexture = new Texture2D(1, 1);
+                cooldownTexture.SetPixel(0, 0, new Color(1f, 0.6f, 0f));
+                cooldownTexture.Apply();
+            }
+            Rect bar = GUILayoutUtility.GetRect(0, 14, GUILayout.ExpandWidth(true));
+            GUI.Box(bar, "");
+            float fillWidth = (bar.width - 4) * progress;
+            if (fillWidth > 0f)
+                GUI.DrawTexture(new Rect(bar.x + 2, bar.y + 2, fillWidth, bar.height - 4), cooldownTexture);
+        }
+
+        private static string ToolLabel(NavigationMethod m)
+        {
+            switch (m)
+            {
+                case NavigationMethod.Quadrant:      return "Quadrant";
+                case NavigationMethod.SunCompass:    return "Sun Compass";
+                case NavigationMethod.Chronometer:   return "Chronometer";
+                case NavigationMethod.Chronocompass: return "Chronocompass";
+                default: return m.ToString();
+            }
+        }
 
         private void DrawProgressBar(float progress)
         {
