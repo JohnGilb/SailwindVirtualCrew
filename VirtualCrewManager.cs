@@ -543,6 +543,7 @@ namespace SailwindVirtualCrew
 
                         var result = new NavigationResult(
                             nav.Method,
+                            GameState.day, Sun.sun.localTime,
                             nav.CanEstimateLatitude,  trueLat + (nav.CanEstimateLatitude  ? latErr : 0f),
                             nav.CanEstimateLongitude, trueLon + (nav.CanEstimateLongitude ? lonErr : 0f));
                         nav.OnComplete?.Invoke(result);

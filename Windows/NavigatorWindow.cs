@@ -85,7 +85,7 @@ namespace SailwindVirtualCrew
 
             contentHeight += 4f + ButtonHeight; // space + "Recent Fixes:" label
             contentHeight += recentResults.Count > 0
-                ? recentResults.Count * ButtonHeight
+                ? recentResults.Count * ButtonHeight * 2  // header line + coords line per result
                 : ButtonHeight; // "No fixes taken."
 
             windowRect.height = BaseContentHeight + contentHeight;
@@ -227,7 +227,7 @@ namespace SailwindVirtualCrew
             if (result.HasLatitude)  coords += result.LatitudeText;
             if (result.HasLatitude && result.HasLongitude) coords += "  ";
             if (result.HasLongitude) coords += result.LongitudeText;
-            AddResult($"[{result.MethodLabel}] {coords}");
+            AddResult($"{result.Header}\n{coords}");
         }
 
         private void ScanForTools()
