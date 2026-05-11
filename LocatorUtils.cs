@@ -9,53 +9,41 @@ namespace SailwindVirtualCrew
 {
     internal static class LocatorUtils
     {
-        public static bool[] findItem(string[] targetItemNames)
+        public static int[] findItemCounts(string[] targetItemNames)
         {
             Vector3 playerPos = GameState.currentBoat.transform.position;
             float maxDistSqr = 100f * 100f;
 
-            // Result array: one bool per target item name
-            bool[] foundItems = new bool[targetItemNames.Length];
+            int[] counts = new int[targetItemNames.Length];
 
-            // Find all ShipItem instances
             ShipItem[] allItems = GameObject.FindObjectsOfType<ShipItem>();
 
             foreach (ShipItem item in allItems)
             {
                 for (int i = 0; i < targetItemNames.Length; i++)
                 {
-                    // Skip if already found
-                    if (foundItems[i])
-                        continue;
-
-                    // Name match?
                     if (item.name != targetItemNames[i])
                         continue;
 
-                    // Check 1: In inventory or held
                     bool inInventory = item.GetCurrentInventorySlot() != -1 || item.held != null;
-
-                    // Check 2: Within 100 meters
                     float distSqr = (item.transform.position - playerPos).sqrMagnitude;
                     bool isClose = distSqr <= maxDistSqr;
 
                     if (inInventory || isClose)
-                    {
-                        foundItems[i] = true;
-
-                        Console.WriteLine(
-                            string.Format(
-                                "Item name:{0}, InventoryPos:{1}, Distance:{2:F2}",
-                                item.name,
-                                item.GetCurrentInventorySlot(),
-                                Mathf.Sqrt(distSqr)));
-
-                        Console.WriteLine("----This can be used for navigation!");
-                    }
+                        counts[i]++;
                 }
             }
 
-            return foundItems;
+            return counts;
+        }
+
+        public static bool[] findItem(string[] targetItemNames)
+        {
+            int[] counts = findItemCounts(targetItemNames);
+            bool[] found = new bool[counts.Length];
+            for (int i = 0; i < counts.Length; i++)
+                found[i] = counts[i] > 0;
+            return found;
         }
     }
 }

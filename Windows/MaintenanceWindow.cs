@@ -14,8 +14,11 @@ namespace SailwindVirtualCrew
 
         private float waterLevel   = 0f;
         private float pollTimer    = 0f;
+        private int   bucketCount  = 0;
         private const float PollInterval  = 10f;
         private const float ButtonHeight  = 22f;
+        private const float MugUnits    = 3f;
+        private const float BucketUnits = 10f;
 
         private static BoatDamage GetBoatDamage() =>
             GameState.lastBoat != null ? GameState.lastBoat.GetComponent<BoatDamage>() : null;
@@ -50,6 +53,7 @@ namespace SailwindVirtualCrew
             var bails   = manager.BailRequests;
 
             float contentHeight = ButtonHeight  // water label
+                                + ButtonHeight  // bucket status
                                 + ButtonHeight; // bail button
 
             foreach (var b in bails)
@@ -78,11 +82,20 @@ namespace SailwindVirtualCrew
                 ? $"{waterLevel * 100f:F2}%"
                 : $"{waterLevel * 100f:F0}%";
             GUILayout.Label($"Water: {waterStr}");
+            string bucketLabel = bucketCount > 0 ? $"[{bucketCount}] Bucket" : "[ ] Bucket";
+            GUILayout.Label($"  {bucketLabel}");
 
             // ── Bail button ──────────────────────────────────────────────────
             GUI.enabled = bd != null && waterLevel > 0.05f;
             if (GUILayout.Button("Bail Until Empty") && bd != null)
-                manager.AddBailRequest(new BailRequest(bd));
+            {
+                bucketCount = LocatorUtils.findItemCounts(new[] { "bucket" })[0];
+                int bucketUsersQueued = 0;
+                foreach (var b in manager.BailRequests)
+                    if (b.UnitsPerScoop >= BucketUnits) bucketUsersQueued++;
+                float units = bucketUsersQueued < bucketCount ? BucketUnits : MugUnits;
+                manager.AddBailRequest(new BailRequest(bd, units));
+            }
             GUI.enabled = true;
 
             // ── Active bail requests ─────────────────────────────────────────
@@ -91,7 +104,7 @@ namespace SailwindVirtualCrew
                 if (bail.Status == WorkRequestStatus.InProgress)
                 {
                     string phase = bail.IsPickingUp ? "scooping..." : "dumping...";
-                    GUILayout.Label($"  [{bail.AssignedCrewman?.Name}] {phase}");
+                    GUILayout.Label($"  [{bail.AssignedCrewman?.Name}] {phase} ({bail.ToolName})");
                     DrawProgressBar(bail.GetProgress());
                 }
                 else
@@ -118,6 +131,8 @@ namespace SailwindVirtualCrew
 
             GUI.DragWindow();
         }
+
+        private static string Check(bool value) => value ? "[x]" : "[ ]";
 
         private Texture2D fillTexture;
 

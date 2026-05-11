@@ -12,12 +12,14 @@ namespace SailwindVirtualCrew
         private float phaseDuration;
         private bool  inPickupPhase;
 
-        private const float BucketUnits = 3f;
+        public float  UnitsPerScoop { get; }
+        public string ToolName      => UnitsPerScoop >= 10f ? "bucket" : "mug";
         private const float DoneThreshold   = 0.05f;
 
-        public BailRequest(BoatDamage damage)
+        public BailRequest(BoatDamage damage, float unitsPerScoop)
         {
-            boatDamage = damage;
+            boatDamage   = damage;
+            UnitsPerScoop = unitsPerScoop;
         }
 
         public void Begin(Crewman crewman)
@@ -43,7 +45,7 @@ namespace SailwindVirtualCrew
             if (inPickupPhase)
             {
                 float removal = boatDamage.waterUnitsCapacity > 0f
-                    ? BucketUnits / boatDamage.waterUnitsCapacity
+                    ? UnitsPerScoop / boatDamage.waterUnitsCapacity
                     : 0f;
                 boatDamage.waterLevel = Mathf.Max(0f, boatDamage.waterLevel - removal);
                 if (boatDamage.waterLevel <= DoneThreshold)
