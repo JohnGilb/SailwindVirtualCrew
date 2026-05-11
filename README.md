@@ -53,6 +53,11 @@ Strongly inspired by:
   - Special case: Intelligence 1 navigators have basically no idea where they are.
 - Can only operate most tools once per day, representing their "best effort" with it.
 
+#### Lookout
+
+- Keeps an eye out for landmasses, based on their Wisdom, and reports the rough heading to them.
+  - Can scan for and use spyglasses on board or in player inventory
+
 ##### Tools
 - Quadrant: Can only be used between 20:00-04:00 local time. Gets latitude.
 - Sun Compass: Can only be used between 11:00-13:00 local time. Gets latitude.
@@ -97,6 +102,12 @@ Strongly inspired by:
   - Rotate out pilots as they become tired.
 - Checks hull status and issues repairs at sea.
 - Their Charisma acts as a buff (or detriment) to the statistics of other crew members.
+
+#### Lookout
+
+- Can collaborate with the Navigator to get the island name if you have a recent lat/lon and you've visited the goods trader on that island or have a chart with that island.
+  - Not sure how the latter would work with scrambled seas...
+  - Note that a bad lat/lon might mean they make a mistake and name it incorrectly!
 
 #### Chef
 
