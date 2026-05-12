@@ -26,6 +26,8 @@ Strongly inspired by:
   - Intelligence
   - Wisdom
   - Charisma
+- Rename crew members
+- Crew get tired and will need beds to sleep in.
 
 ### Crew Types
 
@@ -70,27 +72,16 @@ Strongly inspired by:
 
 ## Planned Features
 
-### Crew Management
-
-- Crew can only be fired at ports.
-  - You wouldn't just drop somebody in the ocean, would you?
-
 ### Crew (General)
 
 - Crew should require wages, paid out periodically.
 - Crew should require food, eaten daily.
-- Crew will only operate if they have enough beds.
 
 ### Crew Roles
 
 #### Deckhands
 
 - Can operate bilge pumps
-
-#### Pilots
-
-- Should only be able to pilot for a duration based on their Constitution.
-- If you want 24/7 automatic piloting, you'll probably need 2-3 pilots.
 
 #### Chief Officer
 
@@ -132,8 +123,7 @@ Strongly inspired by:
 ### UI / UX
 
 - For now, all features are accessed via windows; long-term the goal would be to achieve the same immersion Sailwind generally aims for (character models on board)
-- Dynamic hotkeys for combinations of sail groups & commands so you can shortcut your favorites (e.g. squares->deploy, jibs-> port1/2, etc...)
-- Rename crew members
+- Dynamic hotkeys for combinations of sail groups & commands so you can shortcut your favorites (e.g. squares->deploy, jibs-> port1/2, etc
 
 ### Logic
 

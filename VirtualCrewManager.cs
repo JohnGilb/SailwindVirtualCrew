@@ -516,12 +516,16 @@ namespace SailwindVirtualCrew
             }
             _lastGlobalTime = currentTime;
 
-            // Auto-trigger sleep for exhausted, unoccupied crew (before bed assignment so the
-            // newly-created request can claim a bed in the same tick).
+            // Auto-trigger sleep for exhausted, unoccupied crew, but only up to the number of
+            // available beds. Crew with no bed to claim stay unoccupied so the player can still
+            // use them. Both Open and InProgress requests count as claimed beds.
+            int? autoTriggerBedCount = null;
             foreach (var c in Crew)
             {
-                if (c.IsExhausted && !c.IsOccupied)
-                    SleepRequests.Add(new SleepRequest(c));
+                if (!c.IsExhausted || c.IsOccupied) continue;
+                if (autoTriggerBedCount == null) autoTriggerBedCount = LocatorUtils.CountBeds();
+                if (SleepRequests.Count >= autoTriggerBedCount.Value) break;
+                SleepRequests.Add(new SleepRequest(c));
             }
 
             foreach (var req in WorkRequests)
