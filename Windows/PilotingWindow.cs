@@ -6,12 +6,14 @@ namespace SailwindVirtualCrew
     public class PilotingWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(440, 20, 380, 800);
+        private Rect windowRect = new Rect(440, 20, 420, 800);
         private static readonly int windowId = "VirtualCrewPilotWindow".GetHashCode();
 
+        private WindowResizer _resizer;
+
         public string WindowKey => "PilotingWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private readonly PilotController controller = new PilotController();
 
@@ -140,6 +142,8 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
+            if (_resizer.UserHeight > 0f) windowRect.height = _resizer.UserHeight;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Piloting");
         }
 
@@ -148,23 +152,25 @@ namespace SailwindVirtualCrew
             // Suppress Tab so the game's free-look binding doesn't fire.
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             EnsureTextures();
 
             // ── Pilot assignment ───────────────────────────────────────────
             var activePilotTask = VirtualCrewManager.Instance.ActivePilotTask;
-            if (activePilotTask != null)
-            {
-                GUILayout.Label($"Pilot: {activePilotTask.AssignedCrewman.Name}  [{activePilotTask.AssignedCrewman.FatigueTag}]");
-            }
-            else
+            if (activePilotTask == null)
             {
                 var freshest = VirtualCrewManager.Instance.FreshestCrewman(ShipRole.Pilot);
                 GUI.enabled = freshest != null;
                 if (GUILayout.Button(freshest != null ? $"Assign freshest Pilot ({freshest.Name})" : "Assign freshest Pilot"))
                     VirtualCrewManager.Instance.StartPilot(freshest);
                 GUI.enabled = true;
+                _resizer.HandleInWindow(ref windowRect);
+                GUI.DragWindow();
+                return;
             }
+
+            GUILayout.Label($"Pilot: {activePilotTask.AssignedCrewman.Name}  [{activePilotTask.AssignedCrewman.FatigueTag}]");
 
             float  currentHeading = GetCurrentHeading();
             float? helmTarget     = controller.TargetHeading;
@@ -211,12 +217,12 @@ namespace SailwindVirtualCrew
             if (DeveloperMode.IsEnabled)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("Ordered:", GUILayout.Width(56));
+                GUILayout.Label("Ordered:", GUILayout.Width(66));
                 GUI.enabled = false;
                 GUILayout.TextField(hasPlayerSelection ? $"{playerSelectedHeading:000.0}°" : "—", GUILayout.Width(70));
                 GUI.enabled = true;
                 GUILayout.Space(6);
-                GUILayout.Label("Helm:", GUILayout.Width(38));
+                GUILayout.Label("Helm:", GUILayout.Width(48));
                 GUI.enabled = false;
                 GUILayout.TextField(helmTarget.HasValue ? $"{helmTarget.Value:000.0}°" : "—", GUILayout.Width(70));
                 GUI.enabled = true;
@@ -230,7 +236,7 @@ namespace SailwindVirtualCrew
                 GUILayout.EndHorizontal();
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("Current:", GUILayout.Width(56));
+                GUILayout.Label("Current:", GUILayout.Width(66));
                 GUI.enabled = false;
                 GUILayout.TextField($"{currentHeading:000.0}°", GUILayout.Width(70));
                 GUI.enabled = true;
@@ -293,21 +299,21 @@ namespace SailwindVirtualCrew
             float maxD = Plugin.PidMaxD.Value;
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("P:", GUILayout.Width(16));
+            GUILayout.Label("P:", GUILayout.Width(26));
             kp = GUILayout.HorizontalSlider(Mathf.Clamp(kp, 0f, maxP), 0f, maxP);
-            GUILayout.Label($"{kp:F3}", GUILayout.Width(40));
+            GUILayout.Label($"{kp:F3}", GUILayout.Width(54));
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("I:", GUILayout.Width(16));
+            GUILayout.Label("I:", GUILayout.Width(26));
             ki = GUILayout.HorizontalSlider(Mathf.Clamp(ki, 0f, maxI), 0f, maxI);
-            GUILayout.Label($"{ki:F3}", GUILayout.Width(40));
+            GUILayout.Label($"{ki:F3}", GUILayout.Width(54));
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("D:", GUILayout.Width(16));
+            GUILayout.Label("D:", GUILayout.Width(26));
             kd = GUILayout.HorizontalSlider(Mathf.Clamp(kd, 0f, maxD), 0f, maxD);
-            GUILayout.Label($"{kd:F3}", GUILayout.Width(40));
+            GUILayout.Label($"{kd:F3}", GUILayout.Width(54));
             GUILayout.EndHorizontal();
 
             controller.Kp = kp;
@@ -317,19 +323,23 @@ namespace SailwindVirtualCrew
             string status = autopilotEngaged ? "● Autopilot ON" : "○ Autopilot OFF";
             GUILayout.Label($"Output: {controller.Output:+0.00;-0.00;0.00}   {status}");
 
-            // ── History graph ──────────────────────────────────────────────
-            GUILayout.BeginHorizontal();
-            GUI.color = Color.yellow; GUILayout.Label("■ Helm",    GUILayout.Width(55));
-            GUI.color = Color.white;  GUILayout.Label("■ Current", GUILayout.Width(70));
-            GUI.color = Color.red;    GUILayout.Label("■ Output",  GUILayout.Width(70));
-            GUI.color = Color.white;
-            GUILayout.EndHorizontal();
+            // ── History graph (developer mode only) ───────────────────────
+            if (DeveloperMode.IsEnabled)
+            {
+                GUILayout.BeginHorizontal();
+                GUI.color = Color.yellow; GUILayout.Label("■ Helm",    GUILayout.Width(66));
+                GUI.color = Color.white;  GUILayout.Label("■ Current", GUILayout.Width(80));
+                GUI.color = Color.red;    GUILayout.Label("■ Output",  GUILayout.Width(80));
+                GUI.color = Color.white;
+                GUILayout.EndHorizontal();
 
-            Rect graph = GUILayoutUtility.GetRect(0, GraphHeight,
-                GUILayout.ExpandWidth(true), GUILayout.Height(GraphHeight));
-            GUI.Box(graph, "");
-            DrawGraph(graph);
+                Rect graph = GUILayoutUtility.GetRect(0, GraphHeight,
+                    GUILayout.ExpandWidth(true), GUILayout.Height(GraphHeight));
+                GUI.Box(graph, "");
+                DrawGraph(graph);
+            }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 

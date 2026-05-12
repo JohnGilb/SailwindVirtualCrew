@@ -6,18 +6,19 @@ namespace SailwindVirtualCrew
     public class CrewWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(20, 20, 400, 560);
+        private Rect windowRect = new Rect(20, 20, 440, 560);
         private static readonly int windowId = "VirtualCrewWindow".GetHashCode();
+        private WindowResizer _resizer;
 
         public string WindowKey => "CrewWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private ICommonSailActions selectedSail = null;
         private string renameBuffer = "";
         private string vesselRenameBuffer = "";
 
-        private const float ButtonHeight      = 22f;
+        private const float ButtonHeight      = 28f;
         private const float BaseContentHeight = 600f;
 
         private void Update()
@@ -29,6 +30,7 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
 
             var manager = VirtualCrewManager.Instance;
             var sails   = manager.AllSails;
@@ -57,7 +59,8 @@ namespace SailwindVirtualCrew
             }
 
             // Vessel label + rename row + "Sails" label = 3 rows
-            windowRect.height = BaseContentHeight + ButtonHeight * 3 + sailListHeight + commandHeight;
+            float autoHeight = BaseContentHeight + ButtonHeight * 3 + sailListHeight + commandHeight;
+            windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : autoHeight;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Deck Orders");
         }
 
@@ -65,6 +68,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             var manager = VirtualCrewManager.Instance;
             var sails   = manager.AllSails;
@@ -77,11 +81,11 @@ namespace SailwindVirtualCrew
                                  : "(No vessel — press V to scan)";
             GUILayout.Label($"Vessel: {vesselDisplay}");
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Name:", GUILayout.Width(42));
+            GUILayout.Label("Name:", GUILayout.Width(66));
             vesselRenameBuffer = GUILayout.TextField(vesselRenameBuffer);
-            if (GUILayout.Button("Set",   GUILayout.Width(36)) && vesselRenameBuffer.Trim().Length > 0)
+            if (GUILayout.Button("Set",   GUILayout.Width(46)) && vesselRenameBuffer.Trim().Length > 0)
                 manager.SetVesselFriendlyName(vesselRenameBuffer.Trim());
-            if (GUILayout.Button("Clear", GUILayout.Width(44)))
+            if (GUILayout.Button("Clear", GUILayout.Width(54)))
             {
                 manager.SetVesselFriendlyName("");
                 vesselRenameBuffer = "";
@@ -134,11 +138,11 @@ namespace SailwindVirtualCrew
                 GUILayout.Label($"Commands: {selectedSail.getSailName()}");
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("Name:", GUILayout.Width(42));
+                GUILayout.Label("Name:", GUILayout.Width(66));
                 renameBuffer = GUILayout.TextField(renameBuffer);
-                if (GUILayout.Button("Set",   GUILayout.Width(36)) && renameBuffer.Trim().Length > 0)
+                if (GUILayout.Button("Set",   GUILayout.Width(46)) && renameBuffer.Trim().Length > 0)
                     manager.SetSailFriendlyName(selectedSail, renameBuffer.Trim());
-                if (GUILayout.Button("Clear", GUILayout.Width(44)))
+                if (GUILayout.Button("Clear", GUILayout.Width(54)))
                 {
                     manager.SetSailFriendlyName(selectedSail, "");
                     renameBuffer = "";
@@ -219,6 +223,7 @@ namespace SailwindVirtualCrew
                 }
             }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 

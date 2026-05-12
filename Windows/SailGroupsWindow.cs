@@ -7,16 +7,18 @@ namespace SailwindVirtualCrew
     public class SailGroupsWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(440, 20, 400, 560);
+        private Rect windowRect = new Rect(440, 20, 440, 560);
         private static readonly int windowId = "VirtualCrewSailGroupsWindow".GetHashCode();
 
+        private WindowResizer _resizer;
+
         public string WindowKey => "SailGroupsWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private string groupNameBuffer = "";
 
-        private const float ButtonHeight      = 22f;
+        private const float ButtonHeight      = 28f;
         private const float BaseContentHeight = 300f;
 
         private void Update()
@@ -28,6 +30,7 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
 
             var manager       = VirtualCrewManager.Instance;
             var sails         = manager.AllSails;
@@ -54,7 +57,7 @@ namespace SailwindVirtualCrew
                 if (caps.HasFlag(SailCapability.Trim))              contentHeight += ButtonHeight;
             }
 
-            windowRect.height = BaseContentHeight + contentHeight;
+            windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : BaseContentHeight + contentHeight;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Sail Groups");
         }
 
@@ -62,6 +65,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             var manager       = VirtualCrewManager.Instance;
             var sails         = manager.AllSails;
@@ -69,8 +73,8 @@ namespace SailwindVirtualCrew
 
             // ── Group list ──────────────────────────────────────────────────
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Groups  (click to select)");
-            if (GUILayout.Button("New Group", GUILayout.Width(80)))
+            GUILayout.Label("Groups (click to select)", GUILayout.ExpandWidth(false));
+            if (GUILayout.Button("New Group", GUILayout.Width(110)))
             {
                 var newGroup = manager.CreateSailGroup("New Group");
                 manager.SelectedGroup = newGroup;
@@ -90,7 +94,7 @@ namespace SailwindVirtualCrew
                 }
                 GUI.color   = Color.white;
                 GUI.enabled = !group.IsAllSails;
-                if (GUILayout.Button("X", GUILayout.Width(22))) groupToDelete = group;
+                if (GUILayout.Button("X", GUILayout.Width(28))) groupToDelete = group;
                 GUI.enabled = true;
                 GUILayout.EndHorizontal();
             }
@@ -108,15 +112,16 @@ namespace SailwindVirtualCrew
                 GUILayout.Space(2);
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("Name:", GUILayout.Width(42));
+                GUILayout.Label("Name:", GUILayout.Width(52));
                 groupNameBuffer = GUILayout.TextField(groupNameBuffer);
-                if (GUILayout.Button("Set", GUILayout.Width(36)) && groupNameBuffer.Trim().Length > 0)
+                if (GUILayout.Button("Set", GUILayout.Width(46)) && groupNameBuffer.Trim().Length > 0)
                     selectedGroup.Name = groupNameBuffer.Trim();
                 GUILayout.EndHorizontal();
 
                 DrawGroupCommandPanel(manager, selectedGroup, sails);
             }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 

@@ -320,6 +320,7 @@ namespace SailwindVirtualCrew
 
         public void RestoreShipCrew(List<CrewmanSaveData> saved)
         {
+            _lastGlobalTime = -1f;
             Crew.Clear();
             if (saved == null || saved.Count == 0) { return; }
             foreach (var d in saved)

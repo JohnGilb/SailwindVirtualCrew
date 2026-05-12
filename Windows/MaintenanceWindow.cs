@@ -8,15 +8,17 @@ namespace SailwindVirtualCrew
         private Rect windowRect = new Rect(560, 340, 300, 200);
         private static readonly int windowId = "VirtualCrewMaintenanceWindow".GetHashCode();
 
+        private WindowResizer _resizer;
+
         public string WindowKey => "MaintenanceWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private float waterLevel   = 0f;
         private float pollTimer    = 0f;
         private int   bucketCount  = 0;
         private const float PollInterval  = 10f;
-        private const float ButtonHeight  = 22f;
+        private const float ButtonHeight  = 28f;
         private const float MugUnits    = 3f;
         private const float BucketUnits = 10f;
 
@@ -48,6 +50,7 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
 
             var manager = VirtualCrewManager.Instance;
             var bails   = manager.BailRequests;
@@ -64,7 +67,7 @@ namespace SailwindVirtualCrew
             if (DeveloperMode.IsEnabled)
                 contentHeight += 4f + ButtonHeight; // dev button
 
-            windowRect.height = contentHeight + 300f; // title bar padding
+            windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : contentHeight + 300f;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Maintenance");
         }
 
@@ -72,6 +75,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             var manager = VirtualCrewManager.Instance;
             var bd      = GetBoatDamage();
@@ -129,6 +133,7 @@ namespace SailwindVirtualCrew
                 }
             }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 

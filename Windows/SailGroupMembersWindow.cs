@@ -6,14 +6,16 @@ namespace SailwindVirtualCrew
     public class SailGroupMembersWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(860, 20, 280, 560);
+        private Rect windowRect = new Rect(860, 20, 320, 560);
         private static readonly int windowId = "VirtualCrewSailGroupMembersWindow".GetHashCode();
 
-        public string WindowKey => "SailGroupMembersWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        private WindowResizer _resizer;
 
-        private const float ButtonHeight      = 22f;
+        public string WindowKey => "SailGroupMembersWindow";
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
+
+        private const float ButtonHeight      = 28f;
         private const float BaseContentHeight = 300f;
 
         private void Update()
@@ -25,6 +27,7 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
 
             var manager       = VirtualCrewManager.Instance;
             var sails         = manager.AllSails;
@@ -38,7 +41,7 @@ namespace SailwindVirtualCrew
             else
                 contentHeight += selectedGroup.GetMembers(sails).Count() * ButtonHeight;
 
-            windowRect.height = BaseContentHeight + contentHeight;
+            windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : BaseContentHeight + contentHeight;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Group Members");
         }
 
@@ -46,6 +49,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             var manager       = VirtualCrewManager.Instance;
             var sails         = manager.AllSails;
@@ -54,6 +58,7 @@ namespace SailwindVirtualCrew
             if (selectedGroup == null)
             {
                 GUILayout.Label("No group selected.");
+                _resizer.HandleInWindow(ref windowRect);
                 GUI.DragWindow();
                 return;
             }
@@ -71,12 +76,13 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(member.getSailName());
-                    if (GUILayout.Button("−", GUILayout.Width(22))) memberToRemove = member;
+                    if (GUILayout.Button("−", GUILayout.Width(28))) memberToRemove = member;
                     GUILayout.EndHorizontal();
                 }
                 if (memberToRemove != null) selectedGroup.RemoveSail(memberToRemove);
             }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
     }

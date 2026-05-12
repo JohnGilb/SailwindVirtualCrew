@@ -59,7 +59,7 @@ namespace SailwindVirtualCrew
             if (data.windowPositions != null)
                 foreach (var w in Plugin.Instance.GetComponents<IWindowPosition>())
                     if (data.windowPositions.TryGetValue(w.WindowKey, out var pos) && pos.Length >= 2)
-                        w.SetPosition(pos[0], pos[1]);
+                        w.SetPosition(pos[0], pos[1], pos.Length >= 3 ? pos[2] : 0f);
         }
     }
 }

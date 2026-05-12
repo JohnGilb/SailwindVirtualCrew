@@ -5,6 +5,10 @@ SailwindVirtualCrew adds crew as both an automation element and a new aspect of 
 Depends on: 
 - ModSaveBackups (<https://github.com/bryon82/ModSaveBackups>)
 
+Interacts with these optional mods:
+- CargoController (<https://github.com/JakeInABoat/SailwindCargoController>)
+- ProfitPercent (<https://github.com/alesparise/Profit-Percent-Sailwind-Mod>)
+
 Strongly inspired by:
 - AutoSail (<https://github.com/kerseb/AutoSails>)
 - AutoPilot (<https://github.com/kerseb/AutoPilot>)
@@ -57,16 +61,25 @@ Strongly inspired by:
   - Special case: Intelligence 1 navigators have basically no idea where they are.
 - Can only operate most tools once per day, representing their "best effort" with it.
 
+Tools:
+- Quadrant: Can only be used between 20:00-04:00 local time. Gets latitude.
+- Sun Compass: Can only be used between 11:00-13:00 local time. Gets latitude.
+- Chronometer: Can only be used between 11:00-13:00 Global time. Gets longitude.
+- Chronocompass: Can be used between 08:00-16:00 local time. Gets longitude and latitude. Can be used more times per day.
+
 #### Lookout
 
 - Keeps an eye out for landmasses, based on their Wisdom, and reports the rough heading to them.
   - Can scan for and use spyglasses on board or in player inventory
 
-##### Tools
-- Quadrant: Can only be used between 20:00-04:00 local time. Gets latitude.
-- Sun Compass: Can only be used between 11:00-13:00 local time. Gets latitude.
-- Chronometer: Can only be used between 11:00-13:00 Global time. Gets longitude.
-- Chronocompass: Can be used between 08:00-16:00 local time. Gets longitude and latitude. Can be used more times per day.
+#### Quartermaster
+- Helps move supplies around the boat.
+  - (Having one activates/enables the CargoController mod, if you have it installed)
+
+#### Supercargo
+
+- Pays attention to the market and prices.
+  - (Having one activates/enables the ProfitPercent mod, if you have it installed)
 
 ---
 
@@ -110,16 +123,7 @@ Strongly inspired by:
 
 #### Quartermaster
 
-- New role.
-- Helps move supplies around the boat.
-- Activates/enables the CargoController mod.
 - Manages repairs
-
-#### Supercargo
-
-- New role.
-- Pays attention to the market and prices.
-- Activates/enables the ProfitPercent mod.
 
 ### UI / UX
 
@@ -134,12 +138,9 @@ Strongly inspired by:
 
 ## Known Issues
 
-- When combined with the CargoController mod, mod text is all changed to Sailwind font. This causes sizing and reflow issues.
 - The following roles can still be hired but currently serve no function:
   - Chief Officer
   - Chef
-  - Quartermaster
-  - Supercargo
 - Window sizes are wrong and initial placement is poor.
 
 ---

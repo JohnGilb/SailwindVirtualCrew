@@ -8,9 +8,11 @@ namespace SailwindVirtualCrew
         private Rect windowRect = new Rect(20, 20, 300, 80);
         private static readonly int windowId = "VirtualCrewDeveloperWindow".GetHashCode();
 
+        private WindowResizer _resizer;
+
         public string WindowKey => "DeveloperWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private void Update()
         {
@@ -21,12 +23,13 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
 
-            float height = 100f + 26f; // title bar + activate button
+            float height = 100f + 30f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 26f * 4; // add basic crew + refresh ports + drain/restore stamina buttons
+                height += 30f * 4; // add basic crew + refresh ports + drain/restore stamina buttons
 
-            windowRect.height = height;
+            windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Developer Tools");
         }
 
@@ -34,6 +37,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             string toggleLabel = DeveloperMode.IsEnabled ? "Deactivate Developer Mode" : "Activate Developer Mode";
             if (GUILayout.Button(toggleLabel))
@@ -53,6 +57,7 @@ namespace SailwindVirtualCrew
                         c.RestoreStamina(60f);
             }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 
@@ -65,6 +70,8 @@ namespace SailwindVirtualCrew
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Pilot));
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Navigator));
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Lookout));
+            mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Quartermaster));
+            mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Supercargo));
         }
     }
 }

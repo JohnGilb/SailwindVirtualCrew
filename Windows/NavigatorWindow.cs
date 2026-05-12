@@ -8,12 +8,14 @@ namespace SailwindVirtualCrew
     public class NavigatorWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(860, 340, 300, 400);
+        private Rect windowRect = new Rect(860, 340, 330, 400);
         private static readonly int windowId = "VirtualCrewNavigatorWindow".GetHashCode();
 
+        private WindowResizer _resizer;
+
         public string WindowKey => "NavigatorWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         // Equipment state (auto-detected by ScanForTools)
         private bool hasChronocompass = false;
@@ -40,7 +42,7 @@ namespace SailwindVirtualCrew
         private readonly List<string> recentResults = new List<string>();
         private const int MaxResults = 3;
 
-        private const float ButtonHeight      = 22f;
+        private const float ButtonHeight      = 28f;
         private const float BaseContentHeight = 300f;
 
         // Time windows for each method
@@ -58,6 +60,7 @@ namespace SailwindVirtualCrew
         private static bool InChronocompassWindow => LocalTime >= 8f && LocalTime < 16f;
 
         private bool overrideTimeWindows = false;
+        private GUIStyle _leftLabel;
 
         private bool EffectiveOverride    => DeveloperMode.IsEnabled && overrideTimeWindows;
         private bool CanUseQuadrant      => hasQuadrant      && (EffectiveOverride || (InQuadrantWindow      && !IsOnCooldown(NavigationMethod.Quadrant)));
@@ -97,6 +100,7 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
 
             var manager   = VirtualCrewManager.Instance;
             var navigator = manager.Navigator;
@@ -138,7 +142,7 @@ namespace SailwindVirtualCrew
                 contentHeight += ButtonHeight; // "No fixes taken."
             }
 
-            windowRect.height = BaseContentHeight + contentHeight;
+            windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : BaseContentHeight + contentHeight;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Navigator");
         }
 
@@ -146,6 +150,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             var manager   = VirtualCrewManager.Instance;
             var navigator = manager.Navigator;
@@ -156,6 +161,7 @@ namespace SailwindVirtualCrew
             if (navigator == null)
             {
                 GUILayout.Label("No navigator in crew.");
+                _resizer.HandleInWindow(ref windowRect);
                 GUI.DragWindow();
                 return;
             }
@@ -172,14 +178,16 @@ namespace SailwindVirtualCrew
 
             // ── Equipment status ────────────────────────────────────────────
             GUILayout.Space(4);
-            GUILayout.Label($"  Weather: {currentWeather}");
-            GUILayout.Label("Equipment:");
-            GUILayout.Label($"  {Check(hasChronocompass)} Chronocompass");
-            GUILayout.Label($"  {Check(hasChronometer)}   Chronometer");
-            GUILayout.Label($"  {Check(hasCompass)}       Compass");
-            GUILayout.Label($"  {Check(hasQuadrant)}      Quadrant");
-            GUILayout.Label($"  {Check(hasSunCompass)}    Sun Compass");
-            GUILayout.Label($"  {Check(hasChipLog)}       Chip Log");
+            if (_leftLabel == null)
+                _leftLabel = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleLeft };
+            GUILayout.Label($"Weather: {currentWeather}", _leftLabel);
+            GUILayout.Label("Equipment:", _leftLabel);
+            GUILayout.Label($"{Check(hasChronocompass)} Chronocompass", _leftLabel);
+            GUILayout.Label($"{Check(hasChronometer)} Chronometer", _leftLabel);
+            GUILayout.Label($"{Check(hasCompass)} Compass", _leftLabel);
+            GUILayout.Label($"{Check(hasQuadrant)} Quadrant", _leftLabel);
+            GUILayout.Label($"{Check(hasSunCompass)} Sun Compass", _leftLabel);
+            GUILayout.Label($"{Check(hasChipLog)} Chip Log", _leftLabel);
             
 
             // ── Instrument buttons ──────────────────────────────────────────
@@ -270,6 +278,7 @@ namespace SailwindVirtualCrew
                     GUILayout.Label(result);
             }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 

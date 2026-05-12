@@ -5,21 +5,23 @@ namespace SailwindVirtualCrew
     public class WorkRequestsWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(20, 580, 500, 560);
+        private Rect windowRect = new Rect(20, 580, 560, 560);
         private static readonly int windowId = "VirtualCrewWorkRequestsWindow".GetHashCode();
 
+        private WindowResizer _resizer;
+
         public string WindowKey => "WorkRequestsWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private Texture2D fillTexture;
         private Texture2D positioningTexture;
 
-        private const float ButtonHeight           = 22f;
+        private const float ButtonHeight           = 28f;
         private const float BaseContentHeight      = 300f;
-        private const float OpenTaskHeight         = 22f;
-        private const float InProgressTaskHeight   = 40f;
-        private const float RepositioningTaskHeight = 54f;
+        private const float OpenTaskHeight         = 28f;
+        private const float InProgressTaskHeight   = 46f;
+        private const float RepositioningTaskHeight = 60f;
 
         private void Update()
         {
@@ -30,6 +32,7 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
 
             var manager            = VirtualCrewManager.Instance;
             var requests           = manager.WorkRequests;
@@ -79,7 +82,7 @@ namespace SailwindVirtualCrew
                 if (lookoutTask != null) taskListHeight += OpenTaskHeight;
             }
 
-            windowRect.height = BaseContentHeight + ButtonHeight + taskListHeight; // ButtonHeight for "Tasks" label
+            windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : BaseContentHeight + ButtonHeight + taskListHeight;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Work Requests");
         }
 
@@ -87,6 +90,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             var manager            = VirtualCrewManager.Instance;
             var requests           = manager.WorkRequests;
@@ -106,6 +110,7 @@ namespace SailwindVirtualCrew
              && pilotTask == null && lookoutTask == null)
             {
                 GUILayout.Label("No tasks queued.");
+                _resizer.HandleInWindow(ref windowRect);
                 GUI.DragWindow();
                 return;
             }
@@ -117,14 +122,14 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[Waiting] {req.DisplayLabel}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) toCancel = req;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) toCancel = req;
                     GUILayout.EndHorizontal();
                 }
                 else if (req.Status == WorkRequestStatus.Positioning)
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{req.AssignedCrewman.Name}] (moving) {req.DisplayLabel}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) toCancel = req;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) toCancel = req;
                     GUILayout.EndHorizontal();
                     DrawPositioningBar(req.GetPositioningProgress());
                 }
@@ -132,7 +137,7 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{req.AssignedCrewman.Name}] {req.DisplayLabel}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) toCancel = req;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) toCancel = req;
                     GUILayout.EndHorizontal();
                     DrawProgressBar(req.GetProgress());
                 }
@@ -146,14 +151,14 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[Waiting] {trim.CommandName} — {trim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) trimToCancel = trim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) trimToCancel = trim;
                     GUILayout.EndHorizontal();
                 }
                 else if (trim.Status == WorkRequestStatus.Positioning)
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{trim.AssignedCrewman.Name}] (moving) {trim.CommandName} — {trim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) trimToCancel = trim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) trimToCancel = trim;
                     GUILayout.EndHorizontal();
                     DrawPositioningBar(trim.GetPositioningProgress());
                 }
@@ -161,7 +166,7 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{trim.AssignedCrewman.Name}] {trim.CommandName} — {trim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) trimToCancel = trim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) trimToCancel = trim;
                     GUILayout.EndHorizontal();
                     DrawProgressBar(trim.GetProgress());
                 }
@@ -175,14 +180,14 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[Waiting] {jtrim.CommandName} — {jtrim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) jibToCancel = jtrim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) jibToCancel = jtrim;
                     GUILayout.EndHorizontal();
                 }
                 else if (jtrim.Status == WorkRequestStatus.Positioning)
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{jtrim.AssignedCrewman.Name}] (moving) {jtrim.CommandName} — {jtrim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) jibToCancel = jtrim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) jibToCancel = jtrim;
                     GUILayout.EndHorizontal();
                     DrawPositioningBar(jtrim.GetPositioningProgress());
                 }
@@ -190,7 +195,7 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{jtrim.AssignedCrewman.Name}] {jtrim.CommandName} — {jtrim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) jibToCancel = jtrim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) jibToCancel = jtrim;
                     GUILayout.EndHorizontal();
                     DrawProgressBar(jtrim.GetProgress());
                     if (jtrim.IsRepositioning) DrawPositioningBar(jtrim.GetRepositioningProgress());
@@ -205,14 +210,14 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[Need 2 crew] {strim.CommandName} — {strim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) squareToCancel = strim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) squareToCancel = strim;
                     GUILayout.EndHorizontal();
                 }
                 else if (strim.Status == WorkRequestStatus.Positioning)
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{strim.AssignedCrewman.Name}, {strim.AssignedCrewman2.Name}] (moving) {strim.CommandName} — {strim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) squareToCancel = strim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) squareToCancel = strim;
                     GUILayout.EndHorizontal();
                     DrawPositioningBar(strim.GetPositioningProgress());
                 }
@@ -220,7 +225,7 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{strim.AssignedCrewman.Name}, {strim.AssignedCrewman2.Name}] {strim.CommandName} — {strim.Sail.getSailName()}");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) squareToCancel = strim;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) squareToCancel = strim;
                     GUILayout.EndHorizontal();
                     DrawProgressBar(strim.GetProgress());
                 }
@@ -234,14 +239,14 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label("[Waiting] Plotting Vessel");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) navToCancel = nav;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) navToCancel = nav;
                     GUILayout.EndHorizontal();
                 }
                 else if (nav.Status == WorkRequestStatus.InProgress)
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{nav.Navigator.Name}] Plotting Vessel");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) navToCancel = nav;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) navToCancel = nav;
                     GUILayout.EndHorizontal();
                     DrawProgressBar(nav.GetProgress());
                 }
@@ -255,14 +260,14 @@ namespace SailwindVirtualCrew
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{sleep.AssignedCrewman.Name}] Waiting for bed");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) sleepToCancel = sleep;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) sleepToCancel = sleep;
                     GUILayout.EndHorizontal();
                 }
                 else if (sleep.Status == WorkRequestStatus.InProgress)
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Label($"[{sleep.AssignedCrewman.Name}] Sleeping");
-                    if (GUILayout.Button("X", GUILayout.Width(22))) sleepToCancel = sleep;
+                    if (GUILayout.Button("X", GUILayout.Width(28))) sleepToCancel = sleep;
                     GUILayout.EndHorizontal();
                     DrawProgressBar(sleep.GetProgress());
                 }
@@ -273,7 +278,7 @@ namespace SailwindVirtualCrew
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"[{pilotTask.AssignedCrewman.Name}] On Pilot Duty");
-                if (GUILayout.Button("X", GUILayout.Width(22))) manager.StopPilot();
+                if (GUILayout.Button("X", GUILayout.Width(28))) manager.StopPilot();
                 GUILayout.EndHorizontal();
             }
 
@@ -281,10 +286,11 @@ namespace SailwindVirtualCrew
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"[{lookoutTask.AssignedCrewman.Name}] On Watch");
-                if (GUILayout.Button("X", GUILayout.Width(22))) manager.StopLookout();
+                if (GUILayout.Button("X", GUILayout.Width(28))) manager.StopLookout();
                 GUILayout.EndHorizontal();
             }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 

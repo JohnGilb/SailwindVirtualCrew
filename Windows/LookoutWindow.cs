@@ -9,7 +9,7 @@ namespace SailwindVirtualCrew
     public class LookoutWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(20, 300, 420, 400);
+        private Rect windowRect = new Rect(20, 300, 500, 400);
         private static readonly int windowId = "VirtualCrewLookoutWindow".GetHashCode();
         private Vector2 scrollPos;
 
@@ -25,9 +25,11 @@ namespace SailwindVirtualCrew
             "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"
         };
 
+        private WindowResizer _resizer;
+
         public string WindowKey => "LookoutWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private void Update()
         {
@@ -38,9 +40,11 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
 
             string title = DeveloperMode.IsEnabled ? "Lookout [Debug]" : "Lookout";
-            windowRect.width = DeveloperMode.IsEnabled ? 420f : 220f;
+            windowRect.width = DeveloperMode.IsEnabled ? 500f : 280f;
+            if (_resizer.UserHeight > 0f) windowRect.height = _resizer.UserHeight;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, title);
         }
 
@@ -48,6 +52,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             var manager = VirtualCrewManager.Instance;
             var lookout = manager.Lookout;
@@ -61,6 +66,7 @@ namespace SailwindVirtualCrew
                 GUI.enabled = true;
                 if (freshest == null)
                     GUILayout.Label("No lookout in crew.");
+                _resizer.HandleInWindow(ref windowRect);
                 GUI.DragWindow();
                 return;
             }
@@ -83,6 +89,7 @@ namespace SailwindVirtualCrew
             if (tracker == null || tracker.islands == null || tracker.islands.Count == 0)
             {
                 GUILayout.Label("No land sighted.");
+                _resizer.HandleInWindow(ref windowRect);
                 GUI.DragWindow();
                 return;
             }
@@ -112,6 +119,7 @@ namespace SailwindVirtualCrew
 
             if (!DeveloperMode.IsEnabled)
             {
+                _resizer.HandleInWindow(ref windowRect);
                 GUI.DragWindow();
                 return;
             }
@@ -136,6 +144,7 @@ namespace SailwindVirtualCrew
                 DumpRenderers(sorted[0].island);
             GUILayout.EndHorizontal();
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 

@@ -5,12 +5,14 @@ namespace SailwindVirtualCrew
     public class CrewRosterWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(840, 20, 300, 400);
+        private Rect windowRect = new Rect(840, 20, 380, 400);
         private static readonly int windowId = "VirtualCrewRosterWindow".GetHashCode();
 
+        private WindowResizer _resizer;
+
         public string WindowKey => "CrewRosterWindow";
-        public float[] GetPosition() => new[] { windowRect.x, windowRect.y };
-        public void SetPosition(float x, float y) { windowRect.x = x; windowRect.y = y; }
+        public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private Crewman selectedShipCrew  = null;
         private Crewman selectedAvailable = null;
@@ -18,8 +20,8 @@ namespace SailwindVirtualCrew
 
         private int? bedCount = null;
 
-        private const float RowHeight  = 22f;
-        private const float StatHeight = 18f;
+        private const float RowHeight  = 28f;
+        private const float StatHeight = 24f;
 
         private void Update()
         {
@@ -30,6 +32,7 @@ namespace SailwindVirtualCrew
         private void OnGUI()
         {
             if (!showWindow) return;
+            SailwindGuiStyle.Apply();
             var mgr = VirtualCrewManager.Instance;
 
             float h = RowHeight                          // "On Ship:" label
@@ -46,7 +49,7 @@ namespace SailwindVirtualCrew
                 if (selectedAvailable != null) h += StatHeight + RowHeight;
             }
 
-            windowRect.height = h + 400f;
+            windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : h + 400f;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Crew Roster");
         }
 
@@ -54,6 +57,7 @@ namespace SailwindVirtualCrew
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
+            GUILayout.Space(4);
 
             var mgr = VirtualCrewManager.Instance;
 
@@ -61,7 +65,7 @@ namespace SailwindVirtualCrew
             GUILayout.BeginHorizontal();
             string bedLabel = bedCount.HasValue ? $"Beds: {bedCount}" : "Beds: ?";
             GUILayout.Label($"{bedLabel}  |  Crew: {mgr.Crew.Count}");
-            if (GUILayout.Button("Scan", GUILayout.Width(50)))
+            if (GUILayout.Button("Scan", GUILayout.Width(60)))
                 bedCount = LocatorUtils.CountBeds();
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
@@ -83,9 +87,9 @@ namespace SailwindVirtualCrew
             {
                 GUILayout.Label(StatLine(selectedShipCrew));
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("Name:", GUILayout.Width(42));
+                GUILayout.Label("Name:", GUILayout.Width(52));
                 crewRenameBuffer = GUILayout.TextField(crewRenameBuffer);
-                if (GUILayout.Button("Set", GUILayout.Width(36)) && crewRenameBuffer.Trim().Length > 0)
+                if (GUILayout.Button("Set", GUILayout.Width(46)) && crewRenameBuffer.Trim().Length > 0)
                     selectedShipCrew.Rename(crewRenameBuffer.Trim());
                 GUILayout.EndHorizontal();
                 GUI.enabled = !selectedShipCrew.IsOccupied;
@@ -146,6 +150,7 @@ namespace SailwindVirtualCrew
                 }
             }
 
+            _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
         }
 

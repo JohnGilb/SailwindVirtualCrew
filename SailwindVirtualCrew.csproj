@@ -75,14 +75,21 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\Program Files (x86)\Steam\steamapps\common\Sailwind\Sailwind_Data\Managed\UnityEngine.TerrainModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\Program Files (x86)\Steam\steamapps\common\Sailwind\Sailwind_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ModIntegrations.cs" />
     <Compile Include="Requests\BailRequest.cs" />
     <Compile Include="Requests\LookoutTask.cs" />
     <Compile Include="Requests\PilotTask.cs" />
     <Compile Include="Requests\SleepRequest.cs" />
     <Compile Include="IWindowPosition.cs" />
+    <Compile Include="WindowResizer.cs" />
     <Compile Include="LocatorUtils.cs" />
+    <Compile Include="SailwindGuiStyle.cs" />
     <Compile Include="WeatherUtils.cs" />
     <Compile Include="Windows\CrewRosterWindow.cs" />
     <Compile Include="Windows\LookoutWindow.cs" />

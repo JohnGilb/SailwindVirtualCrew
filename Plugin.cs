@@ -48,7 +48,8 @@ namespace SailwindVirtualCrew
         private void Awake()
         {
             Instance = this;
-            Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), PLUGIN_ID);
+            var harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), PLUGIN_ID);
+            ModIntegrations.Initialize(harmony);
 
             exampleSetting = Config.Bind("Section", "Key", true, new ConfigDescription("Information about the config setting"));
 
