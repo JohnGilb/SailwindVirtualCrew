@@ -5,6 +5,11 @@ using UnityEngine;
 
 namespace SailwindVirtualCrew
 {
+    public static class TrimConstants
+    {
+        public const float DangerZoneSafetyMargin = 0.20f;
+    }
+
     public class TrimRequest
     {
         public SimpleSail Sail { get; }
@@ -116,20 +121,46 @@ namespace SailwindVirtualCrew
             float bestEfficiency = float.MinValue;
             float bestPosition   = startPosition;
             foreach (var s in samples)
-            {
-                if (s.Efficiency > bestEfficiency)
-                {
-                    bestEfficiency = s.Efficiency;
-                    bestPosition   = s.Position;
-                }
-            }
+                if (s.Efficiency > bestEfficiency) { bestEfficiency = s.Efficiency; bestPosition = s.Position; }
+
+            float safePosition = FindSafeOptimum(samples, startPosition);
 
             System.Console.WriteLine(
-                $"Trim optimize — best pos: {bestPosition:F3}  eff: {bestEfficiency:F1}  samples: {samples.Count}");
+                $"Trim optimize — best pos: {safePosition:F3}  eff: {bestEfficiency:F1}  samples: {samples.Count}" +
+                (safePosition != bestPosition ? $"  (safety-adjusted from {bestPosition:F3})" : ""));
 
-            activeTarget.TargetLength = bestPosition;
+            activeTarget.TargetLength = safePosition;
             activeTarget.RecordStart();
             phase = TrimPhase.Optimize;
+        }
+
+        // Returns the best-efficiency position that is at least 0.10 rope units away from any
+        // danger zone (efficiency < 10). Falls back to the absolute best position if no safe
+        // position exists.
+        private static float FindSafeOptimum(List<Sample> samples, float fallback)
+        {
+            const float dangerThreshold = 10f;
+            const float safetyMargin    = TrimConstants.DangerZoneSafetyMargin;
+
+            float bestEff = float.MinValue, bestPos = fallback;
+            float bestSafeEff = float.MinValue, bestSafePos = float.NaN;
+
+            foreach (var s in samples)
+            {
+                if (s.Efficiency > bestEff) { bestEff = s.Efficiency; bestPos = s.Position; }
+
+                bool nearDanger = false;
+                foreach (var other in samples)
+                {
+                    if (other.Efficiency < dangerThreshold && Mathf.Abs(other.Position - s.Position) < safetyMargin)
+                    { nearDanger = true; break; }
+                }
+
+                if (!nearDanger && s.Efficiency > bestSafeEff)
+                { bestSafeEff = s.Efficiency; bestSafePos = s.Position; }
+            }
+
+            return float.IsNaN(bestSafePos) ? bestPos : bestSafePos;
         }
 
         private float ScoredEfficiency()

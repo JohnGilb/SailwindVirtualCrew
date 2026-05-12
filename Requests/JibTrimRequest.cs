@@ -225,32 +225,65 @@ namespace SailwindVirtualCrew
 
         private void BeginW1Optimize()
         {
-            float bestEff = float.MinValue;
-            float bestPos = w1StartPos;
+            float bestEff = float.MinValue, bestPos = w1StartPos;
             foreach (var s in w1Samples)
                 if (s.Efficiency > bestEff) { bestEff = s.Efficiency; bestPos = s.Position; }
 
-            System.Console.WriteLine(
-                $"Jib W1 optimize — best pos: {bestPos:F3}  eff: {bestEff:F1}  samples: {w1Samples.Count}");
+            float safePos = FindSafeOptimum(w1Samples, w1StartPos);
 
-            activeTarget.TargetLength = bestPos;
+            System.Console.WriteLine(
+                $"Jib W1 optimize — best pos: {safePos:F3}  eff: {bestEff:F1}  samples: {w1Samples.Count}" +
+                (safePos != bestPos ? $"  (safety-adjusted from {bestPos:F3})" : ""));
+
+            activeTarget.TargetLength = safePos;
             activeTarget.RecordStart();
             phase = JibTrimPhase.W1Optimize;
         }
 
         private void BeginW2Optimize()
         {
-            float bestEff = float.MinValue;
-            float bestPos = w2StartPos;
+            float bestEff = float.MinValue, bestPos = w2StartPos;
             foreach (var s in w2Samples)
                 if (s.Efficiency > bestEff) { bestEff = s.Efficiency; bestPos = s.Position; }
 
-            System.Console.WriteLine(
-                $"Jib W2 optimize — best pos: {bestPos:F3}  eff: {bestEff:F1}  samples: {w2Samples.Count}");
+            float safePos = FindSafeOptimum(w2Samples, w2StartPos);
 
-            activeTarget.TargetLength = bestPos;
+            System.Console.WriteLine(
+                $"Jib W2 optimize — best pos: {safePos:F3}  eff: {bestEff:F1}  samples: {w2Samples.Count}" +
+                (safePos != bestPos ? $"  (safety-adjusted from {bestPos:F3})" : ""));
+
+            activeTarget.TargetLength = safePos;
             activeTarget.RecordStart();
             phase = JibTrimPhase.W2Optimize;
+        }
+
+        // Returns the best-efficiency position that is at least 0.10 rope units away from any
+        // danger zone (efficiency < 10). Falls back to the absolute best position if no safe
+        // position exists.
+        private static float FindSafeOptimum(List<Sample> samples, float fallback)
+        {
+            const float dangerThreshold = 10f;
+            const float safetyMargin    = TrimConstants.DangerZoneSafetyMargin;
+
+            float bestEff = float.MinValue, bestPos = fallback;
+            float bestSafeEff = float.MinValue, bestSafePos = float.NaN;
+
+            foreach (var s in samples)
+            {
+                if (s.Efficiency > bestEff) { bestEff = s.Efficiency; bestPos = s.Position; }
+
+                bool nearDanger = false;
+                foreach (var other in samples)
+                {
+                    if (other.Efficiency < dangerThreshold && Mathf.Abs(other.Position - s.Position) < safetyMargin)
+                    { nearDanger = true; break; }
+                }
+
+                if (!nearDanger && s.Efficiency > bestSafeEff)
+                { bestSafeEff = s.Efficiency; bestSafePos = s.Position; }
+            }
+
+            return float.IsNaN(bestSafePos) ? bestPos : bestSafePos;
         }
 
         private float ScoredEfficiency()
