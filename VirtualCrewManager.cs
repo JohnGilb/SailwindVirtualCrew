@@ -21,6 +21,7 @@ namespace SailwindVirtualCrew
         public List<SquareTrimRequest> SquareTrimRequests { get; private set; }
         public List<NavigateRequest> NavigateRequests { get; private set; }
         public List<BailRequest>     BailRequests     { get; private set; }
+        public List<SleepRequest>    SleepRequests    { get; private set; }
         public Dictionary<GPButtonRopeWinch, WinchTarget> crewWinchInstructions;
 
         private readonly Random rng = new Random();
@@ -36,6 +37,7 @@ namespace SailwindVirtualCrew
         public List<Crewman> AvailableAtPort { get; private set; } = new List<Crewman>();
         public Dictionary<string, List<Crewman>> PortCrewPools { get; private set; } = new Dictionary<string, List<Crewman>>();
         private Dictionary<string, bool> portIsHub = new Dictionary<string, bool>();
+        private float _lastGlobalTime = -1f;
 
         private static readonly string[] CrewNamePool =
         {
@@ -137,6 +139,8 @@ namespace SailwindVirtualCrew
 
         public void Reset()
         {
+            foreach (var c in Crew)
+                c.CurrentTask = null;
             isCrewActive = false;
             simpleSails = new List<SimpleSail>();
             dualSheetSails = new List<DualSheetSail>();
@@ -149,8 +153,10 @@ namespace SailwindVirtualCrew
             SquareTrimRequests = new List<SquareTrimRequest>();
             NavigateRequests = new List<NavigateRequest>();
             BailRequests     = new List<BailRequest>();
+            SleepRequests    = new List<SleepRequest>();
             crewWinchInstructions = new Dictionary<GPButtonRopeWinch, WinchTarget>();
             AnchorWinches = new List<GPButtonRopeWinch>();
+            _lastGlobalTime = -1f;
 
             // Rebuild the AllSails group; keep user-created groups intact.
             AllSailsGroup = new SailGroup("All Sails", isAllSails: true);
@@ -282,7 +288,8 @@ namespace SailwindVirtualCrew
         private static Crewman FromSaveData(CrewmanSaveData d) =>
             new Crewman(d.name, d.role,
                 d.strength, d.dexterity, d.constitution, d.intelligence, d.wisdom, d.charisma,
-                d.advStrength, d.advDexterity, d.advConstitution, d.advIntelligence, d.advWisdom, d.advCharisma);
+                d.advStrength, d.advDexterity, d.advConstitution, d.advIntelligence, d.advWisdom, d.advCharisma,
+                d.currentStamina);
 
         public void addSail(SimpleSail sail)
         {
@@ -443,6 +450,31 @@ namespace SailwindVirtualCrew
         // deckhands and marks completed tasks as done.
         public void Tick()
         {
+            // Drain stamina at 1 unit per in-game minute (2 units/min while working).
+            // Sleeping crew are exempt from drain — their stamina is handled by SleepRequest.Tick().
+            float currentTime = Sun.sun.globalTime;
+            float deltaMinutes = 0f;
+            if (_lastGlobalTime >= 0f)
+            {
+                float deltaHours = currentTime - _lastGlobalTime;
+                if (deltaHours < 0f) deltaHours += 24f; // midnight rollover
+                deltaMinutes = deltaHours * 60f;
+                foreach (var c in Crew)
+                {
+                    if (c.CurrentTask is SleepRequest) continue;
+                    c.DrainStamina(c.IsOccupied ? deltaMinutes * 2f : deltaMinutes);
+                }
+            }
+            _lastGlobalTime = currentTime;
+
+            // Auto-trigger sleep for exhausted, unoccupied crew (before bed assignment so the
+            // newly-created request can claim a bed in the same tick).
+            foreach (var c in Crew)
+            {
+                if (c.IsExhausted && !c.IsOccupied)
+                    SleepRequests.Add(new SleepRequest(c));
+            }
+
             foreach (var req in WorkRequests)
             {
                 if (req.Status == WorkRequestStatus.InProgress && req.IsComplete())
@@ -628,6 +660,39 @@ namespace SailwindVirtualCrew
                 if (crewman == null) break;
                 bail.Begin(crewman);
             }
+
+            // Sleep requests: tick active ones, then assign beds to waiting ones.
+            foreach (var sleep in SleepRequests)
+            {
+                if (sleep.Status == WorkRequestStatus.InProgress)
+                    sleep.Tick(deltaMinutes);
+            }
+
+            SleepRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+
+            int bedsInUse = SleepRequests.Count(r => r.Status == WorkRequestStatus.InProgress);
+            int? bedCount = null;
+            foreach (var sleep in SleepRequests)
+            {
+                if (sleep.Status != WorkRequestStatus.Open) continue;
+                if (bedCount == null) bedCount = LocatorUtils.CountBeds();
+                if (bedsInUse >= bedCount.Value) break;
+                sleep.Begin();
+                bedsInUse++;
+            }
+        }
+
+        public void AddSleepRequest(Crewman crewman)
+        {
+            if (crewman.IsOccupied) return;
+            SleepRequests.Add(new SleepRequest(crewman));
+        }
+
+        public void CancelSleepRequest(SleepRequest request)
+        {
+            if (request.AssignedCrewman != null)
+                request.AssignedCrewman.CurrentTask = null;
+            SleepRequests.Remove(request);
         }
 
         // Called every frame from Plugin.Update(). Drives the per-frame evaluation logic

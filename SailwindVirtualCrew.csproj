@@ -78,6 +78,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Requests\BailRequest.cs" />
+    <Compile Include="Requests\SleepRequest.cs" />
     <Compile Include="IWindowPosition.cs" />
     <Compile Include="LocatorUtils.cs" />
     <Compile Include="WeatherUtils.cs" />

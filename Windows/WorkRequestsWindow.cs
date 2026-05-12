@@ -37,10 +37,11 @@ namespace SailwindVirtualCrew
             var jibTrimRequests    = manager.JibTrimRequests;
             var squareTrimRequests = manager.SquareTrimRequests;
             var navigateRequests   = manager.NavigateRequests;
+            var sleepRequests      = manager.SleepRequests;
 
             int totalTasks = requests.Count + trimRequests.Count
                            + jibTrimRequests.Count + squareTrimRequests.Count
-                           + navigateRequests.Count;
+                           + navigateRequests.Count + sleepRequests.Count;
 
             float taskListHeight;
             if (totalTasks == 0)
@@ -67,6 +68,9 @@ namespace SailwindVirtualCrew
                 foreach (var r in navigateRequests)
                     taskListHeight += r.Status == WorkRequestStatus.InProgress
                         ? InProgressTaskHeight : OpenTaskHeight;
+                foreach (var r in sleepRequests)
+                    taskListHeight += r.Status == WorkRequestStatus.InProgress
+                        ? InProgressTaskHeight : OpenTaskHeight;
             }
 
             windowRect.height = BaseContentHeight + ButtonHeight + taskListHeight; // ButtonHeight for "Tasks" label
@@ -84,12 +88,13 @@ namespace SailwindVirtualCrew
             var jibTrimRequests    = manager.JibTrimRequests;
             var squareTrimRequests = manager.SquareTrimRequests;
             var navigateRequests   = manager.NavigateRequests;
+            var sleepRequests      = manager.SleepRequests;
 
             GUILayout.Label("Tasks");
 
             if (requests.Count == 0 && trimRequests.Count == 0
              && jibTrimRequests.Count == 0 && squareTrimRequests.Count == 0
-             && navigateRequests.Count == 0)
+             && navigateRequests.Count == 0 && sleepRequests.Count == 0)
             {
                 GUILayout.Label("No tasks queued.");
                 GUI.DragWindow();
@@ -233,6 +238,27 @@ namespace SailwindVirtualCrew
                 }
             }
             if (navToCancel != null) manager.CancelNavigateRequest(navToCancel);
+
+            SleepRequest sleepToCancel = null;
+            foreach (var sleep in sleepRequests)
+            {
+                if (sleep.Status == WorkRequestStatus.Open)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label($"[{sleep.AssignedCrewman.Name}] Waiting for bed");
+                    if (GUILayout.Button("X", GUILayout.Width(22))) sleepToCancel = sleep;
+                    GUILayout.EndHorizontal();
+                }
+                else if (sleep.Status == WorkRequestStatus.InProgress)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label($"[{sleep.AssignedCrewman.Name}] Sleeping");
+                    if (GUILayout.Button("X", GUILayout.Width(22))) sleepToCancel = sleep;
+                    GUILayout.EndHorizontal();
+                    DrawProgressBar(sleep.GetProgress());
+                }
+            }
+            if (sleepToCancel != null) manager.CancelSleepRequest(sleepToCancel);
 
             GUI.DragWindow();
         }

@@ -24,7 +24,7 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 26f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 26f * 2; // add basic crew + refresh ports buttons
+                height += 26f * 4; // add basic crew + refresh ports + drain/restore stamina buttons
 
             windowRect.height = height;
             windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Developer Tools");
@@ -45,6 +45,12 @@ namespace SailwindVirtualCrew
                     AddBasicCrew();
                 if (GUILayout.Button("Refresh Crew at Ports"))
                     VirtualCrewManager.Instance.RefreshPortCrewPools();
+                if (GUILayout.Button("Drain 60 Stamina (All Crew)"))
+                    foreach (var c in VirtualCrewManager.Instance.Crew)
+                        c.DrainStamina(60f);
+                if (GUILayout.Button("Restore 60 Stamina (All Crew)"))
+                    foreach (var c in VirtualCrewManager.Instance.Crew)
+                        c.RestoreStamina(60f);
             }
 
             GUI.DragWindow();

@@ -71,7 +71,8 @@ namespace SailwindVirtualCrew
             foreach (var c in mgr.Crew)
             {
                 bool sel = c == selectedShipCrew;
-                string label = sel ? $"► {c.Name}  ({c.Role})" : $"  {c.Name}  ({c.Role})";
+                string fatigue = DeveloperMode.IsEnabled ? "" : $"  [{c.FatigueTag}]";
+                string label = sel ? $"► {c.Name}  ({c.Role}){fatigue}" : $"  {c.Name}  ({c.Role}){fatigue}";
                 if (GUILayout.Button(label))
                 {
                     if (sel) { selectedShipCrew = null; crewRenameBuffer = ""; }
@@ -87,6 +88,10 @@ namespace SailwindVirtualCrew
                 if (GUILayout.Button("Set", GUILayout.Width(36)) && crewRenameBuffer.Trim().Length > 0)
                     selectedShipCrew.Rename(crewRenameBuffer.Trim());
                 GUILayout.EndHorizontal();
+                GUI.enabled = !selectedShipCrew.IsOccupied;
+                if (GUILayout.Button($"Sleep"))
+                    mgr.AddSleepRequest(selectedShipCrew);
+                GUI.enabled = true;
                 if (mgr.CurrentPort != null && GUILayout.Button($"Fire {selectedShipCrew.Name}"))
                 {
                     mgr.FireCrew(selectedShipCrew);
@@ -132,7 +137,11 @@ namespace SailwindVirtualCrew
             GUI.DragWindow();
         }
 
-        private static string StatLine(Crewman c) =>
-            DeveloperMode.IsEnabled ? c.TrueStatLine() : c.AdvertisedStatLine();
+        private static string StatLine(Crewman c)
+        {
+            if (DeveloperMode.IsEnabled)
+                return $"{c.TrueStatLine()}    Stamina: {c.CurrentStamina:F1}/{c.MaxStamina}";
+            return c.AdvertisedStatLine();
+        }
     }
 }
