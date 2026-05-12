@@ -123,23 +123,23 @@ namespace SailwindVirtualCrew
                 Mast[] mastList = GameState.currentBoat.GetComponentsInChildren<Mast>();
 
                 var mastNameDictionary = new Dictionary<string, Mast>();
+                var processedSails = new HashSet<Sail>();
 
                 Console.WriteLine("Found the following masts:");
+                var squareSheetControllersByMastFamily = new Dictionary<string, RopeController[]>();
+
                 foreach (Mast mast in mastList)
                 {
                     Console.WriteLine("-" + mast.name);
-                    mastNameDictionary.Add(mast.name, mast);
+                    if (!mastNameDictionary.ContainsKey(mast.name))
+                    {
+                        mastNameDictionary.Add(mast.name, mast);
+                    }
                 }
                 Console.WriteLine("-------------------------------------------");
 
                 foreach (Mast mast in mastList)
                 {
-                    if (mast.name.Contains("_extension"))
-                    {
-                        Console.WriteLine("This is an extension mast; it will be processed with its primary mast.");
-                        continue;
-                    }
-
                     Console.WriteLine("Processing mast:" + mast.name);
                     Sail[] sails = mast.GetComponentsInChildren<Sail>(); //get all the sails attached to said mast
 
@@ -169,6 +169,13 @@ namespace SailwindVirtualCrew
                     RopeController starboardRopeControllerForSquares = null;
 
                     foreach (Sail sail in sails) {
+                        if (processedSails.Contains(sail))
+                        {
+                            Console.WriteLine("Skipping already processed sail:" + sail.name);
+                            continue;
+                        }
+
+                        processedSails.Add(sail);
                         Console.WriteLine(string.Format("Processing the combination of Mast: {0}, Sail: {1}", mast.name, sail.name));
 
                         GPButtonRopeWinch halyardCandidate = null;
@@ -190,7 +197,7 @@ namespace SailwindVirtualCrew
                             Console.WriteLine("Successfully added sail to map:" + sail.name);
                             Console.WriteLine("---");
                         }
-                        else if (sail.name.Contains("square"))
+                        else if (sail.squareSail || sail.name.Contains("square"))
                         {
                             Console.WriteLine("Attempting to add square sail");
 
@@ -208,6 +215,7 @@ namespace SailwindVirtualCrew
                                 Console.WriteLine("Got port rope controller:" + portRopeControllerForSquares.name);
                                 starboardRopeControllerForSquares = connections.angleControllerRight;
                                 Console.WriteLine("Got starboard rope controller:" + starboardRopeControllerForSquares.name);
+                                squareSheetControllersByMastFamily[GetMastFamilyName(mast.name)] = new[] { portRopeControllerForSquares, starboardRopeControllerForSquares };
 
                                 portSheetCandidate = winchDictionary[portRopeControllerForSquares];
                                 Console.WriteLine("Got port sheet winch:" + portSheetCandidate.name);
@@ -249,8 +257,18 @@ namespace SailwindVirtualCrew
                         
                         if (portRopeControllerForSquares == null || starboardRopeControllerForSquares == null)
                         {
-                            Console.WriteLine("WARNING: We never found a primary square on this mast. Square cannot be added");
-                            continue;
+                            RopeController[] familyControllers;
+                            if (squareSheetControllersByMastFamily.TryGetValue(GetMastFamilyName(mast.name), out familyControllers))
+                            {
+                                portRopeControllerForSquares = familyControllers[0];
+                                starboardRopeControllerForSquares = familyControllers[1];
+                                Console.WriteLine("Using primary square sheet controllers from mast family:" + GetMastFamilyName(mast.name));
+                            }
+                            else
+                            {
+                                Console.WriteLine("WARNING: We never found a primary square for this mast family. Square cannot be added");
+                                continue;
+                            }
                         }
                         var portSheetCandidate = winchDictionary[portRopeControllerForSquares];
                         var starboardSheetCandidate = winchDictionary[starboardRopeControllerForSquares];
@@ -406,6 +424,15 @@ namespace SailwindVirtualCrew
 
         private static T GetPrivateField<T>(object obj, string fieldName)
             => Traverse.Create(obj).Field(fieldName).GetValue<T>();
+
+        private static string GetMastFamilyName(string mastName)
+        {
+            return mastName
+                .Replace("_extension", "")
+                .Replace(" mid", "")
+                .Replace(" top", "")
+                .Trim();
+        }
 
         private Sail findAttachedSailForWinchIfExists(GPButtonRopeWinch winch)
         {
