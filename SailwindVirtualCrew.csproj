@@ -61,6 +61,10 @@
     <Reference Include="UnityEngine">
       <HintPath>D:\Program Files (x86)\Steam\steamapps\common\Sailwind\Sailwind_Data\Managed\UnityEngine.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.AudioModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\Program Files (x86)\Steam\steamapps\common\Sailwind\Sailwind_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>D:\Program Files (x86)\Steam\steamapps\common\Sailwind\Sailwind_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
@@ -97,6 +101,7 @@
     <Compile Include="CrewStationScanner.cs" />
     <Compile Include="CrewStationTask.cs" />
     <Compile Include="CrewVisualFactory.cs" />
+    <Compile Include="CrewSoundPlayer.cs" />
     <Compile Include="ModIntegrations.cs" />
     <Compile Include="ProxyBoat.cs" />
     <Compile Include="ProxyBoatBuilder.cs" />
@@ -149,7 +154,8 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>xcopy "$(TargetDir)$(TargetName).dll" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins" /Y
-xcopy "$(TargetDir)$(TargetName).dll" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins" /Y</PostBuildEvent>
+    <PostBuildEvent>xcopy "$(TargetDir)$(TargetName).dll" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins\SailwindVirtualCrew\" /Y
+xcopy "$(ProjectDir)audio\shipbell.wav" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins\SailwindVirtualCrew\Sounds\" /Y
+</PostBuildEvent>
   </PropertyGroup>
 </Project>

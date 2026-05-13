@@ -21,8 +21,33 @@ namespace SailwindVirtualCrew
         private readonly Dictionary<object, RuntimeActor> _actorsByOwner = new Dictionary<object, RuntimeActor>();
         private readonly System.Random _random = new System.Random();
 
+        private float _lastBellRealTime      = float.MinValue;
+        private float _lastLookoutStopReal   = float.MinValue;
+        private bool  _landVisibleAtLastStop;
+        private const float ShiftChangeWindow = 5f;
+
         private CrewNavigationCoordinator()
         {
+        }
+
+        private void TryRingLookoutBell()
+        {
+            if (UnityEngine.Time.realtimeSinceStartup - _lastBellRealTime < 60f) return;
+            RingLookoutBell();
+        }
+
+        internal void ForceRingLookoutBell()
+        {
+            _lastBellRealTime = float.MinValue;
+            RingLookoutBell();
+        }
+
+        private void RingLookoutBell()
+        {
+            _lastBellRealTime = UnityEngine.Time.realtimeSinceStartup;
+            CrewSoundPlayer.Instance?.Play("shipbell");
+            if (GameState.sleeping && Sleep.instance != null)
+                Sleep.instance.WakeUp();
         }
 
         internal void Tick()
@@ -115,7 +140,11 @@ namespace SailwindVirtualCrew
             }
 
             if (actor.BeginLookout(task, startLocal, startRotation, _random))
+            {
                 _actorsByOwner[task] = actor;
+                bool isShiftChange = (UnityEngine.Time.realtimeSinceStartup - _lastLookoutStopReal) < ShiftChangeWindow;
+                actor.SetLookoutSuppressFirst(isShiftChange && _landVisibleAtLastStop);
+            }
         }
 
         internal void BeginSleep(SleepRequest request, Crewman crewman, Component bed)
@@ -203,6 +232,12 @@ namespace SailwindVirtualCrew
         {
             if (owner == null || !_actorsByOwner.TryGetValue(owner, out var actor))
                 return;
+
+            if (owner is LookoutTask)
+            {
+                _landVisibleAtLastStop = actor.LookoutSawLand;
+                _lastLookoutStopReal   = UnityEngine.Time.realtimeSinceStartup;
+            }
 
             actor.Cancel();
             _actorsByOwner.Remove(owner);
@@ -373,7 +408,12 @@ namespace SailwindVirtualCrew
             private Vector3 _restStandLocalPosition;
             private Quaternion _restLocalRotation;
             private bool _hasRestLocation;
-            private int _lastAppliedDexterity = -1;
+            private int  _lastAppliedDexterity    = -1;
+            private bool _lookoutSawLand;
+            private bool _suppressNextLandDetection;
+
+            internal bool LookoutSawLand => _lookoutSawLand;
+            internal void SetLookoutSuppressFirst(bool suppress) { _suppressNextLandDetection = suppress; }
 
             internal RuntimeActor(Crewman crew, CrewBoatContext context, ProxyNavMeshNavigationProvider navMeshProvider, Vector3 startWorld)
             {
@@ -551,6 +591,8 @@ namespace SailwindVirtualCrew
                 _hasActiveArrivalRotation = false;
                 _arrivalWorldOffset = Vector3.zero;
                 _lookoutActive = false;
+                _lookoutSawLand = false;
+                _suppressNextLandDetection = false;
             }
 
             internal void Cancel()
@@ -569,7 +611,18 @@ namespace SailwindVirtualCrew
 
                 _nextLookoutDecisionTime = Time.time + 4f;
 
-                if (TryGetVisibleLand(out var islandPosition))
+                bool landVisible = TryGetVisibleLand(out var islandPosition);
+
+                if (landVisible && !_lookoutSawLand)
+                {
+                    if (_suppressNextLandDetection)
+                        _suppressNextLandDetection = false;
+                    else
+                        CrewNavigationCoordinator.Instance.TryRingLookoutBell();
+                }
+                _lookoutSawLand = landVisible;
+
+                if (landVisible)
                 {
                     Quaternion facing = GetLocalLookRotationTowardWorld(islandPosition);
                     _activeArrivalRotation = facing;
