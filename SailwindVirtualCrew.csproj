@@ -153,6 +153,9 @@
     <Compile Include="Requests\WorkRequest.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="CreateReleaseZip" AfterTargets="Build">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)CreateZip.ps1&quot; -TargetPath &quot;$(TargetPath)&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" />
+  </Target>
   <PropertyGroup>
     <PostBuildEvent>xcopy "$(TargetDir)$(TargetName).dll" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins\SailwindVirtualCrew\" /Y
 xcopy "$(ProjectDir)audio\shipbell.wav" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins\SailwindVirtualCrew\Sounds\" /Y
