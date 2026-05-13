@@ -15,6 +15,11 @@ namespace SailwindVirtualCrew
         private bool _arrivalLogged;
         private bool _pathReadyLogged;
         private bool _teleportIfUnreachable;
+        private bool _pendingUnreachableTeleport;
+        private string _pendingTeleportReason;
+        private float _unreachableTeleportDelay;
+        private float _unreachableTeleportStartTime;
+        private float _unreachableTeleportAtTime;
         private float _nextProgressLogTime;
 
         internal ProxyLogicAgent(Transform proxyRoot, Vector3 startWorld, string objectName = "VC_LogicAgent_Test")
@@ -47,6 +52,7 @@ namespace SailwindVirtualCrew
         internal bool HasDestination => _hasDestination;
         internal bool HasActiveDestination => _hasDestination && !_arrivalLogged;
         internal Vector3 LastDestinationLocal => _lastDestinationLocal;
+        internal bool HasPendingUnreachableTeleport => _pendingUnreachableTeleport;
 
         internal Quaternion CurrentLocalRotation
         {
@@ -64,7 +70,7 @@ namespace SailwindVirtualCrew
             }
         }
 
-        internal void SetDestination(Vector3 destinationWorld, Vector3 destinationLocal, bool teleportIfUnreachable = false)
+        internal void SetDestination(Vector3 destinationWorld, Vector3 destinationLocal, bool teleportIfUnreachable = false, float unreachableTeleportDelay = 0f)
         {
             if (!IsValid)
             {
@@ -78,15 +84,21 @@ namespace SailwindVirtualCrew
             _arrivalLogged = false;
             _pathReadyLogged = false;
             _teleportIfUnreachable = teleportIfUnreachable;
+            _pendingUnreachableTeleport = false;
+            _pendingTeleportReason = null;
+            _unreachableTeleportDelay = Mathf.Max(0f, unreachableTeleportDelay);
+            _unreachableTeleportStartTime = 0f;
+            _unreachableTeleportAtTime = 0f;
             _nextProgressLogTime = Time.time + 2f;
 
             bool destinationSet = _agent.SetDestination(destinationWorld);
             CrewDebugLog.Ok(Phase,
                 "Destination set local=" + Format(destinationLocal)
                 + " success=" + destinationSet
-                + " teleportIfUnreachable=" + teleportIfUnreachable);
+                + " teleportIfUnreachable=" + teleportIfUnreachable
+                + " unreachableTeleportDelay=" + _unreachableTeleportDelay.ToString("0.000"));
             if (!destinationSet && _teleportIfUnreachable)
-                TeleportToDestination("SetDestination failed");
+                ScheduleUnreachableTeleport("SetDestination failed");
             DumpState();
         }
 
@@ -94,6 +106,21 @@ namespace SailwindVirtualCrew
         {
             if (!IsValid || !_hasDestination || _arrivalLogged)
                 return;
+
+            if (_pendingUnreachableTeleport)
+            {
+                if (Time.time >= _unreachableTeleportAtTime)
+                    TeleportToDestination(_pendingTeleportReason);
+                else if (Time.time >= _nextProgressLogTime)
+                {
+                    _nextProgressLogTime = Time.time + 3f;
+                    CrewDebugLog.Ok(Phase,
+                        "Waiting to teleport unreachable agent; remaining="
+                        + Mathf.Max(0f, _unreachableTeleportAtTime - Time.time).ToString("0.000")
+                        + " local=" + Format(CurrentLocalPosition));
+                }
+                return;
+            }
 
             float directDistance = Vector3.Distance(_root.transform.position, _lastDestinationWorld);
 
@@ -106,9 +133,9 @@ namespace SailwindVirtualCrew
                     + " directDistance=" + directDistance.ToString("0.000")
                     + " local=" + Format(CurrentLocalPosition));
 
-                if (_teleportIfUnreachable && (!_agent.hasPath || _agent.pathStatus != NavMeshPathStatus.PathComplete))
+                if (_teleportIfUnreachable && _agent.pathStatus != NavMeshPathStatus.PathComplete)
                 {
-                    TeleportToDestination("pathStatus=" + _agent.pathStatus + " hasPath=" + _agent.hasPath);
+                    ScheduleUnreachableTeleport("pathStatus=" + _agent.pathStatus + " hasPath=" + _agent.hasPath);
                     return;
                 }
             }
@@ -149,7 +176,19 @@ namespace SailwindVirtualCrew
                 + " directDistance=" + GetDirectDistanceText()
                 + " velocity=" + Format(_agent.velocity)
                 + " local=" + Format(CurrentLocalPositionInternal())
+                + (_pendingUnreachableTeleport ? " pendingTeleportRemaining=" + Mathf.Max(0f, _unreachableTeleportAtTime - Time.time).ToString("0.000") : "")
                 + (_hasDestination ? " destinationLocal=" + Format(_lastDestinationLocal) : ""));
+        }
+
+        internal float GetPendingUnreachableTeleportProgress()
+        {
+            if (!_pendingUnreachableTeleport)
+                return 0f;
+
+            if (_unreachableTeleportDelay <= 0f)
+                return 0f;
+
+            return Mathf.Clamp01(1f - (Time.time - _unreachableTeleportStartTime) / _unreachableTeleportDelay) * 100f;
         }
 
         internal void SetSpeed(float speed)
@@ -168,6 +207,8 @@ namespace SailwindVirtualCrew
             _arrivalLogged = false;
             _pathReadyLogged = false;
             _teleportIfUnreachable = false;
+            _pendingUnreachableTeleport = false;
+            _pendingTeleportReason = null;
             CrewDebugLog.Ok(Phase, "Agent stopped.");
         }
 
@@ -183,6 +224,8 @@ namespace SailwindVirtualCrew
             _arrivalLogged = false;
             _pathReadyLogged = false;
             _teleportIfUnreachable = false;
+            _pendingUnreachableTeleport = false;
+            _pendingTeleportReason = null;
         }
 
         internal void Destroy()
@@ -196,6 +239,24 @@ namespace SailwindVirtualCrew
             return _proxyRoot ? _proxyRoot.InverseTransformPoint(_root.transform.position) : _root.transform.position;
         }
 
+        private void ScheduleUnreachableTeleport(string reason)
+        {
+            _agent.ResetPath();
+            _pendingUnreachableTeleport = true;
+            _pendingTeleportReason = reason;
+            _unreachableTeleportStartTime = Time.time;
+            _unreachableTeleportAtTime = Time.time + _unreachableTeleportDelay;
+            _pathReadyLogged = true;
+
+            CrewDebugLog.Warn(Phase,
+                "Scheduled teleport to unreachable destination reason='" + reason
+                + "' delay=" + _unreachableTeleportDelay.ToString("0.000")
+                + " destinationLocal=" + Format(_lastDestinationLocal));
+
+            if (_unreachableTeleportDelay <= 0f)
+                TeleportToDestination(reason);
+        }
+
         private void TeleportToDestination(string reason)
         {
             if (!IsValid)
@@ -207,6 +268,8 @@ namespace SailwindVirtualCrew
             _arrivalLogged = true;
             _pathReadyLogged = true;
             _teleportIfUnreachable = false;
+            _pendingUnreachableTeleport = false;
+            _pendingTeleportReason = null;
             CrewDebugLog.Warn(Phase,
                 "Teleported agent to unreachable destination reason='" + reason
                 + "' destinationLocal=" + Format(_lastDestinationLocal)

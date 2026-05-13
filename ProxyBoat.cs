@@ -22,5 +22,15 @@ namespace SailwindVirtualCrew
         }
 
         internal bool IsValid => Root != null;
+
+        internal void SetGeneratedDeckSurfaceCount(int count)
+        {
+            GeneratedDeckSurfaceCount = count;
+        }
+
+        internal void SetBounds(Bounds bounds)
+        {
+            Bounds = bounds;
+        }
     }
 }

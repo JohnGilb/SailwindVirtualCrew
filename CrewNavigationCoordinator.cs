@@ -127,6 +127,7 @@ namespace SailwindVirtualCrew
             DumpRuntimeContext("player");
             ProxyBoatBuilder.LogProxy(_proxyBoat);
             ProxyBoatBuilder.LogProxyColliderDiagnostics(_proxyBoat, localPosition);
+            ProxyBoatBuilder.LogMeshNormalDiagnostics(_proxyBoat, localPosition);
             _navMeshProvider.DumpSampleDiagnostics(localPosition, GetNavMeshSearchDistance(), "player");
         }
 
@@ -647,7 +648,7 @@ namespace SailwindVirtualCrew
                     "Concrete positioning started crew='" + Crew.Name
                     + "' station='" + station.Id
                     + "' winch='" + winch.name + "'");
-                _logicAgent.SetDestination(destinationWorld, station.ProjectedLocalStand, teleportIfUnreachable: true);
+                _logicAgent.SetDestination(destinationWorld, station.ProjectedLocalStand, teleportIfUnreachable: true, unreachableTeleportDelay: GetPositioningDelay());
             }
 
             internal bool BeginRole(object owner, Vector3 destinationLocal, Quaternion arrivalRotation, string label, float maxNavMeshDistance = 4f, Vector3 arrivalWorldOffset = default)
@@ -672,7 +673,7 @@ namespace SailwindVirtualCrew
                 _poseSync.ClearRotationOverride();
                 _initialDistance = Mathf.Max(0.01f, Vector3.Distance(_logicAgent.CurrentLocalPosition, projectedLocal));
                 CrewDebugLog.Ok(Phase, "Role positioning started crew='" + Crew.Name + "' " + label);
-                _logicAgent.SetDestination(destinationWorld, projectedLocal, teleportIfUnreachable: true);
+                _logicAgent.SetDestination(destinationWorld, projectedLocal, teleportIfUnreachable: true, unreachableTeleportDelay: GetPositioningDelay());
                 return true;
             }
 
@@ -763,6 +764,9 @@ namespace SailwindVirtualCrew
             {
                 if (ActiveOwner == null)
                     return 0f;
+
+                if (_logicAgent.HasPendingUnreachableTeleport)
+                    return _logicAgent.GetPendingUnreachableTeleportProgress();
 
                 float distance = _logicAgent.HasDestination
                     ? Vector3.Distance(_logicAgent.CurrentLocalPosition, _logicAgent.LastDestinationLocal)
@@ -1002,7 +1006,7 @@ namespace SailwindVirtualCrew
                 _returningToRest = true;
                 _poseSync.ClearPoseOverride();
                 _poseSync.ClearRotationOverride();
-                _logicAgent.SetDestination(restWorld, _restStandLocalPosition, teleportIfUnreachable: true);
+                _logicAgent.SetDestination(restWorld, _restStandLocalPosition, teleportIfUnreachable: true, unreachableTeleportDelay: GetPositioningDelay());
                 CrewDebugLog.Ok(Phase, "Returning crew='" + Crew.Name + "' to rest location.");
             }
 
@@ -1021,6 +1025,11 @@ namespace SailwindVirtualCrew
                     return 12f;
 
                 return Mathf.Max(12f, proxy.Bounds.size.y + 2f);
+            }
+
+            private float GetPositioningDelay()
+            {
+                return Mathf.Max(0f, 7f - Crew.Dexterity);
             }
 
             private static float LocalHorizontalDistance(Vector3 a, Vector3 b)

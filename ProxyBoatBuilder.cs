@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System;
 using UnityEngine;
 
 namespace SailwindVirtualCrew
@@ -44,19 +45,34 @@ namespace SailwindVirtualCrew
                     skipped++;
             }
 
-            int generatedDeckSurfaces = AddSyntheticDeckSurfaces(root);
             SetStaticAndLayer(root.transform);
             Bounds bounds = CalculateBounds(root);
 
-            var proxy = new ProxyBoat(root, bounds, sourceColliders.Length, copied, skipped, generatedDeckSurfaces);
+            var proxy = new ProxyBoat(root, bounds, sourceColliders.Length, copied, skipped, 0);
             LogCreated(proxy);
             return proxy;
+        }
+
+        internal static int GenerateSyntheticDeckSurfaces(ProxyBoat proxy)
+        {
+            if (proxy == null || !proxy.IsValid)
+                return 0;
+
+            int generatedDeckSurfaces = AddSyntheticDeckSurfaces(proxy.Root);
+            if (generatedDeckSurfaces > 0)
+            {
+                SetStaticAndLayer(proxy.Root.transform);
+                proxy.SetGeneratedDeckSurfaceCount(generatedDeckSurfaces);
+                proxy.SetBounds(CalculateBounds(proxy.Root));
+            }
+
+            return generatedDeckSurfaces;
         }
 
         internal static void Destroy(ProxyBoat proxy)
         {
             if (proxy != null && proxy.Root)
-                Object.Destroy(proxy.Root);
+                UnityEngine.Object.Destroy(proxy.Root);
         }
 
         internal static void LogProxy(ProxyBoat proxy)
@@ -139,6 +155,45 @@ namespace SailwindVirtualCrew
             topLocal = best.TopLocal;
             description = best.TypeName + " path='" + best.Path + "' horizontal=" + best.HorizontalDistance.ToString("0.000") + " vertical=" + best.VerticalDelta.ToString("0.000");
             return true;
+        }
+
+        internal static void LogMeshNormalDiagnostics(ProxyBoat proxy, Vector3 sampleLocal)
+        {
+            if (proxy == null || !proxy.IsValid)
+            {
+                CrewDebugLog.Warn(Phase, "Mesh normal diagnostics unavailable; proxy is missing.");
+                return;
+            }
+
+            var meshCandidates = proxy.Root.GetComponentsInChildren<MeshCollider>(true)
+                .Select(c => CreateCandidate(proxy, c, sampleLocal))
+                .OrderBy(c => c.Score)
+                .Take(8)
+                .ToList();
+
+            CrewDebugLog.Ok(Phase, "Mesh normal diagnostics candidates=" + meshCandidates.Count + " sampleLocal=" + Format(sampleLocal));
+            for (int i = 0; i < meshCandidates.Count; i++)
+            {
+                var candidate = meshCandidates[i];
+                var meshCollider = candidate.Collider as MeshCollider;
+                if (!meshCollider || !meshCollider.sharedMesh)
+                {
+                    CrewDebugLog.Warn(Phase, "Mesh normal candidate[" + i + "] missing mesh path='" + candidate.Path + "'");
+                    continue;
+                }
+
+                try
+                {
+                    LogMeshNormalDiagnostics(proxy, meshCollider, candidate, i, sampleLocal);
+                }
+                catch (Exception ex)
+                {
+                    CrewDebugLog.Warn(Phase,
+                        "Mesh normal candidate[" + i
+                        + "] unreadable path='" + candidate.Path
+                        + "' error='" + ex.GetType().Name + ": " + ex.Message + "'");
+                }
+            }
         }
 
         internal static void ShowProxyMarkers(ProxyBoat proxy)
@@ -447,6 +502,7 @@ namespace SailwindVirtualCrew
             {
                 TypeName = collider.GetType().Name,
                 Path = GetPath(collider.transform),
+                Collider = collider,
                 CenterLocal = centerLocal,
                 TopLocal = closestLocal,
                 Size = localMax - localMin,
@@ -455,6 +511,93 @@ namespace SailwindVirtualCrew
                 ContainsXZ = containsXZ,
                 Score = horizontal + Mathf.Abs(vertical) * 0.25f
             };
+        }
+
+        private static void LogMeshNormalDiagnostics(ProxyBoat proxy, MeshCollider meshCollider, ColliderCandidate candidate, int index, Vector3 sampleLocal)
+        {
+            var mesh = meshCollider.sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            int[] triangles = mesh.triangles;
+
+            int total = 0;
+            int up = 0;
+            int down = 0;
+            int flat = 0;
+            int sampleColumn = 0;
+            int sampleColumnUp = 0;
+            float areaTotal = 0f;
+            float areaUp = 0f;
+            float areaDown = 0f;
+            float sumNormalY = 0f;
+            float maxNormalY = -1f;
+            float minNormalY = 1f;
+
+            Transform root = proxy.Root.transform;
+            Transform meshTransform = meshCollider.transform;
+            for (int i = 0; i + 2 < triangles.Length; i += 3)
+            {
+                Vector3 a = root.InverseTransformPoint(meshTransform.TransformPoint(vertices[triangles[i]]));
+                Vector3 b = root.InverseTransformPoint(meshTransform.TransformPoint(vertices[triangles[i + 1]]));
+                Vector3 c = root.InverseTransformPoint(meshTransform.TransformPoint(vertices[triangles[i + 2]]));
+                Vector3 cross = Vector3.Cross(b - a, c - a);
+                float doubleArea = cross.magnitude;
+                if (doubleArea <= 0.00001f)
+                    continue;
+
+                Vector3 normal = cross / doubleArea;
+                float area = doubleArea * 0.5f;
+                total++;
+                areaTotal += area;
+                sumNormalY += normal.y;
+                maxNormalY = Mathf.Max(maxNormalY, normal.y);
+                minNormalY = Mathf.Min(minNormalY, normal.y);
+
+                if (normal.y > 0.45f)
+                {
+                    up++;
+                    areaUp += area;
+                }
+                else if (normal.y < -0.45f)
+                {
+                    down++;
+                    areaDown += area;
+                }
+                else
+                {
+                    flat++;
+                }
+
+                float minX = Mathf.Min(a.x, Mathf.Min(b.x, c.x));
+                float maxX = Mathf.Max(a.x, Mathf.Max(b.x, c.x));
+                float minZ = Mathf.Min(a.z, Mathf.Min(b.z, c.z));
+                float maxZ = Mathf.Max(a.z, Mathf.Max(b.z, c.z));
+                if (sampleLocal.x >= minX && sampleLocal.x <= maxX && sampleLocal.z >= minZ && sampleLocal.z <= maxZ)
+                {
+                    sampleColumn++;
+                    if (normal.y > 0.45f)
+                        sampleColumnUp++;
+                }
+            }
+
+            float averageY = total > 0 ? sumNormalY / total : 0f;
+            CrewDebugLog.Ok(Phase,
+                "Mesh normal candidate[" + index
+                + "] path='" + candidate.Path
+                + "' triangles=" + total
+                + " up=" + up
+                + " down=" + down
+                + " flat=" + flat
+                + " avgY=" + averageY.ToString("0.000")
+                + " minY=" + minNormalY.ToString("0.000")
+                + " maxY=" + maxNormalY.ToString("0.000")
+                + " areaTotal=" + areaTotal.ToString("0.000")
+                + " areaUp=" + areaUp.ToString("0.000")
+                + " areaDown=" + areaDown.ToString("0.000")
+                + " sampleColumn=" + sampleColumn
+                + " sampleColumnUp=" + sampleColumnUp
+                + " containsXZ=" + candidate.ContainsXZ
+                + " topLocal=" + Format(candidate.TopLocal)
+                + " size=" + Format(candidate.Size));
         }
 
         private static void SetStaticAndLayer(Transform transform)
@@ -477,7 +620,7 @@ namespace SailwindVirtualCrew
 
             var collider = marker.GetComponent<Collider>();
             if (collider)
-                Object.Destroy(collider);
+                UnityEngine.Object.Destroy(collider);
 
             var renderer = marker.GetComponent<Renderer>();
             if (renderer)
@@ -517,6 +660,7 @@ namespace SailwindVirtualCrew
         {
             internal string TypeName;
             internal string Path;
+            internal Collider Collider;
             internal Vector3 CenterLocal;
             internal Vector3 TopLocal;
             internal Vector3 Size;

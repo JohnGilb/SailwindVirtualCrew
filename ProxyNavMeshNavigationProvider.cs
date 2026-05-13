@@ -74,6 +74,20 @@ namespace SailwindVirtualCrew
             _navMeshDataInstance = NavMesh.AddNavMeshData(_navMeshData);
             CrewDebugLog.Ok(Phase, "NavMeshDataInstance valid=" + _navMeshDataInstance.valid);
             DumpTriangulationDiagnostics(Vector3.zero, "after-bake");
+
+            if (_navMeshDataInstance.valid
+                && _proxy.GeneratedDeckSurfaceCount == 0
+                && CountProxyVertices(NavMesh.CalculateTriangulation().vertices) == 0)
+            {
+                CrewDebugLog.Warn(Phase, "Proxy NavMesh bake produced zero vertices; generating synthetic deck surfaces and retrying.");
+                Clear();
+                int generated = ProxyBoatBuilder.GenerateSyntheticDeckSurfaces(_proxy);
+                if (generated > 0)
+                    return Bake();
+
+                CrewDebugLog.Warn(Phase, "Synthetic deck surface generation produced no surfaces; keeping empty bake.");
+            }
+
             return _navMeshDataInstance.valid;
         }
 
