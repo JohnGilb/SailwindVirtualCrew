@@ -128,6 +128,7 @@
     <Compile Include="Requests\NavigationResult.cs" />
     <Compile Include="Windows\MaintenanceWindow.cs" />
     <Compile Include="Windows\NavigatorWindow.cs" />
+    <Compile Include="Patches\CrewPayPatches.cs" />
     <Compile Include="Patches\PortDudePatches.cs" />
     <Compile Include="PilotController.cs" />
     <Compile Include="Windows\PilotingWindow.cs" />

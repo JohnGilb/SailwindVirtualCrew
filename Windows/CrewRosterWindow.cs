@@ -36,7 +36,7 @@ namespace SailwindVirtualCrew
             SailwindGuiStyle.Apply();
             var mgr = VirtualCrewManager.Instance;
 
-            float h = RowHeight                          // "On Ship:" label
+            float h = RowHeight * 3f                     // pay totals + "On Ship:" label
                     + mgr.Crew.Count * RowHeight
                     + (selectedShipCrew  != null ? StatHeight + RowHeight : 0f)
                     + 8f + RowHeight;                    // space + "Available at Port:" label
@@ -69,6 +69,9 @@ namespace SailwindVirtualCrew
             if (GUILayout.Button("Scan", GUILayout.Width(60)))
                 bedCount = LocatorUtils.CountBeds();
             GUILayout.EndHorizontal();
+            GUILayout.Space(4);
+            GUILayout.Label($"Pay - salary: {mgr.TotalSalaryPay} Al'Ankh Lions");
+            GUILayout.Label($"Pay - shares: {mgr.GetSharePaySummary()}");
             GUILayout.Space(4);
 
             // ── On Ship ─────────────────────────────────────────────────────

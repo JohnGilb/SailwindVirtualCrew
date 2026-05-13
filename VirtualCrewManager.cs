@@ -40,6 +40,13 @@ namespace SailwindVirtualCrew
         private Dictionary<string, bool> portIsHub = new Dictionary<string, bool>();
         private float _lastGlobalTime = -1f;
 
+        private const int SalaryCurrency = 0;
+        private const int SalaryPerCrewPerDay = 10;
+
+        public int TotalSalaryPay { get; private set; }
+        public int[] TotalSharePayByCurrency { get; private set; }
+        public Dictionary<int, CargoPaySaveData> CargoPayRecords { get; private set; }
+
         private static readonly string[] CrewNamePool =
         {
             "Tobias", "Margot", "Fletcher", "Isolde", "Crispin", "Rowena",
@@ -66,14 +73,40 @@ namespace SailwindVirtualCrew
             AllVesselsData = new Dictionary<string, VesselSaveData>();
             SailGroups = new List<SailGroup>();
             Crew = new List<Crewman>();
+            TotalSharePayByCurrency = new int[4];
+            CargoPayRecords = new Dictionary<int, CargoPaySaveData>();
             Reset();
             Sun.OnNewDay += OnNewDay;
         }
 
         private void OnNewDay()
         {
+            PayDailySalaries();
             if (GameState.day % 7 == 0)
                 RefreshPortCrewPools();
+        }
+
+        private void PayDailySalaries()
+        {
+            if (Crew.Count == 0 || PlayerGold.currency == null || PlayerGold.currency.Length <= SalaryCurrency)
+                return;
+
+            int totalPaid = 0;
+            for (int i = 0; i < Crew.Count; i++)
+            {
+                if (PlayerGold.currency[SalaryCurrency] <= 0)
+                    break;
+
+                int paid = Math.Min(SalaryPerCrewPerDay, PlayerGold.currency[SalaryCurrency]);
+                PlayerGold.currency[SalaryCurrency] -= paid;
+                totalPaid += paid;
+            }
+
+            if (totalPaid <= 0)
+                return;
+
+            TotalSalaryPay += totalPaid;
+            LogCrewPayment(-totalPaid, SalaryCurrency);
         }
 
         public void RefreshPortCrewPools()
@@ -594,6 +627,136 @@ namespace SailwindVirtualCrew
             if (saved == null) return;
             foreach (var kv in saved)
                 PortCrewPools[kv.Key] = kv.Value.Select(FromSaveData).ToList();
+        }
+
+        public void RestorePayData(int totalSalaryPay, int[] totalSharePayByCurrency, Dictionary<int, CargoPaySaveData> cargoPayRecords)
+        {
+            TotalSalaryPay = Math.Max(0, totalSalaryPay);
+            TotalSharePayByCurrency = new int[4];
+            if (totalSharePayByCurrency != null)
+            {
+                for (int i = 0; i < TotalSharePayByCurrency.Length && i < totalSharePayByCurrency.Length; i++)
+                    TotalSharePayByCurrency[i] = Math.Max(0, totalSharePayByCurrency[i]);
+            }
+
+            CargoPayRecords = cargoPayRecords != null
+                ? new Dictionary<int, CargoPaySaveData>(cargoPayRecords)
+                : new Dictionary<int, CargoPaySaveData>();
+        }
+
+        public void RecordCargoPurchase(ShipItem item, int price, int currency)
+        {
+            var saveable = item != null ? item.GetComponent<SaveablePrefab>() : null;
+            if (saveable == null || saveable.instanceId <= 0 || price <= 0 || !IsSupportedCurrency(currency))
+                return;
+
+            CargoPayRecords[saveable.instanceId] = new CargoPaySaveData
+            {
+                instanceId = saveable.instanceId,
+                prefabIndex = saveable.prefabIndex,
+                purchasePrice = price,
+                purchaseCurrency = currency,
+                purchaseDay = GameState.day,
+                sold = false
+            };
+        }
+
+        public void RecordCargoSale(ShipItem item, int salePrice, int saleCurrency)
+        {
+            var saveable = item != null ? item.GetComponent<SaveablePrefab>() : null;
+            if (saveable == null || saveable.instanceId <= 0 || salePrice <= 0 || !IsSupportedCurrency(saleCurrency))
+                return;
+
+            if (!CargoPayRecords.TryGetValue(saveable.instanceId, out var record) || record.sold)
+                return;
+
+            int purchaseInSaleCurrency = ConvertCurrency(record.purchasePrice, record.purchaseCurrency, saleCurrency);
+            int profit = salePrice - purchaseInSaleCurrency;
+            int sharePaid = 0;
+            if (profit > 0 && Crew.Count > 0)
+            {
+                int sharePerCrew = Mathf.CeilToInt(profit * 0.01f);
+                int shareOwed = sharePerCrew * Crew.Count;
+                sharePaid = DeductCurrency(saleCurrency, shareOwed);
+                if (sharePaid > 0)
+                {
+                    TotalSharePayByCurrency[saleCurrency] += sharePaid;
+                    LogCrewPayment(-sharePaid, saleCurrency);
+                }
+            }
+
+            record.salePrice = salePrice;
+            record.saleCurrency = saleCurrency;
+            record.saleDay = GameState.day;
+            record.profit = profit;
+            record.sharePaid = sharePaid;
+            record.sold = true;
+        }
+
+        public void ForgetDestroyedCargo(ShipItem item)
+        {
+            var saveable = item != null ? item.GetComponent<SaveablePrefab>() : null;
+            if (saveable == null || saveable.instanceId <= 0)
+                return;
+
+            if (CargoPayRecords.TryGetValue(saveable.instanceId, out var record) && !record.sold)
+                CargoPayRecords.Remove(saveable.instanceId);
+        }
+
+        public string GetSharePaySummary()
+        {
+            if (TotalSharePayByCurrency == null || TotalSharePayByCurrency.All(v => v <= 0))
+                return "0";
+
+            string[] parts = new string[TotalSharePayByCurrency.Length];
+            int count = 0;
+            for (int i = 0; i < TotalSharePayByCurrency.Length; i++)
+            {
+                if (TotalSharePayByCurrency[i] <= 0)
+                    continue;
+                parts[count++] = TotalSharePayByCurrency[i] + " " + PlayerGold.GetCurrencySymbol(i);
+            }
+            return string.Join(" / ", parts.Take(count).ToArray());
+        }
+
+        private static bool IsSupportedCurrency(int currency)
+        {
+            return currency >= 0 && currency < 4;
+        }
+
+        private static int DeductCurrency(int currency, int requestedAmount)
+        {
+            if (requestedAmount <= 0 || PlayerGold.currency == null || PlayerGold.currency.Length <= currency)
+                return 0;
+            if (PlayerGold.currency[currency] <= 0)
+                return 0;
+
+            int paid = Math.Min(requestedAmount, PlayerGold.currency[currency]);
+            PlayerGold.currency[currency] -= paid;
+            return paid;
+        }
+
+        private static int ConvertCurrency(int amount, int fromCurrency, int toCurrency)
+        {
+            if (amount <= 0 || fromCurrency == toCurrency || CurrencyMarket.instance == null)
+                return amount;
+            if (!IsSupportedCurrency(fromCurrency) || !IsSupportedCurrency(toCurrency))
+                return amount;
+
+            var prices = CurrencyMarket.instance.currentPrices;
+            if (prices == null || prices.Length <= Math.Max(fromCurrency, toCurrency) || prices[fromCurrency] <= 0f)
+                return amount;
+
+            float rawValue = amount / prices[fromCurrency];
+            return Mathf.RoundToInt(rawValue * prices[toCurrency]);
+        }
+
+        private static void LogCrewPayment(int amount, int currency)
+        {
+            if (DayLogs.instance != null && DayLogs.instance.dayLogs != null && DayLogs.instance.dayLogs.Length > currency)
+                DayLogs.instance.dayLogs[currency].LogTransaction(amount, TransactionCategory.other);
+            if (MoneyNotification.instance != null)
+                MoneyNotification.instance.PlayNotif(amount, currency);
         }
 
         private static Crewman FromSaveData(CrewmanSaveData d) =>
