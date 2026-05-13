@@ -197,6 +197,11 @@ namespace SailwindVirtualCrew
             var playerTransform = Refs.observerMirror.transform;
             Vector3 localPosition = mapper.WorldBoatLocalFromWorld(playerTransform.position);
             Quaternion localRotation = mapper.WorldBoatLocalRotationFromWorld(playerTransform.rotation);
+            if (CrewNavigationCoordinator.Instance.TryProjectLocalToNavMesh(localPosition, out var projectedLocalPosition))
+                localPosition = projectedLocalPosition;
+            else
+                CrewDebugLog.Warn("RuntimeNav", "Rest location could not be sampled onto the NavMesh crew='" + crewman.Name + "'");
+
             mgr.SetCrewRestLocation(crewman, localPosition, localRotation);
             CrewNavigationCoordinator.Instance.OnRestLocationChanged(crewman);
             CrewDebugLog.Ok("RuntimeNav", "Set rest location crew='" + crewman.Name + "'");

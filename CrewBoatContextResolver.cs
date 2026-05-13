@@ -53,6 +53,10 @@ namespace SailwindVirtualCrew
 
         private static Transform ResolveWalkCol(Transform topBoat, Transform worldBoat)
         {
+            var playerWalkCol = ResolvePlayerWalkCol();
+            if (playerWalkCol)
+                return playerWalkCol;
+
             var refs = topBoat.GetComponent<BoatRefs>();
             if (refs && refs.walkCol)
                 return refs.walkCol;
@@ -70,6 +74,21 @@ namespace SailwindVirtualCrew
                 if (embarkCollider && embarkCollider.walkCollider)
                     return embarkCollider.walkCollider;
             }
+
+            return null;
+        }
+
+        private static Transform ResolvePlayerWalkCol()
+        {
+            if (Refs.charController == null || Refs.charController.transform == null)
+                return null;
+
+            var parent = Refs.charController.transform.parent;
+            if (!parent)
+                return null;
+
+            if (parent.CompareTag("WalkColBoat") || parent.name.ToLowerInvariant().Contains("walk"))
+                return parent;
 
             return null;
         }

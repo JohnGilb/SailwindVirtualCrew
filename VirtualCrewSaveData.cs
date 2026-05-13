@@ -31,12 +31,20 @@ namespace SailwindVirtualCrew
     }
 
     [Serializable]
+    public class WorkstationLocationSaveData
+    {
+        public float[] localPosition;
+        public float[] localEulerAngles;
+    }
+
+    [Serializable]
     public class VesselSaveData
     {
         public string friendlyName;
         public Dictionary<string, string> sailFriendlyNames = new Dictionary<string, string>();
         public List<SailGroupSaveData> sailGroups = new List<SailGroupSaveData>();
         public Dictionary<string, CrewRestLocationSaveData> crewRestLocations = new Dictionary<string, CrewRestLocationSaveData>();
+        public Dictionary<string, WorkstationLocationSaveData> customWorkstationLocations = new Dictionary<string, WorkstationLocationSaveData>();
     }
 
     [Serializable]

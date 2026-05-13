@@ -134,6 +134,7 @@
     <Compile Include="Windows\SailGroupsWindow.cs" />
     <Compile Include="Windows\SailGroupMembersWindow.cs" />
     <Compile Include="Windows\WorkRequestsWindow.cs" />
+    <Compile Include="Windows\WorkstationCustomizerWindow.cs" />
     <Compile Include="Sails\DualSheetSail.cs" />
     <Compile Include="Sails\ICommonSailActions.cs" />
     <Compile Include="Patches\GPButtonRopeWinchPatches.cs" />

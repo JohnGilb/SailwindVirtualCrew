@@ -90,6 +90,7 @@ namespace SailwindVirtualCrew
             gameObject.AddComponent<PilotingWindow>();
             gameObject.AddComponent<CrewRosterWindow>();
             gameObject.AddComponent<LookoutWindow>();
+            gameObject.AddComponent<WorkstationCustomizerWindow>();
         }
 
         private void Start()
@@ -300,6 +301,7 @@ namespace SailwindVirtualCrew
                         VirtualCrewManager.Instance.AnchorWinches.Add(winch);
                 }
                 Console.WriteLine($"Found {VirtualCrewManager.Instance.AnchorWinches.Count} anchor winch(es).");
+                CrewNavigationCoordinator.Instance.RebuildWorkstations();
             }
 
             if (DeployAllSail.Value.IsDown())

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -41,6 +42,7 @@ namespace SailwindVirtualCrew
                 _sources);
 
             CrewDebugLog.Ok(Phase, "Build sources=" + _sources.Count);
+            DumpBuildSourceSummary();
             if (_sources.Count == 0)
             {
                 CrewDebugLog.Fail(Phase, "No NavMesh build sources were collected from the proxy.");
@@ -71,6 +73,7 @@ namespace SailwindVirtualCrew
 
             _navMeshDataInstance = NavMesh.AddNavMeshData(_navMeshData);
             CrewDebugLog.Ok(Phase, "NavMeshDataInstance valid=" + _navMeshDataInstance.valid);
+            DumpTriangulationDiagnostics(Vector3.zero, "after-bake");
             return _navMeshDataInstance.valid;
         }
 
@@ -100,6 +103,36 @@ namespace SailwindVirtualCrew
                 + " success=" + success
                 + " hit=" + Format(hit.position));
             return success;
+        }
+
+        internal void DumpSampleDiagnostics(Vector3 localPosition, float maxDistance, string label)
+        {
+            if (_proxy == null || !_proxy.IsValid)
+            {
+                CrewDebugLog.Warn(Phase, "Sample diagnostics unavailable; proxy is missing label='" + label + "'");
+                return;
+            }
+
+            Vector3 proxyWorld = _proxy.Root.transform.TransformPoint(localPosition);
+            Bounds localBounds = GetExpandedLocalBounds(_proxy);
+            bool withinExpandedBounds = localBounds.Contains(localPosition);
+            CrewDebugLog.Ok(Phase,
+                "Sample diagnostics label='" + label
+                + "' local=" + Format(localPosition)
+                + " proxyWorld=" + Format(proxyWorld)
+                + " maxDistance=" + maxDistance.ToString("0.000")
+                + " proxyBoundsLocalCenter=" + Format(localBounds.center)
+                + " proxyBoundsLocalSize=" + Format(localBounds.size)
+                + " withinExpandedBounds=" + withinExpandedBounds);
+
+            bool success = NavMesh.SamplePosition(proxyWorld, out var hit, maxDistance, NavMesh.AllAreas);
+            CrewDebugLog.Ok(Phase,
+                "Sample diagnostics result label='" + label
+                + "' success=" + success
+                + " hitWorld=" + Format(hit.position)
+                + (success ? " hitLocal=" + Format(WorldToProxyLocal(hit.position)) : ""));
+
+            DumpTriangulationDiagnostics(localPosition, label);
         }
 
         internal bool TryGetWorldOnNavMesh(Vector3 localPosition, float maxDistance, out Vector3 worldPosition)
@@ -134,6 +167,39 @@ namespace SailwindVirtualCrew
             return _proxy.Root.transform.InverseTransformPoint(worldPosition);
         }
 
+        internal bool TryGetNearestNavMeshVertexLocal(Vector3 localPosition, out Vector3 nearestLocal, out float distance)
+        {
+            nearestLocal = Vector3.zero;
+            distance = float.MaxValue;
+            if (_proxy == null || !_proxy.IsValid)
+                return false;
+
+            var triangulation = NavMesh.CalculateTriangulation();
+            if (triangulation.vertices == null || triangulation.vertices.Length == 0)
+                return false;
+
+            Bounds proxyBounds = _proxy.Bounds;
+            proxyBounds.Expand(8f);
+            bool found = false;
+            for (int i = 0; i < triangulation.vertices.Length; i++)
+            {
+                Vector3 world = triangulation.vertices[i];
+                if (!proxyBounds.Contains(world))
+                    continue;
+
+                Vector3 local = WorldToProxyLocal(world);
+                float candidateDistance = Vector3.Distance(localPosition, local);
+                if (!found || candidateDistance < distance)
+                {
+                    found = true;
+                    nearestLocal = local;
+                    distance = candidateDistance;
+                }
+            }
+
+            return found;
+        }
+
         internal bool CalculateTestPath(Vector3 fromLocal, Vector3 toLocal)
         {
             if (_proxy == null || !_proxy.IsValid)
@@ -165,6 +231,80 @@ namespace SailwindVirtualCrew
             size.y += 4f;
             size.z += 4f;
             return new Bounds(center, size);
+        }
+
+        private void DumpBuildSourceSummary()
+        {
+            int boxes = _sources.Count(s => s.shape == NavMeshBuildSourceShape.Box);
+            int meshes = _sources.Count(s => s.shape == NavMeshBuildSourceShape.Mesh);
+            int capsules = _sources.Count(s => s.shape == NavMeshBuildSourceShape.Capsule);
+            int spheres = _sources.Count(s => s.shape == NavMeshBuildSourceShape.Sphere);
+            CrewDebugLog.Ok(Phase,
+                "Build source summary box=" + boxes
+                + " mesh=" + meshes
+                + " capsule=" + capsules
+                + " sphere=" + spheres);
+
+            var largest = _sources
+                .Select((s, i) => new { Source = s, Index = i, Area = Mathf.Abs(s.size.x * s.size.z), Size = s.size })
+                .OrderByDescending(x => x.Area)
+                .Take(8)
+                .ToList();
+
+            foreach (var item in largest)
+            {
+                Vector3 center = item.Source.transform.MultiplyPoint3x4(Vector3.zero);
+                Vector3 centerLocal = _proxy.Root.transform.InverseTransformPoint(center);
+                CrewDebugLog.Ok(Phase,
+                    "Build source largest[" + item.Index
+                    + "] shape=" + item.Source.shape
+                    + " size=" + Format(item.Size)
+                    + " centerLocal=" + Format(centerLocal)
+                    + " areaXZ=" + item.Area.ToString("0.000"));
+            }
+        }
+
+        private void DumpTriangulationDiagnostics(Vector3 localPosition, string label)
+        {
+            var triangulation = NavMesh.CalculateTriangulation();
+            int vertexCount = triangulation.vertices == null ? 0 : triangulation.vertices.Length;
+            int triangleIndexCount = triangulation.indices == null ? 0 : triangulation.indices.Length;
+            int proxyVertexCount = CountProxyVertices(triangulation.vertices);
+            CrewDebugLog.Ok(Phase,
+                "NavMesh triangulation label='" + label
+                + "' vertices=" + vertexCount
+                + " proxyVertices=" + proxyVertexCount
+                + " triangleIndices=" + triangleIndexCount);
+
+            if (TryGetNearestNavMeshVertexLocal(localPosition, out var nearestLocal, out var distance))
+            {
+                Vector3 delta = nearestLocal - localPosition;
+                CrewDebugLog.Ok(Phase,
+                    "Nearest proxy NavMesh vertex label='" + label
+                    + "' local=" + Format(nearestLocal)
+                    + " distance=" + distance.ToString("0.000")
+                    + " horizontal=" + new Vector2(delta.x, delta.z).magnitude.ToString("0.000")
+                    + " vertical=" + delta.y.ToString("0.000"));
+            }
+            else
+            {
+                CrewDebugLog.Warn(Phase, "No proxy NavMesh vertices found for diagnostics label='" + label + "'");
+            }
+        }
+
+        private int CountProxyVertices(Vector3[] vertices)
+        {
+            if (vertices == null || _proxy == null || !_proxy.IsValid)
+                return 0;
+
+            Bounds proxyBounds = _proxy.Bounds;
+            proxyBounds.Expand(8f);
+            int count = 0;
+            for (int i = 0; i < vertices.Length; i++)
+                if (proxyBounds.Contains(vertices[i]))
+                    count++;
+
+            return count;
         }
 
         private static string Format(Vector3 value)

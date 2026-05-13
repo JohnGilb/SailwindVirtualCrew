@@ -19,6 +19,7 @@ namespace SailwindVirtualCrew
         private List<CrewStation> _stations = new List<CrewStation>();
         private readonly Dictionary<Crewman, RuntimeActor> _actorsByCrew = new Dictionary<Crewman, RuntimeActor>();
         private readonly Dictionary<object, RuntimeActor> _actorsByOwner = new Dictionary<object, RuntimeActor>();
+        private readonly List<GameObject> _diagnosticMarkers = new List<GameObject>();
         private readonly System.Random _random = new System.Random();
 
         private float _lastBellRealTime      = float.MinValue;
@@ -40,6 +41,42 @@ namespace SailwindVirtualCrew
         {
             _lastBellRealTime = float.MinValue;
             RingLookoutBell();
+        }
+
+        internal IReadOnlyList<CrewStation> GetWorkstations()
+        {
+            EnsureRuntimeReady();
+            return _stations.AsReadOnly();
+        }
+
+        internal void RebuildWorkstations()
+        {
+            _stations = new List<CrewStation>();
+            EnsureRuntimeReady();
+        }
+
+        internal void ApplyCustomWorkstationLocation(CrewStation station, Vector3 localPosition, Quaternion localRotation)
+        {
+            if (station == null || string.IsNullOrEmpty(station.StableKey))
+                return;
+
+            if (EnsureRuntimeReady() && _navMeshProvider.TryGetWorldOnNavMeshQuiet(localPosition, 1.5f, out var navWorld))
+                localPosition = _navMeshProvider.WorldToProxyLocal(navWorld);
+            else
+                CrewDebugLog.Warn(Phase, "Custom workstation location could not be sampled onto the NavMesh key='" + station.StableKey + "'.");
+
+            VirtualCrewManager.Instance.SetCustomWorkstationLocation(station.StableKey, localPosition, localRotation);
+            foreach (var cached in _stations.Where(s => s.StableKey == station.StableKey))
+                ApplyCustomWorkstationLocation(cached, localPosition, localRotation, true);
+        }
+
+        internal void ClearCustomWorkstationLocation(CrewStation station)
+        {
+            if (station == null || string.IsNullOrEmpty(station.StableKey))
+                return;
+
+            VirtualCrewManager.Instance.ClearCustomWorkstationLocation(station.StableKey);
+            RebuildWorkstations();
         }
 
         private void RingLookoutBell()
@@ -64,6 +101,77 @@ namespace SailwindVirtualCrew
 
             var actor = GetOrCreateActor(crewman);
             actor?.RefreshRestLocation();
+        }
+
+        internal bool TryProjectLocalToNavMesh(Vector3 localPosition, out Vector3 projectedLocal)
+        {
+            projectedLocal = localPosition;
+            if (!EnsureRuntimeReady())
+                return false;
+
+            if (!_navMeshProvider.TryGetWorldOnNavMesh(localPosition, GetNavMeshSearchDistance(), out var worldPosition))
+            {
+                _navMeshProvider.DumpSampleDiagnostics(localPosition, GetNavMeshSearchDistance(), "project-local");
+                return false;
+            }
+
+            projectedLocal = _navMeshProvider.WorldToProxyLocal(worldPosition);
+            return true;
+        }
+
+        internal void DumpNavDiagnosticsAtPlayer()
+        {
+            if (!TryGetPlayerLocalPosition(out var localPosition))
+                return;
+
+            DumpRuntimeContext("player");
+            ProxyBoatBuilder.LogProxy(_proxyBoat);
+            ProxyBoatBuilder.LogProxyColliderDiagnostics(_proxyBoat, localPosition);
+            _navMeshProvider.DumpSampleDiagnostics(localPosition, GetNavMeshSearchDistance(), "player");
+        }
+
+        internal void ShowNavDiagnosticsAtPlayer()
+        {
+            ClearNavDiagnostics();
+            if (!TryGetPlayerLocalPosition(out var localPosition))
+                return;
+
+            CreateDiagnosticMarker("VC_RuntimeNav_PlayerLocal", localPosition, Color.red, 0.45f);
+
+            if (_navMeshProvider.TryGetWorldOnNavMeshQuiet(localPosition, GetNavMeshSearchDistance(), out var hitWorld))
+            {
+                Vector3 hitLocal = _navMeshProvider.WorldToProxyLocal(hitWorld);
+                CreateDiagnosticMarker("VC_RuntimeNav_SampledNavMesh", hitLocal, Color.green, 0.35f);
+                CrewDebugLog.Ok(Phase, "Created nav diagnostic markers at player local and sampled NavMesh local.");
+            }
+            else if (_navMeshProvider.TryGetNearestNavMeshVertexLocal(localPosition, out var nearestLocal, out var distance))
+            {
+                CreateDiagnosticMarker("VC_RuntimeNav_NearestVertex", nearestLocal, Color.yellow, 0.35f);
+                CrewDebugLog.Warn(Phase,
+                    "Created nav diagnostic markers; SamplePosition failed, nearest vertex distance="
+                    + distance.ToString("0.000"));
+            }
+            else
+            {
+                if (ProxyBoatBuilder.TryFindNearestColliderTop(_proxyBoat, localPosition, out var colliderTopLocal, out var description))
+                {
+                    CreateDiagnosticMarker("VC_RuntimeNav_NearestColliderTop", colliderTopLocal, Color.cyan, 0.35f);
+                    CrewDebugLog.Warn(Phase, "Created player and nearest collider-top markers; " + description);
+                }
+                else
+                {
+                    CrewDebugLog.Warn(Phase, "Created player marker only; no proxy NavMesh vertices or collider tops found.");
+                }
+            }
+        }
+
+        internal void ClearNavDiagnostics()
+        {
+            foreach (var marker in _diagnosticMarkers)
+                if (marker)
+                    Object.Destroy(marker);
+
+            _diagnosticMarkers.Clear();
         }
 
         internal bool TryBeginWinchPositioning(object owner, Crewman crewman, GPButtonRopeWinch winch)
@@ -138,6 +246,10 @@ namespace SailwindVirtualCrew
                 startLocal = actor.CurrentLocalPosition;
                 startRotation = actor.CurrentLocalRotation;
             }
+            else if (TryProjectLocalToNavMesh(startLocal, out var projectedStartLocal))
+            {
+                startLocal = projectedStartLocal;
+            }
 
             if (actor.BeginLookout(task, startLocal, startRotation, _random))
             {
@@ -204,7 +316,11 @@ namespace SailwindVirtualCrew
             if (_actorsByCrew.TryGetValue(crewman, out var actor) && actor.IsValid)
                 fromLocal = actor.CurrentLocalPosition;
             else if (VirtualCrewManager.Instance.TryGetCrewRestLocation(crewman, out var restLocal, out _))
+            {
+                if (TryProjectLocalToNavMesh(restLocal, out var projectedRestLocal))
+                    restLocal = projectedRestLocal;
                 fromLocal = restLocal;
+            }
             else
                 fromLocal = GetDefaultStartLocal();
 
@@ -263,6 +379,80 @@ namespace SailwindVirtualCrew
                 _stations = new CrewStationScanner(_context, _navMeshProvider).Scan();
 
             return true;
+        }
+
+        private bool TryGetPlayerLocalPosition(out Vector3 localPosition)
+        {
+            localPosition = Vector3.zero;
+            if (!EnsureRuntimeReady())
+                return false;
+
+            if (Refs.observerMirror == null)
+            {
+                CrewDebugLog.Warn(Phase, "Cannot diagnose player NavMesh position; Refs.observerMirror is null.");
+                return false;
+            }
+
+            localPosition = _context.WorldBoat.InverseTransformPoint(Refs.observerMirror.transform.position);
+            return true;
+        }
+
+        private void DumpRuntimeContext(string label)
+        {
+            CrewDebugLog.Ok(Phase,
+                "Runtime context label='" + label
+                + "' worldBoat='" + GetPath(_context.WorldBoat)
+                + "' walkCol='" + GetPath(_context.WalkCol)
+                + "' playerControllerParent='" + GetPath(Refs.charController ? Refs.charController.transform.parent : null)
+                + "' observerParent='" + GetPath(Refs.observerMirror ? Refs.observerMirror.transform.parent : null)
+                + "' proxyRoot='" + (_proxyBoat != null && _proxyBoat.Root ? _proxyBoat.Root.name : "none") + "'");
+        }
+
+        private void CreateDiagnosticMarker(string name, Vector3 localPosition, Color color, float size)
+        {
+            if (_context == null || !_context.WorldBoat)
+                return;
+
+            var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            marker.name = name;
+            marker.transform.SetParent(_context.WorldBoat, false);
+            marker.transform.localPosition = localPosition;
+            marker.transform.localRotation = Quaternion.identity;
+            marker.transform.localScale = Vector3.one * size;
+
+            var collider = marker.GetComponent<Collider>();
+            if (collider)
+                Object.Destroy(collider);
+
+            var renderer = marker.GetComponent<Renderer>();
+            if (renderer)
+                renderer.material.color = color;
+
+            _diagnosticMarkers.Add(marker);
+        }
+
+        private static string GetPath(Transform transform)
+        {
+            if (!transform)
+                return "null";
+
+            string path = transform.name;
+            var current = transform.parent;
+            while (current)
+            {
+                path = current.name + "/" + path;
+                current = current.parent;
+            }
+
+            return path;
+        }
+
+        private static void ApplyCustomWorkstationLocation(CrewStation station, Vector3 localPosition, Quaternion localRotation, bool hasCustomLocation)
+        {
+            station.ProjectedLocalStand = localPosition;
+            station.LocalRotation = localRotation;
+            station.Projected = true;
+            station.HasCustomLocation = hasCustomLocation;
         }
 
         private RuntimeActor GetOrCreateActor(Crewman crewman)
@@ -457,7 +647,7 @@ namespace SailwindVirtualCrew
                     "Concrete positioning started crew='" + Crew.Name
                     + "' station='" + station.Id
                     + "' winch='" + winch.name + "'");
-                _logicAgent.SetDestination(destinationWorld, station.ProjectedLocalStand);
+                _logicAgent.SetDestination(destinationWorld, station.ProjectedLocalStand, teleportIfUnreachable: true);
             }
 
             internal bool BeginRole(object owner, Vector3 destinationLocal, Quaternion arrivalRotation, string label, float maxNavMeshDistance = 4f, Vector3 arrivalWorldOffset = default)
@@ -482,7 +672,7 @@ namespace SailwindVirtualCrew
                 _poseSync.ClearRotationOverride();
                 _initialDistance = Mathf.Max(0.01f, Vector3.Distance(_logicAgent.CurrentLocalPosition, projectedLocal));
                 CrewDebugLog.Ok(Phase, "Role positioning started crew='" + Crew.Name + "' " + label);
-                _logicAgent.SetDestination(destinationWorld, projectedLocal);
+                _logicAgent.SetDestination(destinationWorld, projectedLocal, teleportIfUnreachable: true);
                 return true;
             }
 
@@ -805,23 +995,32 @@ namespace SailwindVirtualCrew
 
             private void MoveToRest()
             {
-                if (!_hasRestLocation || !_navMeshProvider.TryGetWorldOnNavMesh(_restLocalPosition, 4f, out var restWorld))
+                if (!_hasRestLocation || !_navMeshProvider.TryGetWorldOnNavMesh(_restLocalPosition, GetNavMeshSearchDistance(), out var restWorld))
                     return;
 
                 _restStandLocalPosition = _navMeshProvider.WorldToProxyLocal(restWorld);
                 _returningToRest = true;
                 _poseSync.ClearPoseOverride();
                 _poseSync.ClearRotationOverride();
-                _logicAgent.SetDestination(restWorld, _restStandLocalPosition);
+                _logicAgent.SetDestination(restWorld, _restStandLocalPosition, teleportIfUnreachable: true);
                 CrewDebugLog.Ok(Phase, "Returning crew='" + Crew.Name + "' to rest location.");
             }
 
             private Vector3 GetRestStandLocalPosition()
             {
-                if (_navMeshProvider.TryGetWorldOnNavMeshQuiet(_restLocalPosition, 4f, out var restWorld))
+                if (_navMeshProvider.TryGetWorldOnNavMeshQuiet(_restLocalPosition, GetNavMeshSearchDistance(), out var restWorld))
                     return _navMeshProvider.WorldToProxyLocal(restWorld);
 
                 return _restLocalPosition;
+            }
+
+            private float GetNavMeshSearchDistance()
+            {
+                var proxy = _navMeshProvider.Proxy;
+                if (proxy == null || !proxy.IsValid)
+                    return 12f;
+
+                return Mathf.Max(12f, proxy.Bounds.size.y + 2f);
             }
 
             private static float LocalHorizontalDistance(Vector3 a, Vector3 b)

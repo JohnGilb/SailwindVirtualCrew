@@ -183,6 +183,59 @@ namespace SailwindVirtualCrew
                 vesselData.crewRestLocations.Remove(crewman.Id);
         }
 
+        public void SetCustomWorkstationLocation(string workstationKey, Vector3 localPosition, Quaternion localRotation)
+        {
+            if (string.IsNullOrEmpty(workstationKey)) return;
+            EnsureCurrentVesselKey();
+            if (CurrentVesselKey == null) return;
+            if (!AllVesselsData.ContainsKey(CurrentVesselKey))
+                AllVesselsData[CurrentVesselKey] = new VesselSaveData();
+
+            var dict = AllVesselsData[CurrentVesselKey].customWorkstationLocations
+                ?? (AllVesselsData[CurrentVesselKey].customWorkstationLocations = new Dictionary<string, WorkstationLocationSaveData>());
+            dict[workstationKey] = new WorkstationLocationSaveData
+            {
+                localPosition = new[] { localPosition.x, localPosition.y, localPosition.z },
+                localEulerAngles = new[] { localRotation.eulerAngles.x, localRotation.eulerAngles.y, localRotation.eulerAngles.z }
+            };
+        }
+
+        public bool TryGetCustomWorkstationLocation(string workstationKey, out Vector3 localPosition, out Quaternion localRotation)
+        {
+            localPosition = Vector3.zero;
+            localRotation = Quaternion.identity;
+            EnsureCurrentVesselKey();
+            if (string.IsNullOrEmpty(workstationKey) || CurrentVesselKey == null)
+                return false;
+
+            if (!AllVesselsData.TryGetValue(CurrentVesselKey, out var vesselData)
+                || vesselData.customWorkstationLocations == null
+                || !vesselData.customWorkstationLocations.TryGetValue(workstationKey, out var saved)
+                || saved.localPosition == null
+                || saved.localPosition.Length < 3)
+                return false;
+
+            localPosition = new Vector3(saved.localPosition[0], saved.localPosition[1], saved.localPosition[2]);
+            if (saved.localEulerAngles != null && saved.localEulerAngles.Length >= 3)
+                localRotation = Quaternion.Euler(saved.localEulerAngles[0], saved.localEulerAngles[1], saved.localEulerAngles[2]);
+            return true;
+        }
+
+        public bool HasCustomWorkstationLocation(string workstationKey)
+        {
+            return TryGetCustomWorkstationLocation(workstationKey, out _, out _);
+        }
+
+        public void ClearCustomWorkstationLocation(string workstationKey)
+        {
+            if (string.IsNullOrEmpty(workstationKey)) return;
+            EnsureCurrentVesselKey();
+            if (CurrentVesselKey == null) return;
+
+            if (AllVesselsData.TryGetValue(CurrentVesselKey, out var vesselData) && vesselData.customWorkstationLocations != null)
+                vesselData.customWorkstationLocations.Remove(workstationKey);
+        }
+
         private void EnsureCurrentVesselKey()
         {
             if (CurrentVesselKey != null || GameState.currentBoat == null)

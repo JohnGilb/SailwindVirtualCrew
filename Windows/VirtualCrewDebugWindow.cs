@@ -61,6 +61,12 @@ namespace SailwindVirtualCrew
             GUILayout.Label("Diagnostics");
             if (GUILayout.Button("Dump Stations"))
                 CrewDebugObjects.DumpStations();
+            if (GUILayout.Button("Dump Runtime Nav At Player"))
+                CrewNavigationCoordinator.Instance.DumpNavDiagnosticsAtPlayer();
+            if (GUILayout.Button("Show Runtime Nav Markers At Player"))
+                CrewNavigationCoordinator.Instance.ShowNavDiagnosticsAtPlayer();
+            if (GUILayout.Button("Clear Runtime Nav Markers"))
+                CrewNavigationCoordinator.Instance.ClearNavDiagnostics();
             if (GUILayout.Button("Dump Agent State"))
                 CrewDebugObjects.DumpLogicAgentState();
             if (GUILayout.Button("Dump Task State"))

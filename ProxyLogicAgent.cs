@@ -14,6 +14,7 @@ namespace SailwindVirtualCrew
         private bool _hasDestination;
         private bool _arrivalLogged;
         private bool _pathReadyLogged;
+        private bool _teleportIfUnreachable;
         private float _nextProgressLogTime;
 
         internal ProxyLogicAgent(Transform proxyRoot, Vector3 startWorld, string objectName = "VC_LogicAgent_Test")
@@ -63,7 +64,7 @@ namespace SailwindVirtualCrew
             }
         }
 
-        internal void SetDestination(Vector3 destinationWorld, Vector3 destinationLocal)
+        internal void SetDestination(Vector3 destinationWorld, Vector3 destinationLocal, bool teleportIfUnreachable = false)
         {
             if (!IsValid)
             {
@@ -76,12 +77,16 @@ namespace SailwindVirtualCrew
             _hasDestination = true;
             _arrivalLogged = false;
             _pathReadyLogged = false;
+            _teleportIfUnreachable = teleportIfUnreachable;
             _nextProgressLogTime = Time.time + 2f;
 
             bool destinationSet = _agent.SetDestination(destinationWorld);
             CrewDebugLog.Ok(Phase,
                 "Destination set local=" + Format(destinationLocal)
-                + " success=" + destinationSet);
+                + " success=" + destinationSet
+                + " teleportIfUnreachable=" + teleportIfUnreachable);
+            if (!destinationSet && _teleportIfUnreachable)
+                TeleportToDestination("SetDestination failed");
             DumpState();
         }
 
@@ -100,6 +105,12 @@ namespace SailwindVirtualCrew
                     + " hasPath=" + _agent.hasPath
                     + " directDistance=" + directDistance.ToString("0.000")
                     + " local=" + Format(CurrentLocalPosition));
+
+                if (_teleportIfUnreachable && (!_agent.hasPath || _agent.pathStatus != NavMeshPathStatus.PathComplete))
+                {
+                    TeleportToDestination("pathStatus=" + _agent.pathStatus + " hasPath=" + _agent.hasPath);
+                    return;
+                }
             }
 
             if (!_agent.pathPending && directDistance <= _agent.stoppingDistance + 0.12f)
@@ -156,6 +167,7 @@ namespace SailwindVirtualCrew
             _hasDestination = false;
             _arrivalLogged = false;
             _pathReadyLogged = false;
+            _teleportIfUnreachable = false;
             CrewDebugLog.Ok(Phase, "Agent stopped.");
         }
 
@@ -170,6 +182,7 @@ namespace SailwindVirtualCrew
             _hasDestination = false;
             _arrivalLogged = false;
             _pathReadyLogged = false;
+            _teleportIfUnreachable = false;
         }
 
         internal void Destroy()
@@ -181,6 +194,23 @@ namespace SailwindVirtualCrew
         private Vector3 CurrentLocalPositionInternal()
         {
             return _proxyRoot ? _proxyRoot.InverseTransformPoint(_root.transform.position) : _root.transform.position;
+        }
+
+        private void TeleportToDestination(string reason)
+        {
+            if (!IsValid)
+                return;
+
+            _agent.ResetPath();
+            _agent.Warp(_lastDestinationWorld);
+            _hasDestination = true;
+            _arrivalLogged = true;
+            _pathReadyLogged = true;
+            _teleportIfUnreachable = false;
+            CrewDebugLog.Warn(Phase,
+                "Teleported agent to unreachable destination reason='" + reason
+                + "' destinationLocal=" + Format(_lastDestinationLocal)
+                + " finalLocal=" + Format(CurrentLocalPositionInternal()));
         }
 
         private string GetDirectDistanceText()

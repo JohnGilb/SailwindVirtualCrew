@@ -102,9 +102,10 @@ namespace SailwindVirtualCrew
             if (facing.sqrMagnitude < 0.001f)
                 facing = Vector3.forward;
 
-            return new CrewStation
+            var station = new CrewStation
             {
                 Id = typeName + "-" + index.ToString("00"),
+                StableKey = typeName + "|" + GetPath(t, _context.WorldBoat),
                 TypeName = typeName,
                 TransformPath = GetPath(t, _context.WorldBoat),
                 RequestedLocalStand = requestedLocal,
@@ -113,6 +114,20 @@ namespace SailwindVirtualCrew
                 Projected = projected,
                 Control = control
             };
+
+            ApplyCustomLocation(station);
+            return station;
+        }
+
+        private static void ApplyCustomLocation(CrewStation station)
+        {
+            if (!VirtualCrewManager.Instance.TryGetCustomWorkstationLocation(station.StableKey, out var localPosition, out var localRotation))
+                return;
+
+            station.ProjectedLocalStand = localPosition;
+            station.LocalRotation = localRotation;
+            station.Projected = true;
+            station.HasCustomLocation = true;
         }
 
         private bool TryProjectStation(string typeName, Vector3 requestedLocal, out Vector3 hitWorld)
@@ -196,6 +211,7 @@ namespace SailwindVirtualCrew
 
             string message = "station='" + station.Id
                 + "' projected=" + station.Projected
+                + " custom=" + station.HasCustomLocation
                 + " localStand=" + Format(station.ProjectedLocalStand)
                 + " requestedLocal=" + Format(station.RequestedLocalStand);
 
