@@ -4,6 +4,7 @@ namespace SailwindVirtualCrew
     {
         public Crewman           AssignedCrewman { get; }
         public WorkRequestStatus Status          { get; set; } = WorkRequestStatus.Open;
+        public UnityEngine.Component AssignedBed { get; private set; }
 
         // Full rest in 8 in-game hours (480 in-game minutes), regardless of MaxStamina.
         private float RestoreRatePerMinute => AssignedCrewman.MaxStamina / 480f;
@@ -13,6 +14,15 @@ namespace SailwindVirtualCrew
             AssignedCrewman       = crewman;
             crewman.CurrentTask   = this;
         }
+
+        public void BeginPositioning(UnityEngine.Component bed)
+        {
+            AssignedBed = bed;
+            Status      = WorkRequestStatus.Positioning;
+        }
+
+        public float GetPositioningProgress() =>
+            CrewNavigationCoordinator.Instance.GetPositioningProgress(this);
 
         public void Begin()
         {

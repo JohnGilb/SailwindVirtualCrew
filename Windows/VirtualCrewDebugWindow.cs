@@ -16,13 +16,18 @@ namespace SailwindVirtualCrew
 
         private void Update()
         {
+            if (!DeveloperMode.IsEnabled)
+            {
+                showWindow = false;
+                return;
+            }
             if (Plugin.ToggleCrewWindow.Value.IsDown())
                 showWindow = !showWindow;
         }
 
         private void OnGUI()
         {
-            if (!showWindow) return;
+            if (!showWindow || !DeveloperMode.IsEnabled) return;
             SailwindGuiStyle.Apply();
 
             float height = 170f;

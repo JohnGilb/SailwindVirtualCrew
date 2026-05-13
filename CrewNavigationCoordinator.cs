@@ -118,6 +118,35 @@ namespace SailwindVirtualCrew
                 _actorsByOwner[task] = actor;
         }
 
+        internal void BeginSleep(SleepRequest request, Crewman crewman, Component bed)
+        {
+            if (request == null || crewman == null || !bed || !EnsureRuntimeReady())
+                return;
+
+            if (_actorsByOwner.ContainsKey(request))
+                return;
+
+            var actor = GetOrCreateActor(crewman);
+            if (actor == null || actor.ActiveOwner != null)
+                return;
+
+            Vector3 bedWorld = GetBedSleepPosition(bed);
+            Vector3 bedLocal = _context.WorldBoat.InverseTransformPoint(bedWorld);
+            Quaternion bedRotation = Quaternion.Inverse(_context.WorldBoat.rotation) * bed.transform.rotation;
+
+            if (actor.BeginRole(request, bedLocal, bedRotation, "sleep bed='" + bed.name + "'", 1.5f, Vector3.up * 0.33f))
+                _actorsByOwner[request] = actor;
+        }
+
+        private static Vector3 GetBedSleepPosition(Component bed)
+        {
+            if (bed is ShipItemBed shipBed && shipBed.sleepPos)
+                return shipBed.sleepPos.position;
+            if (bed is GPButtonBed buttonBed && buttonBed.sleepPos)
+                return buttonBed.sleepPos.position;
+            return bed.transform.position;
+        }
+
         internal bool IsPositioningComplete(object owner)
         {
             return owner != null
@@ -161,7 +190,7 @@ namespace SailwindVirtualCrew
 
             CrewDebugLog.Ok(Phase,
                 "Concrete positioning complete crew='" + actor.Crew.Name
-                + "' station='" + actor.ActiveStation.Id + "'");
+                + "' destination='" + (actor.ActiveStation != null ? actor.ActiveStation.Id : "role") + "'");
             actor.Complete();
             _actorsByOwner.Remove(owner);
         }
@@ -328,6 +357,7 @@ namespace SailwindVirtualCrew
             private string _activeLabel;
             private Quaternion _activeArrivalRotation;
             private bool _hasActiveArrivalRotation;
+            private Vector3 _arrivalWorldOffset;
             private bool _lookoutActive;
             private Vector3 _lookoutStartLocal;
             private Quaternion _lookoutStartRotation;
@@ -385,9 +415,9 @@ namespace SailwindVirtualCrew
                 _logicAgent.SetDestination(destinationWorld, station.ProjectedLocalStand);
             }
 
-            internal bool BeginRole(object owner, Vector3 destinationLocal, Quaternion arrivalRotation, string label)
+            internal bool BeginRole(object owner, Vector3 destinationLocal, Quaternion arrivalRotation, string label, float maxNavMeshDistance = 4f, Vector3 arrivalWorldOffset = default)
             {
-                if (!_navMeshProvider.TryGetWorldOnNavMesh(destinationLocal, 4f, out var destinationWorld))
+                if (!_navMeshProvider.TryGetWorldOnNavMesh(destinationLocal, maxNavMeshDistance, out var destinationWorld))
                 {
                     CrewDebugLog.Warn(Phase, "Could not project role destination crew='" + Crew.Name + "' " + label);
                     return false;
@@ -400,6 +430,7 @@ namespace SailwindVirtualCrew
                 _activeLabel = label;
                 _activeArrivalRotation = arrivalRotation;
                 _hasActiveArrivalRotation = true;
+                _arrivalWorldOffset = arrivalWorldOffset;
                 _lookoutActive = false;
                 _returningToRest = false;
                 _poseSync.ClearPoseOverride();
@@ -437,7 +468,17 @@ namespace SailwindVirtualCrew
                 if (ActiveOwner != null && _logicAgent.HasArrived && !_workingLogged)
                 {
                     if (_hasActiveArrivalRotation)
-                        _poseSync.SetRotationOverride(_activeArrivalRotation);
+                    {
+                        if (_arrivalWorldOffset != Vector3.zero)
+                        {
+                            Vector3 localOffset = _context.WorldBoat.InverseTransformDirection(_arrivalWorldOffset);
+                            _poseSync.SetPoseOverride(_logicAgent.CurrentLocalPosition + localOffset, _activeArrivalRotation);
+                        }
+                        else
+                        {
+                            _poseSync.SetRotationOverride(_activeArrivalRotation);
+                        }
+                    }
                     _workingLogged = true;
                     CrewDebugLog.Ok(Phase,
                         "Arrived crew='" + Crew.Name
@@ -483,6 +524,7 @@ namespace SailwindVirtualCrew
                 _workingLogged = false;
                 _activeLabel = null;
                 _hasActiveArrivalRotation = false;
+                _arrivalWorldOffset = Vector3.zero;
                 _lookoutActive = false;
             }
 

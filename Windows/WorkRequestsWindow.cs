@@ -76,7 +76,7 @@ namespace SailwindVirtualCrew
                     taskListHeight += r.Status == WorkRequestStatus.InProgress
                         ? InProgressTaskHeight : OpenTaskHeight;
                 foreach (var r in sleepRequests)
-                    taskListHeight += r.Status == WorkRequestStatus.InProgress
+                    taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
                         ? InProgressTaskHeight : OpenTaskHeight;
                 if (pilotTask   != null) taskListHeight += OpenTaskHeight;
                 if (lookoutTask != null) taskListHeight += OpenTaskHeight;
@@ -262,6 +262,14 @@ namespace SailwindVirtualCrew
                     GUILayout.Label($"[{sleep.AssignedCrewman.Name}] Waiting for bed");
                     if (GUILayout.Button("X", GUILayout.Width(28))) sleepToCancel = sleep;
                     GUILayout.EndHorizontal();
+                }
+                else if (sleep.Status == WorkRequestStatus.Positioning)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label($"[{sleep.AssignedCrewman.Name}] Walking to bed");
+                    if (GUILayout.Button("X", GUILayout.Width(28))) sleepToCancel = sleep;
+                    GUILayout.EndHorizontal();
+                    DrawPositioningBar(sleep.GetPositioningProgress());
                 }
                 else if (sleep.Status == WorkRequestStatus.InProgress)
                 {

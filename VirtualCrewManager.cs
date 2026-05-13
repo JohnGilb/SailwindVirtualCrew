@@ -796,23 +796,31 @@ namespace SailwindVirtualCrew
                 bail.Begin(crewman);
             }
 
-            // Sleep requests: tick active ones, then assign beds to waiting ones.
+            // Sleep requests: tick active ones, advance positioning completions, assign beds to waiting ones.
             foreach (var sleep in SleepRequests)
             {
                 if (sleep.Status == WorkRequestStatus.InProgress)
                     sleep.Tick(deltaMinutes);
+                else if (sleep.Status == WorkRequestStatus.Positioning && navCoord.IsPositioningComplete(sleep))
+                {
+                    navCoord.Complete(sleep);
+                    sleep.Begin();
+                }
             }
 
             SleepRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
-            int bedsInUse = SleepRequests.Count(r => r.Status == WorkRequestStatus.InProgress);
-            int? bedCount = null;
+            int bedsInUse = SleepRequests.Count(r => r.Status == WorkRequestStatus.InProgress
+                                                   || r.Status == WorkRequestStatus.Positioning);
+            List<Component> availableBeds = null;
             foreach (var sleep in SleepRequests)
             {
                 if (sleep.Status != WorkRequestStatus.Open) continue;
-                if (bedCount == null) bedCount = LocatorUtils.CountBeds();
-                if (bedsInUse >= bedCount.Value) break;
-                sleep.Begin();
+                if (availableBeds == null) availableBeds = LocatorUtils.FindBedsOnBoat();
+                var bed = availableBeds.FirstOrDefault(b => !SleepRequests.Any(s => s.AssignedBed == b));
+                if (bed == null) break;
+                sleep.BeginPositioning(bed);
+                navCoord.BeginSleep(sleep, sleep.AssignedCrewman, bed);
                 bedsInUse++;
             }
         }
@@ -902,6 +910,7 @@ namespace SailwindVirtualCrew
         {
             if (request.AssignedCrewman != null)
                 request.AssignedCrewman.CurrentTask = null;
+            CrewNavigationCoordinator.Instance.Cancel(request);
             SleepRequests.Remove(request);
         }
 

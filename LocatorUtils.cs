@@ -46,6 +46,29 @@ namespace SailwindVirtualCrew
             return found;
         }
 
+        public static List<UnityEngine.Component> FindBedsOnBoat()
+        {
+            Vector3 boatPos = GameState.lastBoat.transform.position;
+            float maxDistSqr = 20f * 20f;
+            var beds = new List<UnityEngine.Component>();
+
+            foreach (ShipItemBed bed in GameObject.FindObjectsOfType<ShipItemBed>())
+            {
+                bool inInventory = bed.GetCurrentInventorySlot() != -1 || bed.held != null;
+                bool isClose = (bed.transform.position - boatPos).sqrMagnitude <= maxDistSqr;
+                if (inInventory || isClose)
+                    beds.Add(bed);
+            }
+
+            foreach (GPButtonBed bed in GameObject.FindObjectsOfType<GPButtonBed>())
+            {
+                if ((bed.transform.position - boatPos).sqrMagnitude <= maxDistSqr)
+                    beds.Add(bed);
+            }
+
+            return beds;
+        }
+
         public static int CountBeds()
         {
             Vector3 playerPos = GameState.lastBoat.transform.position;
