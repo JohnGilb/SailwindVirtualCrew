@@ -183,7 +183,7 @@ namespace SailwindVirtualCrew
         private static string StatLine(Crewman c)
         {
             if (DeveloperMode.IsEnabled)
-                return $"{c.TrueStatLine()}    Stamina: {c.CurrentStamina:F1}/{c.MaxStamina}";
+                return $"{c.TrueStatLine()}    Stamina: {c.CurrentStamina:F1}/{c.MaxStamina}    Model: {c.ModelIndex}";
             return c.AdvertisedStatLine();
         }
 

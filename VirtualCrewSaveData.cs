@@ -13,6 +13,7 @@ namespace SailwindVirtualCrew
         public int advStrength, advDexterity, advConstitution, advIntelligence, advWisdom, advCharisma;
         // Negative sentinel means "use MaxStamina on load" (handles saves from before this field existed).
         public float currentStamina = -1f;
+        public int modelIndex = -1;
     }
 
     [Serializable]

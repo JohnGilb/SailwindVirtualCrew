@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SailwindVirtualCrew
@@ -6,9 +7,9 @@ namespace SailwindVirtualCrew
     {
         private const string Phase = "Phase03";
         private static readonly Vector3 NpcBodyScale = Vector3.one;
-        private static GameObject _cachedNpcVisualTemplate;
+        private static readonly List<GameObject> _cachedTemplates = new List<GameObject>();
 
-        internal static CrewAgent SpawnTestCrewVisual(CrewBoatContext context, Vector3 localPosition, Quaternion localRotation, string id = "test-crew-001")
+        internal static CrewAgent SpawnTestCrewVisual(CrewBoatContext context, Vector3 localPosition, Quaternion localRotation, string id = "test-crew-001", int modelIndex = 0)
         {
             var root = new GameObject("VC_VisualCrew_" + id);
             root.transform.SetParent(context.WorldBoat, false);
@@ -16,11 +17,11 @@ namespace SailwindVirtualCrew
             root.transform.localRotation = localRotation;
             root.transform.localScale = Vector3.one;
 
-            if (!TryCreateNpcBody(root.transform))
+            if (!TryCreateNpcBody(root.transform, modelIndex))
                 CreateBody(root.transform);
 
             var agent = new CrewAgent(id, root);
-            CrewDebugLog.Ok(Phase, "Spawned visual crew id='" + agent.Id + "'");
+            CrewDebugLog.Ok(Phase, "Spawned visual crew id='" + agent.Id + "' modelIndex=" + modelIndex);
             CrewDebugLog.Ok(Phase, "Parent worldBoat='" + context.WorldBoat.name + "'");
             LogPose(agent);
             return agent;
@@ -58,12 +59,13 @@ namespace SailwindVirtualCrew
             rightLeg.name = "VC_VisualCrew_RightLeg";
         }
 
-        private static bool TryCreateNpcBody(Transform root)
+        private static bool TryCreateNpcBody(Transform root, int modelIndex)
         {
-            var template = GetNpcVisualTemplate();
-            if (!template)
+            RefreshTemplates();
+            if (_cachedTemplates.Count == 0)
                 return false;
 
+            var template = _cachedTemplates[modelIndex % _cachedTemplates.Count];
             var body = Object.Instantiate(template);
             body.name = "VC_VisualCrew_NpcBody";
             body.transform.SetParent(root, false);
@@ -73,80 +75,44 @@ namespace SailwindVirtualCrew
 
             StripGameplayComponents(body);
             EnableRenderers(body);
-            CrewDebugLog.Ok(Phase, "Using in-game NPC visual template='" + template.name + "'");
+            CrewDebugLog.Ok(Phase, "Using NPC template[" + (modelIndex % _cachedTemplates.Count) + "]='" + template.name + "'");
             return true;
         }
 
-        private static GameObject GetNpcVisualTemplate()
+        private static void RefreshTemplates()
         {
-            if (_cachedNpcVisualTemplate && HasVisibleRenderers(_cachedNpcVisualTemplate))
-                return _cachedNpcVisualTemplate;
+            // Remove destroyed entries from a previous scene.
+            _cachedTemplates.RemoveAll(t => !t);
+            if (_cachedTemplates.Count > 0) return;
 
+            // All NPC visuals in Sailwind are GameObjects named "Modular NPC".
+            // Use NPCAnimations as an entry point and walk up to that ancestor.
+            var seen = new System.Collections.Generic.HashSet<int>();
             foreach (var anims in Object.FindObjectsOfType<NPCAnimations>())
             {
-                if (!anims || !anims.gameObject.activeInHierarchy || IsVirtualCrewObject(anims.transform))
-                    continue;
-
-                if (HasVisibleRenderers(anims.gameObject))
-                {
-                    _cachedNpcVisualTemplate = anims.gameObject;
-                    return _cachedNpcVisualTemplate;
-                }
+                if (!anims || IsVirtualCrewObject(anims.transform)) continue;
+                var modularNpc = FindModularNpc(anims.transform);
+                if (modularNpc != null && seen.Add(modularNpc.GetInstanceID()))
+                    _cachedTemplates.Add(modularNpc);
             }
 
-            foreach (var dude in Object.FindObjectsOfType<PortDude>())
+            if (_cachedTemplates.Count == 0)
+                CrewDebugLog.Warn(Phase, "No 'Modular NPC' templates found; using fallback mannequin.");
+            else
+                CrewDebugLog.Ok(Phase, "NPC template pool size=" + _cachedTemplates.Count);
+        }
+
+        private static GameObject FindModularNpc(Transform t)
+        {
+            while (t != null)
             {
-                var visualRoot = FindRendererRoot(dude ? dude.transform : null);
-                if (visualRoot)
-                {
-                    _cachedNpcVisualTemplate = visualRoot.gameObject;
-                    return _cachedNpcVisualTemplate;
-                }
+                if (t.name == "Modular NPC") return t.gameObject;
+                t = t.parent;
             }
-
-            foreach (var dude in Object.FindObjectsOfType<CargoTransportDude>())
-            {
-                var visualRoot = FindRendererRoot(dude ? dude.transform : null);
-                if (visualRoot)
-                {
-                    _cachedNpcVisualTemplate = visualRoot.gameObject;
-                    return _cachedNpcVisualTemplate;
-                }
-            }
-
-            CrewDebugLog.Warn(Phase, "No in-game NPC visual template found; using fallback mannequin.");
             return null;
         }
 
-        private static Transform FindRendererRoot(Transform candidate)
-        {
-            if (!candidate || IsVirtualCrewObject(candidate))
-                return null;
 
-            foreach (var renderer in candidate.GetComponentsInChildren<Renderer>(true))
-            {
-                if (!renderer || !renderer.gameObject.activeInHierarchy || !renderer.enabled)
-                    continue;
-
-                return renderer.transform.parent ? renderer.transform.parent : renderer.transform;
-            }
-
-            return null;
-        }
-
-        private static bool HasVisibleRenderers(GameObject candidate)
-        {
-            if (!candidate || IsVirtualCrewObject(candidate.transform))
-                return false;
-
-            foreach (var renderer in candidate.GetComponentsInChildren<Renderer>(true))
-            {
-                if (renderer && renderer.enabled && renderer.gameObject.activeInHierarchy)
-                    return true;
-            }
-
-            return false;
-        }
 
         private static bool IsVirtualCrewObject(Transform transform)
         {

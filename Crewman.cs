@@ -4,9 +4,10 @@ namespace SailwindVirtualCrew
 {
     public class Crewman
     {
-        public string   Id { get; private set; }
-        public string   Name { get; private set; }
-        public ShipRole Role { get; }
+        public string   Id         { get; private set; }
+        public string   Name       { get; private set; }
+        public ShipRole Role       { get; }
+        public int      ModelIndex { get; private set; }
 
         // True stat backing fields — always hold the real value regardless of exhaustion.
         private readonly int _strength;
@@ -67,6 +68,7 @@ namespace SailwindVirtualCrew
             Id           = Guid.NewGuid().ToString("N");
             Name         = name;
             Role         = role;
+            ModelIndex   = rng.Next(64);
             _strength    = rng.Next(1, 6);
             _dexterity   = rng.Next(1, 6);
             Constitution = rng.Next(1, 6);
@@ -90,11 +92,13 @@ namespace SailwindVirtualCrew
             int strength, int dexterity, int constitution, int intelligence, int wisdom, int charisma,
             int advStrength, int advDexterity, int advConstitution, int advIntelligence, int advWisdom, int advCharisma,
             float currentStamina = -1f,
-            string id = null)
+            string id = null,
+            int modelIndex = -1)
         {
             Id           = string.IsNullOrEmpty(id) ? Guid.NewGuid().ToString("N") : id;
             Name         = name;
             Role         = role;
+            ModelIndex   = modelIndex >= 0 ? modelIndex : 0;
             _strength    = strength;
             _dexterity   = dexterity;
             Constitution = constitution;
@@ -159,7 +163,8 @@ namespace SailwindVirtualCrew
             intelligence = _intelligence, wisdom = _wisdom, charisma = _charisma,
             advStrength = AdvStrength, advDexterity = AdvDexterity, advConstitution = AdvConstitution,
             advIntelligence = AdvIntelligence, advWisdom = AdvWisdom, advCharisma = AdvCharisma,
-            currentStamina = CurrentStamina
+            currentStamina = CurrentStamina,
+            modelIndex = ModelIndex
         };
     }
 }

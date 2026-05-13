@@ -395,7 +395,8 @@ namespace SailwindVirtualCrew
                 d.strength, d.dexterity, d.constitution, d.intelligence, d.wisdom, d.charisma,
                 d.advStrength, d.advDexterity, d.advConstitution, d.advIntelligence, d.advWisdom, d.advCharisma,
                 d.currentStamina,
-                d.id);
+                d.id,
+                d.modelIndex);
 
         public void addSail(SimpleSail sail)
         {
