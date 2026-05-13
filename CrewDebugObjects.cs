@@ -471,26 +471,46 @@ namespace SailwindVirtualCrew
             int created = 0;
             foreach (var station in _stations)
             {
-                if (!station.Projected)
-                    continue;
+                if (station.Projected)
+                {
+                    var marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    marker.name = "VC_Debug_Station_" + station.Id;
+                    marker.transform.SetParent(context.WorldBoat, false);
+                    marker.transform.localPosition = station.ProjectedLocalStand;
+                    marker.transform.localRotation = station.LocalRotation;
+                    marker.transform.localScale = new Vector3(0.45f, 0.08f, 0.45f);
 
-                var marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                marker.name = "VC_Debug_Station_" + station.Id;
-                marker.transform.SetParent(context.WorldBoat, false);
-                marker.transform.localPosition = station.ProjectedLocalStand;
-                marker.transform.localRotation = station.LocalRotation;
-                marker.transform.localScale = new Vector3(0.45f, 0.08f, 0.45f);
+                    var collider = marker.GetComponent<Collider>();
+                    if (collider)
+                        Object.Destroy(collider);
 
-                var collider = marker.GetComponent<Collider>();
-                if (collider)
-                    Object.Destroy(collider);
+                    var renderer = marker.GetComponent<Renderer>();
+                    if (renderer)
+                        renderer.material.color = station.TypeName == "helm" ? Color.green : station.TypeName == "rope" ? Color.yellow : Color.cyan;
 
-                var renderer = marker.GetComponent<Renderer>();
-                if (renderer)
-                    renderer.material.color = station.TypeName == "helm" ? Color.green : station.TypeName == "rope" ? Color.yellow : Color.cyan;
+                    Objects.Add(marker);
+                    created++;
+                }
+                else
+                {
+                    // Red sphere at the requested (unprojected) stand position so you can see where the projection attempt landed relative to the NavMesh.
+                    var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    marker.name = "VC_Debug_Station_Failed_" + station.Id;
+                    marker.transform.SetParent(context.WorldBoat, false);
+                    marker.transform.localPosition = station.RequestedLocalStand;
+                    marker.transform.localScale = Vector3.one * 0.35f;
 
-                Objects.Add(marker);
-                created++;
+                    var collider = marker.GetComponent<Collider>();
+                    if (collider)
+                        Object.Destroy(collider);
+
+                    var renderer = marker.GetComponent<Renderer>();
+                    if (renderer)
+                        renderer.material.color = Color.red;
+
+                    Objects.Add(marker);
+                    created++;
+                }
             }
 
             CrewDebugLog.Ok("Phase08", "Created station markers count=" + created);

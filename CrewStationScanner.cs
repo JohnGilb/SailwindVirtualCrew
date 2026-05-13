@@ -194,10 +194,10 @@ namespace SailwindVirtualCrew
                 "Found control type=" + station.Control.GetType().Name
                 + " path='" + station.TransformPath + "'");
 
-            string level = station.Projected ? "OK" : "WARN";
             string message = "station='" + station.Id
                 + "' projected=" + station.Projected
-                + " localStand=" + Format(station.ProjectedLocalStand);
+                + " localStand=" + Format(station.ProjectedLocalStand)
+                + " requestedLocal=" + Format(station.RequestedLocalStand);
 
             if (station.Projected)
                 CrewDebugLog.Ok(Phase, message);

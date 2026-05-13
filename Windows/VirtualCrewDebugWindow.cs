@@ -4,7 +4,6 @@ namespace SailwindVirtualCrew
 {
     public class VirtualCrewDebugWindow : MonoBehaviour, IWindowPosition
     {
-        private bool showWindow = false;
         private Rect windowRect = new Rect(20, 660, 360, 170);
         private static readonly int windowId = "VirtualCrewDebugWindow".GetHashCode();
         private WindowResizer _resizer;
@@ -14,20 +13,9 @@ namespace SailwindVirtualCrew
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
-        private void Update()
-        {
-            if (!DeveloperMode.IsEnabled)
-            {
-                showWindow = false;
-                return;
-            }
-            if (Plugin.ToggleCrewWindow.Value.IsDown())
-                showWindow = !showWindow;
-        }
-
         private void OnGUI()
         {
-            if (!showWindow || !DeveloperMode.IsEnabled) return;
+            if (!DeveloperMode.IsEnabled) return;
             SailwindGuiStyle.Apply();
 
             float height = 170f;
