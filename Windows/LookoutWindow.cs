@@ -128,7 +128,7 @@ namespace SailwindVirtualCrew
             float threshold = GetVisibilityThreshold(lookout);
             GUILayout.Space(4);
             GUILayout.Label($"Camera Y: {cameraY:F1}  Islands tracked: {tracker.islands.Count}");
-            GUILayout.Label($"Threshold: {threshold:F2} deg  Night: {(IsNightwatch() ? "yes" : "no")}  Zoom: {_spyglassZoom:F1}x");
+            GUILayout.Label($"Threshold: {threshold:F2} deg  Effective: {GetEffectiveVisibilityThreshold(lookout):F2} deg  Night: {(IsNightwatch() ? "yes" : "no")}  Zoom: {_spyglassZoom:F1}x");
             GUILayout.Space(4);
 
             scrollPos = GUILayout.BeginScrollView(scrollPos, GUILayout.Height(280));
@@ -170,7 +170,7 @@ namespace SailwindVirtualCrew
             float initH       = GetInitialHeight(island);
             float currentDrop = initH - island.transform.localPosition.y;
             float angleDeg    = Mathf.Atan2(peak - currentDrop, dist) * Mathf.Rad2Deg;
-            return angleDeg >= GetVisibilityThreshold(lookout);
+            return angleDeg >= GetEffectiveVisibilityThreshold(lookout);
         }
 
         private static float GetVisibilityThreshold(Crewman lookout)
@@ -178,6 +178,11 @@ namespace SailwindVirtualCrew
             float threshold = 1f - lookout.Wisdom * 0.1f;
             if (IsNightwatch()) threshold *= 5f;
             return threshold;
+        }
+
+        private float GetEffectiveVisibilityThreshold(Crewman lookout)
+        {
+            return GetVisibilityThreshold(lookout) / Mathf.Max(1f, _spyglassZoom);
         }
 
         private static bool IsNightwatch()
@@ -189,21 +194,7 @@ namespace SailwindVirtualCrew
         private void ScanForSpyglass()
         {
             _spyglassScanned = true;
-            _spyglassZoom    = 1f;
-
-            Vector3 playerPos  = GetPlayerPosition();
-            float   maxDistSqr = 100f * 100f;
-
-            foreach (var spyglass in GameObject.FindObjectsOfType<ShipItemSpyglass>())
-            {
-                bool  inInventory = spyglass.GetCurrentInventorySlot() != -1 || spyglass.held != null;
-                float distSqr     = (spyglass.transform.position - playerPos).sqrMagnitude;
-                if (!inInventory && distSqr > maxDistSqr) continue;
-
-                float zoom = Traverse.Create(spyglass).Field("maxZoom").GetValue<float>();
-                if (zoom > _spyglassZoom)
-                    _spyglassZoom = zoom;
-            }
+            _spyglassZoom = LocatorUtils.FindBestSpyglassZoomOnCurrentVessel();
         }
 
         private static string GetBearing(Vector3 from, Vector3 to)

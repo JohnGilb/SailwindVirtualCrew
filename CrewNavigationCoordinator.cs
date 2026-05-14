@@ -899,6 +899,7 @@ namespace SailwindVirtualCrew
                 float angleDeg = Mathf.Atan2(visibleHeight, distance) * Mathf.Rad2Deg;
                 float threshold = 1f - Crew.Wisdom * 0.1f;
                 if (IsNightwatch()) threshold *= 5f;
+                threshold /= Mathf.Max(1f, LocatorUtils.FindBestSpyglassZoomOnCurrentVessel());
                 return angleDeg >= threshold;
             }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using HarmonyLib;
 using UnityEngine;
 
 namespace SailwindVirtualCrew
@@ -75,18 +76,43 @@ namespace SailwindVirtualCrew
             return FindBedsOnBoat().Count;
         }
 
+        public static float FindBestSpyglassZoomOnCurrentVessel()
+        {
+            float bestZoom = 1f;
+
+            foreach (var spyglass in GameObject.FindObjectsOfType<ShipItemSpyglass>())
+            {
+                if (!IsItemAvailableOnCurrentVessel(spyglass))
+                    continue;
+
+                float zoom = Traverse.Create(spyglass).Field("maxZoom").GetValue<float>();
+                if (zoom > bestZoom)
+                    bestZoom = zoom;
+            }
+
+            return bestZoom;
+        }
+
+        private static bool IsItemAvailableOnCurrentVessel(ShipItem item)
+        {
+            if (!item)
+                return false;
+
+            if (ShipItemBelongsToCurrentVessel(item))
+                return true;
+
+            if (item.GetCurrentInventorySlot() != -1 || item.held != null)
+                return true;
+
+            return IsNearCurrentVesselReference(item.transform);
+        }
+
         private static bool IsBedOnCurrentVessel(ShipItemBed bed)
         {
             if (!bed)
                 return false;
 
-            if (ShipItemBelongsToCurrentVessel(bed))
-                return true;
-
-            if (bed.GetCurrentInventorySlot() != -1 || bed.held != null)
-                return true;
-
-            return IsNearCurrentVesselReference(bed.transform);
+            return IsItemAvailableOnCurrentVessel(bed);
         }
 
         private static bool IsBedOnCurrentVessel(GPButtonBed bed)
