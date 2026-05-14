@@ -675,8 +675,7 @@ namespace SailwindVirtualCrew
             int sharePaid = 0;
             if (profit > 0 && Crew.Count > 0)
             {
-                int sharePerCrew = Mathf.CeilToInt(profit * 0.01f);
-                int shareOwed = sharePerCrew * Crew.Count;
+                int shareOwed = Crew.Sum(c => Mathf.CeilToInt(profit * GetProfitSharePercent(c.Role) * 0.01f));
                 sharePaid = DeductCurrency(saleCurrency, shareOwed);
                 if (sharePaid > 0)
                 {
@@ -701,6 +700,25 @@ namespace SailwindVirtualCrew
 
             if (CargoPayRecords.TryGetValue(saveable.instanceId, out var record) && !record.sold)
                 CargoPayRecords.Remove(saveable.instanceId);
+        }
+
+        private static int GetProfitSharePercent(ShipRole role)
+        {
+            switch (role)
+            {
+                case ShipRole.Quartermaster:
+                case ShipRole.Supercargo:
+                    return 2;
+                case ShipRole.Lookout:
+                case ShipRole.Pilot:
+                    return 3;
+                case ShipRole.Navigator:
+                    return 4;
+                case ShipRole.ChiefOfficer:
+                    return 7;
+                default:
+                    return 1;
+            }
         }
 
         public string GetSharePaySummary()
@@ -1170,8 +1188,13 @@ namespace SailwindVirtualCrew
             foreach (var sleep in SleepRequests)
             {
                 if (sleep.Status == WorkRequestStatus.InProgress)
+                {
                     sleep.Tick(deltaMinutes);
-                else if (sleep.Status == WorkRequestStatus.Positioning && navCoord.IsPositioningComplete(sleep))
+                    if (sleep.Status == WorkRequestStatus.Complete)
+                        navCoord.OnSleepCompleted(sleep.AssignedCrewman);
+                }
+                else if (sleep.Status == WorkRequestStatus.Positioning
+                      && (navCoord.IsPositioningComplete(sleep) || sleep.IsPositioningTimedOut()))
                 {
                     navCoord.Complete(sleep);
                     sleep.Begin();
@@ -1189,9 +1212,11 @@ namespace SailwindVirtualCrew
                 if (availableBeds == null) availableBeds = LocatorUtils.FindBedsOnBoat();
                 var bed = availableBeds.FirstOrDefault(b => !SleepRequests.Any(s => s.AssignedBed == b));
                 if (bed == null) break;
-                sleep.BeginPositioning(bed);
-                navCoord.BeginSleep(sleep, sleep.AssignedCrewman, bed);
-                bedsInUse++;
+                if (navCoord.BeginSleep(sleep, sleep.AssignedCrewman, bed))
+                {
+                    sleep.BeginPositioning(bed);
+                    bedsInUse++;
+                }
             }
         }
 

@@ -125,10 +125,10 @@ namespace SailwindVirtualCrew
             }
 
             // ── Developer debug section ───────────────────────────────────────
-            float threshold = 1f - lookout.Wisdom * 0.1f;
+            float threshold = GetVisibilityThreshold(lookout);
             GUILayout.Space(4);
             GUILayout.Label($"Camera Y: {cameraY:F1}  Islands tracked: {tracker.islands.Count}");
-            GUILayout.Label($"Threshold: {threshold:F2}°  Zoom: {_spyglassZoom:F1}x  Effective: {threshold / _spyglassZoom:F2}°");
+            GUILayout.Label($"Threshold: {threshold:F2} deg  Night: {(IsNightwatch() ? "yes" : "no")}  Zoom: {_spyglassZoom:F1}x");
             GUILayout.Space(4);
 
             scrollPos = GUILayout.BeginScrollView(scrollPos, GUILayout.Height(280));
@@ -170,8 +170,20 @@ namespace SailwindVirtualCrew
             float initH       = GetInitialHeight(island);
             float currentDrop = initH - island.transform.localPosition.y;
             float angleDeg    = Mathf.Atan2(peak - currentDrop, dist) * Mathf.Rad2Deg;
-            float threshold   = 1f - lookout.Wisdom * 0.1f;
-            return angleDeg * _spyglassZoom >= threshold;
+            return angleDeg >= GetVisibilityThreshold(lookout);
+        }
+
+        private static float GetVisibilityThreshold(Crewman lookout)
+        {
+            float threshold = 1f - lookout.Wisdom * 0.1f;
+            if (IsNightwatch()) threshold *= 5f;
+            return threshold;
+        }
+
+        private static bool IsNightwatch()
+        {
+            float t = Sun.sun.localTime;
+            return t >= 20f || t < 4f;
         }
 
         private void ScanForSpyglass()

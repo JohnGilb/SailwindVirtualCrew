@@ -103,6 +103,15 @@ namespace SailwindVirtualCrew
             actor?.RefreshRestLocation();
         }
 
+        internal void OnSleepCompleted(Crewman crewman)
+        {
+            if (crewman == null || !EnsureRuntimeReady())
+                return;
+
+            var actor = GetOrCreateActor(crewman);
+            actor?.StartReturnToRest();
+        }
+
         internal bool TryProjectLocalToNavMesh(Vector3 localPosition, out Vector3 projectedLocal)
         {
             projectedLocal = localPosition;
@@ -260,17 +269,20 @@ namespace SailwindVirtualCrew
             }
         }
 
-        internal void BeginSleep(SleepRequest request, Crewman crewman, Component bed)
+        internal bool BeginSleep(SleepRequest request, Crewman crewman, Component bed)
         {
             if (request == null || crewman == null || !bed || !EnsureRuntimeReady())
-                return;
+                return false;
 
             if (_actorsByOwner.ContainsKey(request))
-                return;
+                return true;
 
             var actor = GetOrCreateActor(crewman);
             if (actor == null || actor.ActiveOwner != null)
-                return;
+            {
+                CrewDebugLog.Warn(Phase, "Could not start sleep positioning crew='" + crewman.Name + "' bed='" + bed.name + "'");
+                return false;
+            }
 
             Vector3 bedWorld = GetBedSleepPosition(bed);
             Vector3 bedLocal = _context.WorldBoat.InverseTransformPoint(bedWorld);
@@ -282,6 +294,7 @@ namespace SailwindVirtualCrew
                 actor.TeleportToRole(request, bedLocal, bedRotation, Vector3.up * 0.33f);
             }
             _actorsByOwner[request] = actor;
+            return true;
         }
 
         private static Vector3 GetBedSleepPosition(Component bed)
@@ -988,6 +1001,24 @@ namespace SailwindVirtualCrew
                     }
                     else
                         MoveToRest();
+                }
+            }
+
+            internal void StartReturnToRest()
+            {
+                RefreshRestLocation();
+                if (!_hasRestLocation || ActiveOwner != null || Crew.IsOccupied)
+                    return;
+
+                _returningToRest = false;
+                if (LocalHorizontalDistance(_logicAgent.CurrentLocalPosition, _restStandLocalPosition) <= 0.35f)
+                {
+                    _logicAgent.Stop();
+                    _poseSync.SetPoseOverride(_logicAgent.CurrentLocalPosition, _restLocalRotation);
+                }
+                else
+                {
+                    MoveToRest();
                 }
             }
 
