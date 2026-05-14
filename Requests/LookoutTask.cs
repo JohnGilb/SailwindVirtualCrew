@@ -14,7 +14,8 @@ namespace SailwindVirtualCrew
         public void Cancel()
         {
             CrewNavigationCoordinator.Instance.Cancel(this);
-            AssignedCrewman.CurrentTask = null;
+            if (AssignedCrewman.CurrentTask == this)
+                AssignedCrewman.CurrentTask = null;
         }
     }
 }

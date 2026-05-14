@@ -56,7 +56,8 @@ namespace SailwindVirtualCrew
         private void Complete()
         {
             Status = WorkRequestStatus.Complete;
-            AssignedCrewman.CurrentTask = null;
+            if (AssignedCrewman.CurrentTask == this)
+                AssignedCrewman.CurrentTask = null;
         }
     }
 }

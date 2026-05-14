@@ -1209,6 +1209,7 @@ namespace SailwindVirtualCrew
             foreach (var sleep in SleepRequests)
             {
                 if (sleep.Status != WorkRequestStatus.Open) continue;
+                if (sleep.AssignedCrewman.CurrentTask != sleep) continue;
                 if (availableBeds == null) availableBeds = LocatorUtils.FindBedsOnBoat();
                 var bed = availableBeds.FirstOrDefault(b => !SleepRequests.Any(s => s.AssignedBed == b));
                 if (bed == null) break;
