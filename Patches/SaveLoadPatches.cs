@@ -50,6 +50,7 @@ namespace SailwindVirtualCrew
                 cargoPayRecords = mgr.CargoPayRecords != null
                     ? new Dictionary<int, CargoPaySaveData>(mgr.CargoPayRecords)
                     : new Dictionary<int, CargoPaySaveData>(),
+                lastPortCrewRefreshDay = mgr.LastPortCrewRefreshDay,
                 lookoutCertainties = mgr.GetLookoutCertaintySnapshot(),
                 lookoutIgnoredUntil = mgr.GetLookoutIgnoredUntilSnapshot(),
                 visitedPorts = mgr.GetVisitedPortsSnapshot()
@@ -67,6 +68,7 @@ namespace SailwindVirtualCrew
                 VirtualCrewManager.Instance.AllVesselsData = data.vessels;
             VirtualCrewManager.Instance.RestoreShipCrew(data.shipCrew);
             VirtualCrewManager.Instance.RestorePortPools(data.portCrewPools);
+            VirtualCrewManager.Instance.RestorePortCrewRefreshDay(data.lastPortCrewRefreshDay);
             VirtualCrewManager.Instance.RestorePayData(data.totalSalaryPay, data.totalSharePayByCurrency, data.cargoPayRecords);
             VirtualCrewManager.Instance.StoreLookoutCertainties(data.lookoutCertainties);
             VirtualCrewManager.Instance.StoreLookoutIgnoredUntil(data.lookoutIgnoredUntil);

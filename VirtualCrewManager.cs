@@ -50,6 +50,7 @@ namespace SailwindVirtualCrew
         public List<Crewman> AvailableAtPort { get; private set; } = new List<Crewman>();
         public Dictionary<string, List<Crewman>> PortCrewPools { get; private set; } = new Dictionary<string, List<Crewman>>();
         private Dictionary<string, bool> portIsHub = new Dictionary<string, bool>();
+        public int LastPortCrewRefreshDay { get; private set; } = -1;
         private float _lastGlobalTime = -1f;
 
         private const int SalaryCurrency = 0;
@@ -97,8 +98,19 @@ namespace SailwindVirtualCrew
         private void OnNewDay()
         {
             PayDailySalaries();
-            if (GameState.day % 7 == 0)
+            if (ShouldRefreshPortCrewPools())
                 RefreshPortCrewPools();
+        }
+
+        private bool ShouldRefreshPortCrewPools()
+        {
+            if (LastPortCrewRefreshDay < 0)
+            {
+                LastPortCrewRefreshDay = GameState.day;
+                return false;
+            }
+
+            return GameState.day - LastPortCrewRefreshDay >= 7;
         }
 
         private void PayDailySalaries()
@@ -126,17 +138,54 @@ namespace SailwindVirtualCrew
 
         public void RefreshPortCrewPools()
         {
-            foreach (var key in PortCrewPools.Keys)
+            var ports = GetKnownPortHubFlags();
+            if (ports.Count == 0)
+                return;
+
+            foreach (var kv in ports)
             {
-                bool hub = portIsHub.TryGetValue(key, out var h) && h;
+                string key = kv.Key;
+                bool hub = kv.Value;
                 int count = hub ? 5 : 1;
                 var pool = new List<Crewman>();
                 for (int i = 0; i < count; i++)
                     pool.Add(GenerateRandomCrewman(hub));
                 PortCrewPools[key] = pool;
+                portIsHub[key] = hub;
             }
+
+            LastPortCrewRefreshDay = GameState.day;
             if (CurrentPort != null && PortCrewPools.TryGetValue(CurrentPort.GetPortName(), out var current))
                 AvailableAtPort = current;
+        }
+
+        private Dictionary<string, bool> GetKnownPortHubFlags()
+        {
+            var ports = new Dictionary<string, bool>();
+
+            if (Port.ports != null)
+            {
+                foreach (var port in Port.ports)
+                {
+                    if (port == null) continue;
+                    string name = port.GetPortName();
+                    if (!string.IsNullOrEmpty(name))
+                        ports[name] = port.hubPort;
+                }
+            }
+
+            if (CurrentPort != null)
+                ports[CurrentPort.GetPortName()] = CurrentPort.hubPort;
+
+            foreach (var kv in portIsHub)
+                if (!ports.ContainsKey(kv.Key))
+                    ports[kv.Key] = kv.Value;
+
+            foreach (var key in PortCrewPools.Keys.ToList())
+                if (!ports.ContainsKey(key))
+                    ports[key] = false;
+
+            return ports;
         }
 
         public void SetCurrentVessel(string key)
@@ -731,6 +780,11 @@ namespace SailwindVirtualCrew
             if (saved == null) return;
             foreach (var kv in saved)
                 PortCrewPools[kv.Key] = kv.Value.Select(FromSaveData).ToList();
+        }
+
+        public void RestorePortCrewRefreshDay(int day)
+        {
+            LastPortCrewRefreshDay = day;
         }
 
         public void RestorePayData(int totalSalaryPay, int[] totalSharePayByCurrency, Dictionary<int, CargoPaySaveData> cargoPayRecords)

@@ -49,11 +49,13 @@ namespace SailwindVirtualCrew
             {
                 _nextLogTime = Time.time + 4f;
                 float syncError = Vector3.Distance(visualTransform.localPosition, proxyLocal);
-                CrewDebugLog.Ok(Phase,
+                // Phase 7 stuff is pretty spammmy, disabling this for now.
+                /*CrewDebugLog.Ok(Phase,
                     "proxyLocal=" + Format(proxyLocal)
                     + ", realMapped=" + Format(_context.WorldBoat.TransformPoint(proxyLocal))
                     + ", syncError=" + syncError.ToString("0.0000"));
                 CrewDebugLog.Ok(Phase, "visual parent='" + visualTransform.parent.name + "'");
+                */
             }
         }
 
