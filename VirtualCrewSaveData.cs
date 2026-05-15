@@ -98,6 +98,7 @@ namespace SailwindVirtualCrew
         public Dictionary<int, CargoPaySaveData> cargoPayRecords;
         public int lastPortCrewRefreshDay;
         public Dictionary<string, float> lookoutCertainties;
+        public Dictionary<string, string> lookoutIdentifiedNames;
         public Dictionary<string, float> lookoutIgnoredUntil;
         public Dictionary<string, bool> visitedPorts;
         public NavigatorToolScanSaveData navigatorToolScan;

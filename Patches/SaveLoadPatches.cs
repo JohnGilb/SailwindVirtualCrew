@@ -53,6 +53,7 @@ namespace SailwindVirtualCrew
                     : new Dictionary<int, CargoPaySaveData>(),
                 lastPortCrewRefreshDay = mgr.LastPortCrewRefreshDay,
                 lookoutCertainties = mgr.GetLookoutCertaintySnapshot(),
+                lookoutIdentifiedNames = mgr.GetLookoutIdentifiedNamesSnapshot(),
                 lookoutIgnoredUntil = mgr.GetLookoutIgnoredUntilSnapshot(),
                 visitedPorts = mgr.GetVisitedPortsSnapshot(),
                 navigatorToolScan = navigatorWindow != null ? navigatorWindow.GetToolScanSaveData() : null
@@ -73,6 +74,7 @@ namespace SailwindVirtualCrew
             VirtualCrewManager.Instance.RestorePortCrewRefreshDay(data.lastPortCrewRefreshDay);
             VirtualCrewManager.Instance.RestorePayData(data.totalSalaryPay, data.totalSharePayByCurrency, data.cargoPayRecords);
             VirtualCrewManager.Instance.StoreLookoutCertainties(data.lookoutCertainties);
+            VirtualCrewManager.Instance.StoreLookoutIdentifiedNames(data.lookoutIdentifiedNames);
             VirtualCrewManager.Instance.StoreLookoutIgnoredUntil(data.lookoutIgnoredUntil);
             VirtualCrewManager.Instance.StoreVisitedPorts(data.visitedPorts);
             var navigatorWindow = Plugin.Instance.GetComponent<NavigatorWindow>();

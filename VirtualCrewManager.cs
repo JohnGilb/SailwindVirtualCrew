@@ -39,6 +39,7 @@ namespace SailwindVirtualCrew
         public Dictionary<string, VesselSaveData> AllVesselsData { get; set; }
         public string CurrentVesselKey { get; private set; }
         public Dictionary<string, float> LookoutCertainties { get; private set; }
+        public Dictionary<string, string> LookoutIdentifiedNames { get; private set; }
         public Dictionary<string, float> LookoutIgnoredUntil { get; private set; }
         public Dictionary<string, bool> VisitedPorts { get; private set; }
 
@@ -88,6 +89,7 @@ namespace SailwindVirtualCrew
         {
             AllVesselsData = new Dictionary<string, VesselSaveData>();
             LookoutCertainties = new Dictionary<string, float>();
+            LookoutIdentifiedNames = new Dictionary<string, string>();
             LookoutIgnoredUntil = new Dictionary<string, float>();
             VisitedPorts = new Dictionary<string, bool>();
             SailGroups = new List<SailGroup>();
@@ -818,6 +820,8 @@ namespace SailwindVirtualCrew
                 if (certainty > 0f)
                     LookoutCertainties[kv.Key] = certainty;
             }
+
+            PruneLookoutIdentifiedNames();
         }
 
         public Dictionary<string, float> GetLookoutCertaintySnapshot()
@@ -849,6 +853,80 @@ namespace SailwindVirtualCrew
                 LookoutCertainties.Remove(key);
             else
                 LookoutCertainties[key] = certainty;
+
+            if (certainty < 1f)
+                ForgetLookoutIslandName(key);
+        }
+
+        public void StoreLookoutIdentifiedNames(Dictionary<string, string> identifiedNames)
+        {
+            LookoutIdentifiedNames = new Dictionary<string, string>();
+            if (identifiedNames == null)
+                return;
+
+            foreach (var kv in identifiedNames)
+            {
+                if (!string.IsNullOrEmpty(kv.Key)
+                    && !string.IsNullOrEmpty(kv.Value)
+                    && LookoutCertainties != null
+                    && LookoutCertainties.TryGetValue(kv.Key, out float certainty)
+                    && certainty >= 1f)
+                    LookoutIdentifiedNames[kv.Key] = kv.Value;
+            }
+        }
+
+        public Dictionary<string, string> GetLookoutIdentifiedNamesSnapshot()
+        {
+            PruneLookoutIdentifiedNames();
+            return new Dictionary<string, string>(LookoutIdentifiedNames ?? new Dictionary<string, string>());
+        }
+
+        public void RememberLookoutIslandName(IslandHorizon island, string islandName)
+        {
+            if (island == null || string.IsNullOrEmpty(islandName) || GetLookoutCertainty(island) < 1f)
+                return;
+
+            if (LookoutIdentifiedNames == null)
+                LookoutIdentifiedNames = new Dictionary<string, string>();
+
+            LookoutIdentifiedNames[LookoutVisibility.GetIslandKey(island)] = islandName;
+        }
+
+        public bool TryGetRememberedLookoutIslandName(IslandHorizon island, out string islandName)
+        {
+            islandName = null;
+            if (island == null || LookoutIdentifiedNames == null)
+                return false;
+
+            string key = LookoutVisibility.GetIslandKey(island);
+            if (GetLookoutCertainty(island) < 1f)
+            {
+                ForgetLookoutIslandName(key);
+                return false;
+            }
+
+            return LookoutIdentifiedNames.TryGetValue(key, out islandName)
+                && !string.IsNullOrEmpty(islandName);
+        }
+
+        private void ForgetLookoutIslandName(string key)
+        {
+            if (!string.IsNullOrEmpty(key) && LookoutIdentifiedNames != null)
+                LookoutIdentifiedNames.Remove(key);
+        }
+
+        private void PruneLookoutIdentifiedNames()
+        {
+            if (LookoutIdentifiedNames == null || LookoutIdentifiedNames.Count == 0)
+                return;
+
+            foreach (string key in LookoutIdentifiedNames.Keys.ToList())
+            {
+                if (LookoutCertainties == null
+                    || !LookoutCertainties.TryGetValue(key, out float certainty)
+                    || certainty < 1f)
+                    LookoutIdentifiedNames.Remove(key);
+            }
         }
 
         public void StoreLookoutIgnoredUntil(Dictionary<string, float> ignoredUntil)
@@ -957,6 +1035,9 @@ namespace SailwindVirtualCrew
                     LookoutCertainties.Remove(key);
                 else
                     LookoutCertainties[key] = certainty;
+
+                if (certainty < 1f)
+                    ForgetLookoutIslandName(key);
             }
         }
 

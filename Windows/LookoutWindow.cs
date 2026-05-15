@@ -154,9 +154,18 @@ namespace SailwindVirtualCrew
                 {
                     string bearing = GetBearing(playerPos, island.GetPosition());
                     if (LookoutIslandKnowledge.TryIdentifyIsland(island, observerPos, lookout, _spyglassZoom, out string islandName, out _))
+                    {
+                        manager.RememberLookoutIslandName(island, islandName);
                         report = $"Land Sighted: {islandName} ({bearing})";
+                    }
+                    else if (manager.TryGetRememberedLookoutIslandName(island, out islandName))
+                    {
+                        report = $"Land Sighted: {islandName} ({bearing})";
+                    }
                     else
+                    {
                         report = $"Land Sighted: {bearing}";
+                    }
                     reportedIsland = island;
                     break;
                 }
@@ -255,7 +264,14 @@ namespace SailwindVirtualCrew
                 string label = bearing;
                 if (lookout != null
                     && LookoutIslandKnowledge.TryIdentifyIsland(island, observerPos, lookout, _spyglassZoom, out string islandName, out _))
+                {
+                    manager.RememberLookoutIslandName(island, islandName);
                     label = $"{islandName} ({bearing})";
+                }
+                else if (manager.TryGetRememberedLookoutIslandName(island, out islandName))
+                {
+                    label = $"{islandName} ({bearing})";
+                }
 
                 if (GUILayout.Button($"{label}  {item.remaining:F1}h"))
                     manager.ClearLookoutIgnore(island);
@@ -321,7 +337,11 @@ namespace SailwindVirtualCrew
             float ignoreRemaining = VirtualCrewManager.Instance.GetLookoutIgnoreRemainingHours(island);
             var idInfo = LookoutIslandKnowledge.GetIdentificationInfo(island, GetObservationEyePosition(lookout), lookout, _spyglassZoom);
             string visitedTag = idInfo.HasVisited ? "visited" : "unvisited";
-            string identifiedTag = idInfo.Identified ? "identified" : "unidentified";
+            string identifiedTag = idInfo.Identified
+                ? "identified"
+                : VirtualCrewManager.Instance.TryGetRememberedLookoutIslandName(island, out _)
+                    ? "remembered"
+                    : "unidentified";
             string clearTag = idInfo.CurrentlyVisible ? "clear" : "blocked";
             string ignoreTag = ignoreRemaining > 0f ? $"IGNORED {ignoreRemaining:F1}h" : "";
             GUILayout.Label($"{GetIslandName(island)} ({dist:F0}m)  certainty:{certainty:F2}  [{(island.SceneLoaded() ? "scene" : "horizon")}]  {(certainty >= 1f ? "SIGHTED" : "")} {ignoreTag}");
