@@ -12,30 +12,46 @@ namespace SailwindVirtualCrew
         private float _dragStartHeight;
 
         // Call at every return point in DrawWindow, just before GUI.DragWindow().
-        // FlexibleSpace pushes the handle to the visual bottom of the window.
+        // Draw as an absolute overlay so overflowing controls cannot obscure it.
         internal void HandleInWindow(ref Rect windowRect)
         {
             GUILayout.FlexibleSpace();
-            Rect handle = GUILayoutUtility.GetRect(0f, HandleHeight, GUILayout.ExpandWidth(true));
-            GUI.Box(handle, "");
+            GUILayout.Space(HandleHeight);
+
+            Rect handle = new Rect(0f, windowRect.height - HandleHeight, windowRect.width, HandleHeight);
+            int controlId = GUIUtility.GetControlID(FocusType.Passive);
+            DrawHandle(handle);
 
             var e = Event.current;
-            if (e.type == EventType.MouseDown && handle.Contains(e.mousePosition))
+            EventType eventType = e.type == EventType.Used ? e.rawType : e.type;
+            if (eventType == EventType.MouseDown && handle.Contains(e.mousePosition))
             {
                 _resizing        = true;
                 _dragStartLocalY = e.mousePosition.y;
                 _dragStartHeight = windowRect.height;
-                e.Use();
+                GUIUtility.hotControl = controlId;
+                if (e.type != EventType.Used) e.Use();
             }
-            else if (e.type == EventType.MouseDrag && _resizing)
+            else if (eventType == EventType.MouseDrag && _resizing)
             {
                 UserHeight = Mathf.Max(80f, _dragStartHeight + (e.mousePosition.y - _dragStartLocalY));
-                e.Use();
+                GUIUtility.hotControl = controlId;
+                if (e.type != EventType.Used) e.Use();
             }
-            else if (e.type == EventType.MouseUp)
+            else if (eventType == EventType.MouseUp)
             {
                 _resizing = false;
+                if (GUIUtility.hotControl == controlId)
+                    GUIUtility.hotControl = 0;
             }
+        }
+
+        private static void DrawHandle(Rect handle)
+        {
+            int oldDepth = GUI.depth;
+            GUI.depth = int.MinValue;
+            GUI.Box(handle, "");
+            GUI.depth = oldDepth;
         }
     }
 }

@@ -22,6 +22,7 @@ namespace SailwindVirtualCrew
         public List<SquareTrimRequest> SquareTrimRequests { get; private set; }
         public List<NavigateRequest> NavigateRequests { get; private set; }
         public List<BailRequest>     BailRequests     { get; private set; }
+        public List<MooringRequest>  MooringRequests  { get; private set; }
         public List<SleepRequest>    SleepRequests    { get; private set; }
         public Dictionary<GPButtonRopeWinch, WinchTarget> crewWinchInstructions;
 
@@ -29,6 +30,7 @@ namespace SailwindVirtualCrew
 
         public Dictionary<string, VesselSaveData> AllVesselsData { get; set; }
         public string CurrentVesselKey { get; private set; }
+        public Dictionary<string, float> LookoutCertainties { get; private set; }
 
         public List<SailGroup> SailGroups { get; private set; }
         public SailGroup AllSailsGroup { get; private set; }
@@ -39,6 +41,13 @@ namespace SailwindVirtualCrew
         public Dictionary<string, List<Crewman>> PortCrewPools { get; private set; } = new Dictionary<string, List<Crewman>>();
         private Dictionary<string, bool> portIsHub = new Dictionary<string, bool>();
         private float _lastGlobalTime = -1f;
+
+        private const int SalaryCurrency = 0;
+        private const int SalaryPerCrewPerDay = 10;
+
+        public int TotalSalaryPay { get; private set; }
+        public int[] TotalSharePayByCurrency { get; private set; }
+        public Dictionary<int, CargoPaySaveData> CargoPayRecords { get; private set; }
 
         private static readonly string[] CrewNamePool =
         {
@@ -64,16 +73,43 @@ namespace SailwindVirtualCrew
         private VirtualCrewManager()
         {
             AllVesselsData = new Dictionary<string, VesselSaveData>();
+            LookoutCertainties = new Dictionary<string, float>();
             SailGroups = new List<SailGroup>();
             Crew = new List<Crewman>();
+            TotalSharePayByCurrency = new int[4];
+            CargoPayRecords = new Dictionary<int, CargoPaySaveData>();
             Reset();
             Sun.OnNewDay += OnNewDay;
         }
 
         private void OnNewDay()
         {
+            PayDailySalaries();
             if (GameState.day % 7 == 0)
                 RefreshPortCrewPools();
+        }
+
+        private void PayDailySalaries()
+        {
+            if (Crew.Count == 0 || PlayerGold.currency == null || PlayerGold.currency.Length <= SalaryCurrency)
+                return;
+
+            int totalPaid = 0;
+            for (int i = 0; i < Crew.Count; i++)
+            {
+                if (PlayerGold.currency[SalaryCurrency] <= 0)
+                    break;
+
+                int paid = Math.Min(SalaryPerCrewPerDay, PlayerGold.currency[SalaryCurrency]);
+                PlayerGold.currency[SalaryCurrency] -= paid;
+                totalPaid += paid;
+            }
+
+            if (totalPaid <= 0)
+                return;
+
+            TotalSalaryPay += totalPaid;
+            LogCrewPayment(-totalPaid, SalaryCurrency);
         }
 
         public void RefreshPortCrewPools()
@@ -417,6 +453,7 @@ namespace SailwindVirtualCrew
             SquareTrimRequests = new List<SquareTrimRequest>();
             NavigateRequests = new List<NavigateRequest>();
             BailRequests     = new List<BailRequest>();
+            MooringRequests  = new List<MooringRequest>();
             SleepRequests    = new List<SleepRequest>();
             crewWinchInstructions = new Dictionary<GPButtonRopeWinch, WinchTarget>();
             AnchorWinches = new List<GPButtonRopeWinch>();
@@ -596,6 +633,199 @@ namespace SailwindVirtualCrew
                 PortCrewPools[kv.Key] = kv.Value.Select(FromSaveData).ToList();
         }
 
+        public void RestorePayData(int totalSalaryPay, int[] totalSharePayByCurrency, Dictionary<int, CargoPaySaveData> cargoPayRecords)
+        {
+            TotalSalaryPay = Math.Max(0, totalSalaryPay);
+            TotalSharePayByCurrency = new int[4];
+            if (totalSharePayByCurrency != null)
+            {
+                for (int i = 0; i < TotalSharePayByCurrency.Length && i < totalSharePayByCurrency.Length; i++)
+                    TotalSharePayByCurrency[i] = Math.Max(0, totalSharePayByCurrency[i]);
+            }
+
+            CargoPayRecords = cargoPayRecords != null
+                ? new Dictionary<int, CargoPaySaveData>(cargoPayRecords)
+                : new Dictionary<int, CargoPaySaveData>();
+        }
+
+        public void StoreLookoutCertainties(Dictionary<string, float> certainties)
+        {
+            LookoutCertainties = new Dictionary<string, float>();
+            if (certainties == null)
+                return;
+
+            foreach (var kv in certainties)
+            {
+                float certainty = Mathf.Clamp(kv.Value, 0f, 2f);
+                if (certainty > 0f)
+                    LookoutCertainties[kv.Key] = certainty;
+            }
+        }
+
+        public Dictionary<string, float> GetLookoutCertaintySnapshot()
+        {
+            return new Dictionary<string, float>(LookoutCertainties ?? new Dictionary<string, float>());
+        }
+
+        public float GetLookoutCertainty(IslandHorizon island)
+        {
+            if (island == null || LookoutCertainties == null)
+                return 0f;
+
+            return LookoutCertainties.TryGetValue(LookoutVisibility.GetIslandKey(island), out float certainty)
+                ? certainty
+                : 0f;
+        }
+
+        public void SetLookoutCertainty(IslandHorizon island, float certainty)
+        {
+            if (island == null)
+                return;
+
+            if (LookoutCertainties == null)
+                LookoutCertainties = new Dictionary<string, float>();
+
+            string key = LookoutVisibility.GetIslandKey(island);
+            certainty = Mathf.Clamp(certainty, 0f, 2f);
+            if (certainty <= 0f)
+                LookoutCertainties.Remove(key);
+            else
+                LookoutCertainties[key] = certainty;
+        }
+
+        public void RecordCargoPurchase(ShipItem item, int price, int currency)
+        {
+            var saveable = item != null ? item.GetComponent<SaveablePrefab>() : null;
+            if (saveable == null || saveable.instanceId <= 0 || price <= 0 || !IsSupportedCurrency(currency))
+                return;
+
+            CargoPayRecords[saveable.instanceId] = new CargoPaySaveData
+            {
+                instanceId = saveable.instanceId,
+                prefabIndex = saveable.prefabIndex,
+                purchasePrice = price,
+                purchaseCurrency = currency,
+                purchaseDay = GameState.day,
+                sold = false
+            };
+        }
+
+        public void RecordCargoSale(ShipItem item, int salePrice, int saleCurrency)
+        {
+            var saveable = item != null ? item.GetComponent<SaveablePrefab>() : null;
+            if (saveable == null || saveable.instanceId <= 0 || salePrice <= 0 || !IsSupportedCurrency(saleCurrency))
+                return;
+
+            if (!CargoPayRecords.TryGetValue(saveable.instanceId, out var record) || record.sold)
+                return;
+
+            int purchaseInSaleCurrency = ConvertCurrency(record.purchasePrice, record.purchaseCurrency, saleCurrency);
+            int profit = salePrice - purchaseInSaleCurrency;
+            int sharePaid = 0;
+            if (profit > 0 && Crew.Count > 0)
+            {
+                int shareOwed = Crew.Sum(c => Mathf.CeilToInt(profit * GetProfitSharePercent(c.Role) * 0.01f));
+                sharePaid = DeductCurrency(saleCurrency, shareOwed);
+                if (sharePaid > 0)
+                {
+                    TotalSharePayByCurrency[saleCurrency] += sharePaid;
+                    LogCrewPayment(-sharePaid, saleCurrency);
+                }
+            }
+
+            record.salePrice = salePrice;
+            record.saleCurrency = saleCurrency;
+            record.saleDay = GameState.day;
+            record.profit = profit;
+            record.sharePaid = sharePaid;
+            record.sold = true;
+        }
+
+        public void ForgetDestroyedCargo(ShipItem item)
+        {
+            var saveable = item != null ? item.GetComponent<SaveablePrefab>() : null;
+            if (saveable == null || saveable.instanceId <= 0)
+                return;
+
+            if (CargoPayRecords.TryGetValue(saveable.instanceId, out var record) && !record.sold)
+                CargoPayRecords.Remove(saveable.instanceId);
+        }
+
+        private static int GetProfitSharePercent(ShipRole role)
+        {
+            switch (role)
+            {
+                case ShipRole.Quartermaster:
+                case ShipRole.Supercargo:
+                    return 2;
+                case ShipRole.Lookout:
+                case ShipRole.Pilot:
+                    return 3;
+                case ShipRole.Navigator:
+                    return 4;
+                case ShipRole.ChiefOfficer:
+                    return 7;
+                default:
+                    return 1;
+            }
+        }
+
+        public string GetSharePaySummary()
+        {
+            if (TotalSharePayByCurrency == null || TotalSharePayByCurrency.All(v => v <= 0))
+                return "0";
+
+            string[] parts = new string[TotalSharePayByCurrency.Length];
+            int count = 0;
+            for (int i = 0; i < TotalSharePayByCurrency.Length; i++)
+            {
+                if (TotalSharePayByCurrency[i] <= 0)
+                    continue;
+                parts[count++] = TotalSharePayByCurrency[i] + " " + PlayerGold.GetCurrencySymbol(i);
+            }
+            return string.Join(" / ", parts.Take(count).ToArray());
+        }
+
+        private static bool IsSupportedCurrency(int currency)
+        {
+            return currency >= 0 && currency < 4;
+        }
+
+        private static int DeductCurrency(int currency, int requestedAmount)
+        {
+            if (requestedAmount <= 0 || PlayerGold.currency == null || PlayerGold.currency.Length <= currency)
+                return 0;
+            if (PlayerGold.currency[currency] <= 0)
+                return 0;
+
+            int paid = Math.Min(requestedAmount, PlayerGold.currency[currency]);
+            PlayerGold.currency[currency] -= paid;
+            return paid;
+        }
+
+        private static int ConvertCurrency(int amount, int fromCurrency, int toCurrency)
+        {
+            if (amount <= 0 || fromCurrency == toCurrency || CurrencyMarket.instance == null)
+                return amount;
+            if (!IsSupportedCurrency(fromCurrency) || !IsSupportedCurrency(toCurrency))
+                return amount;
+
+            var prices = CurrencyMarket.instance.currentPrices;
+            if (prices == null || prices.Length <= Math.Max(fromCurrency, toCurrency) || prices[fromCurrency] <= 0f)
+                return amount;
+
+            float rawValue = amount / prices[fromCurrency];
+            return Mathf.RoundToInt(rawValue * prices[toCurrency]);
+        }
+
+        private static void LogCrewPayment(int amount, int currency)
+        {
+            if (DayLogs.instance != null && DayLogs.instance.dayLogs != null && DayLogs.instance.dayLogs.Length > currency)
+                DayLogs.instance.dayLogs[currency].LogTransaction(amount, TransactionCategory.other);
+            if (MoneyNotification.instance != null)
+                MoneyNotification.instance.PlayNotif(amount, currency);
+        }
+
         private static Crewman FromSaveData(CrewmanSaveData d) =>
             new Crewman(d.name, d.role,
                 d.strength, d.dexterity, d.constitution, d.intelligence, d.wisdom, d.charisma,
@@ -746,6 +976,41 @@ namespace SailwindVirtualCrew
         public void AddBailRequest(BailRequest request)
         {
             BailRequests.Add(request);
+        }
+
+        public bool HasPendingMooringRequest(MooringSide side)
+        {
+            return MooringRequests.Any(r => r.Side == side && r.Status != WorkRequestStatus.Complete);
+        }
+
+        public bool CanAddMooringRequest(MooringSide side)
+        {
+            return !HasPendingMooringRequest(side) && MooringLocator.HasAvailableTargets(side);
+        }
+
+        public void AddMooringRequests(MooringSide side)
+        {
+            if (HasPendingMooringRequest(side))
+                return;
+
+            var excluded = MooringRequests
+                .Where(r => r.Status != WorkRequestStatus.Complete && r.TargetRope != null)
+                .Select(r => r.TargetRope)
+                .ToList();
+
+            if (!MooringLocator.TryFindAvailableRopes(side, excluded, out var ropes))
+                return;
+
+            foreach (var rope in ropes)
+                MooringRequests.Add(new MooringRequest(side, rope.Rope));
+        }
+
+        public void CancelMooringRequest(MooringRequest request)
+        {
+            request.CancelPositioning();
+            if (request.AssignedCrewman != null)
+                request.AssignedCrewman.CurrentTask = null;
+            MooringRequests.Remove(request);
         }
 
         public void CancelBailRequest(BailRequest request)
@@ -986,6 +1251,30 @@ namespace SailwindVirtualCrew
             }
             NavigateRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
+            // Mooring requests: walk to the selected side, tie available ropes to matching dock cleats, then complete.
+            foreach (var mooring in MooringRequests)
+            {
+                if (mooring.Status == WorkRequestStatus.Positioning
+                    && (mooring.IsPositioningComplete() || mooring.IsPositioningTimedOut()))
+                {
+                    mooring.Begin();
+                }
+                else if (mooring.Status == WorkRequestStatus.InProgress)
+                {
+                    mooring.Tick();
+                }
+            }
+
+            MooringRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+
+            foreach (var mooring in MooringRequests)
+            {
+                if (mooring.Status != WorkRequestStatus.Open) continue;
+                var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
+                if (crewman == null) break;
+                mooring.BeginPositioning(crewman);
+            }
+
             // Bail requests: tick active ones, then assign free deckhands to open ones.
             foreach (var bail in BailRequests)
             {
@@ -1007,8 +1296,13 @@ namespace SailwindVirtualCrew
             foreach (var sleep in SleepRequests)
             {
                 if (sleep.Status == WorkRequestStatus.InProgress)
+                {
                     sleep.Tick(deltaMinutes);
-                else if (sleep.Status == WorkRequestStatus.Positioning && navCoord.IsPositioningComplete(sleep))
+                    if (sleep.Status == WorkRequestStatus.Complete)
+                        navCoord.OnSleepCompleted(sleep.AssignedCrewman);
+                }
+                else if (sleep.Status == WorkRequestStatus.Positioning
+                      && (navCoord.IsPositioningComplete(sleep) || sleep.IsPositioningTimedOut()))
                 {
                     navCoord.Complete(sleep);
                     sleep.Begin();
@@ -1023,12 +1317,15 @@ namespace SailwindVirtualCrew
             foreach (var sleep in SleepRequests)
             {
                 if (sleep.Status != WorkRequestStatus.Open) continue;
+                if (sleep.AssignedCrewman.CurrentTask != sleep) continue;
                 if (availableBeds == null) availableBeds = LocatorUtils.FindBedsOnBoat();
                 var bed = availableBeds.FirstOrDefault(b => !SleepRequests.Any(s => s.AssignedBed == b));
                 if (bed == null) break;
-                sleep.BeginPositioning(bed);
-                navCoord.BeginSleep(sleep, sleep.AssignedCrewman, bed);
-                bedsInUse++;
+                if (navCoord.BeginSleep(sleep, sleep.AssignedCrewman, bed))
+                {
+                    sleep.BeginPositioning(bed);
+                    bedsInUse++;
+                }
             }
         }
 

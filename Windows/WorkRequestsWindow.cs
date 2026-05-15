@@ -40,13 +40,14 @@ namespace SailwindVirtualCrew
             var jibTrimRequests    = manager.JibTrimRequests;
             var squareTrimRequests = manager.SquareTrimRequests;
             var navigateRequests   = manager.NavigateRequests;
+            var mooringRequests    = manager.MooringRequests;
             var sleepRequests      = manager.SleepRequests;
             var pilotTask          = manager.ActivePilotTask;
             var lookoutTask        = manager.ActiveLookoutTask;
 
             int totalTasks = requests.Count + trimRequests.Count
                            + jibTrimRequests.Count + squareTrimRequests.Count
-                           + navigateRequests.Count + sleepRequests.Count
+                           + navigateRequests.Count + mooringRequests.Count + sleepRequests.Count
                            + (pilotTask   != null ? 1 : 0)
                            + (lookoutTask != null ? 1 : 0);
 
@@ -75,6 +76,9 @@ namespace SailwindVirtualCrew
                 foreach (var r in navigateRequests)
                     taskListHeight += r.Status == WorkRequestStatus.InProgress
                         ? InProgressTaskHeight : OpenTaskHeight;
+                foreach (var r in mooringRequests)
+                    taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
+                        ? InProgressTaskHeight : OpenTaskHeight;
                 foreach (var r in sleepRequests)
                     taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
                         ? InProgressTaskHeight : OpenTaskHeight;
@@ -98,6 +102,7 @@ namespace SailwindVirtualCrew
             var jibTrimRequests    = manager.JibTrimRequests;
             var squareTrimRequests = manager.SquareTrimRequests;
             var navigateRequests   = manager.NavigateRequests;
+            var mooringRequests    = manager.MooringRequests;
             var sleepRequests      = manager.SleepRequests;
             var pilotTask          = manager.ActivePilotTask;
             var lookoutTask        = manager.ActiveLookoutTask;
@@ -106,7 +111,7 @@ namespace SailwindVirtualCrew
 
             if (requests.Count == 0 && trimRequests.Count == 0
              && jibTrimRequests.Count == 0 && squareTrimRequests.Count == 0
-             && navigateRequests.Count == 0 && sleepRequests.Count == 0
+             && navigateRequests.Count == 0 && mooringRequests.Count == 0 && sleepRequests.Count == 0
              && pilotTask == null && lookoutTask == null)
             {
                 GUILayout.Label("No tasks queued.");
@@ -252,6 +257,35 @@ namespace SailwindVirtualCrew
                 }
             }
             if (navToCancel != null) manager.CancelNavigateRequest(navToCancel);
+
+            MooringRequest mooringToCancel = null;
+            foreach (var mooring in mooringRequests)
+            {
+                if (mooring.Status == WorkRequestStatus.Open)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[Waiting] " + mooring.CommandName);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) mooringToCancel = mooring;
+                    GUILayout.EndHorizontal();
+                }
+                else if (mooring.Status == WorkRequestStatus.Positioning)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + mooring.AssignedCrewman.Name + "] (moving) " + mooring.CommandName);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) mooringToCancel = mooring;
+                    GUILayout.EndHorizontal();
+                    DrawPositioningBar(mooring.GetPositioningProgress());
+                }
+                else if (mooring.Status == WorkRequestStatus.InProgress)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + mooring.AssignedCrewman.Name + "] " + mooring.CommandName);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) mooringToCancel = mooring;
+                    GUILayout.EndHorizontal();
+                    DrawProgressBar(mooring.GetProgress());
+                }
+            }
+            if (mooringToCancel != null) manager.CancelMooringRequest(mooringToCancel);
 
             SleepRequest sleepToCancel = null;
             foreach (var sleep in sleepRequests)

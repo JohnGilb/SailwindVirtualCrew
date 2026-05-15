@@ -42,7 +42,15 @@ namespace SailwindVirtualCrew
                 portCrewPools = mgr.PortCrewPools.ToDictionary(
                     kv => kv.Key,
                     kv => kv.Value.Select(c => c.ToSaveData()).ToList()),
-                windowPositions = windowPositions
+                windowPositions = windowPositions,
+                totalSalaryPay = mgr.TotalSalaryPay,
+                totalSharePayByCurrency = mgr.TotalSharePayByCurrency != null
+                    ? mgr.TotalSharePayByCurrency.ToArray()
+                    : new int[4],
+                cargoPayRecords = mgr.CargoPayRecords != null
+                    ? new Dictionary<int, CargoPaySaveData>(mgr.CargoPayRecords)
+                    : new Dictionary<int, CargoPaySaveData>(),
+                lookoutCertainties = mgr.GetLookoutCertaintySnapshot()
             };
             ModSave.Save(Plugin.Instance.Info, container);
         }
@@ -57,6 +65,8 @@ namespace SailwindVirtualCrew
                 VirtualCrewManager.Instance.AllVesselsData = data.vessels;
             VirtualCrewManager.Instance.RestoreShipCrew(data.shipCrew);
             VirtualCrewManager.Instance.RestorePortPools(data.portCrewPools);
+            VirtualCrewManager.Instance.RestorePayData(data.totalSalaryPay, data.totalSharePayByCurrency, data.cargoPayRecords);
+            VirtualCrewManager.Instance.StoreLookoutCertainties(data.lookoutCertainties);
             if (data.windowPositions != null)
                 foreach (var w in Plugin.Instance.GetComponents<IWindowPosition>())
                     if (data.windowPositions.TryGetValue(w.WindowKey, out var pos) && pos.Length >= 2)

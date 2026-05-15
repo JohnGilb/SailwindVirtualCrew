@@ -3,12 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using HarmonyLib;
 using UnityEngine;
 
 namespace SailwindVirtualCrew
 {
     internal static class LocatorUtils
     {
+        private const float LegacyBedScanRadius = 20f;
+        private const float DuplicateBedSleepPositionTolerance = 0.25f;
+
         public static int[] findItemCounts(string[] targetItemNames)
         {
             Vector3 playerPos = GameState.currentBoat.transform.position;
@@ -48,22 +52,20 @@ namespace SailwindVirtualCrew
 
         public static List<UnityEngine.Component> FindBedsOnBoat()
         {
-            Vector3 boatPos = GameState.lastBoat.transform.position;
-            float maxDistSqr = 20f * 20f;
             var beds = new List<UnityEngine.Component>();
+            var sleepTransforms = new HashSet<Transform>();
+            var sleepPositions = new List<Vector3>();
 
             foreach (ShipItemBed bed in GameObject.FindObjectsOfType<ShipItemBed>())
             {
-                bool inInventory = bed.GetCurrentInventorySlot() != -1 || bed.held != null;
-                bool isClose = (bed.transform.position - boatPos).sqrMagnitude <= maxDistSqr;
-                if (inInventory || isClose)
-                    beds.Add(bed);
+                if (IsBedOnCurrentVessel(bed))
+                    AddUniqueBed(beds, sleepTransforms, sleepPositions, bed);
             }
 
             foreach (GPButtonBed bed in GameObject.FindObjectsOfType<GPButtonBed>())
             {
-                if ((bed.transform.position - boatPos).sqrMagnitude <= maxDistSqr)
-                    beds.Add(bed);
+                if (IsBedOnCurrentVessel(bed))
+                    AddUniqueBed(beds, sleepTransforms, sleepPositions, bed);
             }
 
             return beds;
@@ -71,25 +73,154 @@ namespace SailwindVirtualCrew
 
         public static int CountBeds()
         {
-            Vector3 playerPos = GameState.lastBoat.transform.position;
-            float maxDistSqr = 20f * 20f;
-            int count = 0;
+            return FindBedsOnBoat().Count;
+        }
 
-            foreach (ShipItemBed bed in GameObject.FindObjectsOfType<ShipItemBed>())
+        public static float FindBestSpyglassZoomOnCurrentVessel()
+        {
+            float bestZoom = 1f;
+
+            foreach (var spyglass in GameObject.FindObjectsOfType<ShipItemSpyglass>())
             {
-                bool inInventory = bed.GetCurrentInventorySlot() != -1 || bed.held != null;
-                bool isClose = (bed.transform.position - playerPos).sqrMagnitude <= maxDistSqr;
-                if (inInventory || isClose)
-                    count++;
+                if (!IsItemAvailableOnCurrentVessel(spyglass))
+                    continue;
+
+                float zoom = Traverse.Create(spyglass).Field("maxZoom").GetValue<float>();
+                if (zoom > bestZoom)
+                    bestZoom = zoom;
             }
 
-            foreach (GPButtonBed bed in GameObject.FindObjectsOfType<GPButtonBed>())
+            return bestZoom;
+        }
+
+        public static float FindBestLookoutSpyglassZoomOnCurrentVessel()
+        {
+            return Mathf.Max(1f, FindBestSpyglassZoomOnCurrentVessel() / 5f);
+        }
+
+        private static bool IsItemAvailableOnCurrentVessel(ShipItem item)
+        {
+            if (!item)
+                return false;
+
+            if (ShipItemBelongsToCurrentVessel(item))
+                return true;
+
+            if (item.GetCurrentInventorySlot() != -1 || item.held != null)
+                return true;
+
+            return IsNearCurrentVesselReference(item.transform);
+        }
+
+        private static bool IsBedOnCurrentVessel(ShipItemBed bed)
+        {
+            if (!bed)
+                return false;
+
+            return IsItemAvailableOnCurrentVessel(bed);
+        }
+
+        private static bool IsBedOnCurrentVessel(GPButtonBed bed)
+        {
+            if (!bed)
+                return false;
+
+            if (bed.GetComponentInParent<ShipItemBed>())
+                return false;
+
+            return IsTransformOnCurrentVessel(bed.transform) || IsNearCurrentVesselReference(bed.transform);
+        }
+
+        private static void AddUniqueBed(
+            List<UnityEngine.Component> beds,
+            HashSet<Transform> sleepTransforms,
+            List<Vector3> sleepPositions,
+            UnityEngine.Component bed)
+        {
+            Transform sleepTransform = GetBedSleepTransform(bed);
+            if (sleepTransform && !sleepTransforms.Add(sleepTransform))
+                return;
+
+            Vector3 sleepPosition = sleepTransform ? sleepTransform.position : bed.transform.position;
+            float toleranceSqr = DuplicateBedSleepPositionTolerance * DuplicateBedSleepPositionTolerance;
+            foreach (var existingPosition in sleepPositions)
             {
-                if ((bed.transform.position - playerPos).sqrMagnitude <= maxDistSqr)
-                    count++;
+                if ((existingPosition - sleepPosition).sqrMagnitude <= toleranceSqr)
+                    return;
             }
 
-            return count;
+            sleepPositions.Add(sleepPosition);
+            beds.Add(bed);
+        }
+
+        private static Transform GetBedSleepTransform(UnityEngine.Component bed)
+        {
+            var shipBed = bed as ShipItemBed;
+            if (shipBed && shipBed.sleepPos)
+                return shipBed.sleepPos;
+
+            var buttonBed = bed as GPButtonBed;
+            if (buttonBed && buttonBed.sleepPos)
+                return buttonBed.sleepPos;
+
+            return bed ? bed.transform : null;
+        }
+
+        private static bool ShipItemBelongsToCurrentVessel(ShipItem item)
+        {
+            if (!item)
+                return false;
+
+            if (IsTransformOnCurrentVessel(item.transform)
+             || IsTransformOnCurrentVessel(item.currentActualBoat)
+             || IsTransformOnCurrentVessel(item.currentWalkCol))
+                return true;
+
+            int sceneIndex = GetCurrentVesselSceneIndex();
+            if (sceneIndex >= 0)
+            {
+                var saveable = item.GetComponent<SaveablePrefab>();
+                if (saveable && saveable.GetParentObject() == sceneIndex)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsTransformOnCurrentVessel(Transform transform)
+        {
+            if (!transform)
+                return false;
+
+            Transform worldBoat = GameState.currentBoat;
+            if (worldBoat && (transform == worldBoat || transform.IsChildOf(worldBoat)))
+                return true;
+
+            Transform topBoat = GameState.lastBoat;
+            return topBoat && (transform == topBoat || transform.IsChildOf(topBoat));
+        }
+
+        private static int GetCurrentVesselSceneIndex()
+        {
+            Transform topBoat = GameState.lastBoat;
+            if (!topBoat)
+                return -1;
+
+            var saveable = topBoat.GetComponent<SaveableObject>();
+            return saveable ? saveable.sceneIndex : -1;
+        }
+
+        private static bool IsNearCurrentVesselReference(Transform transform)
+        {
+            if (!transform)
+                return false;
+
+            Transform reference = GameState.lastBoat ? GameState.lastBoat : GameState.currentBoat;
+            if (!reference)
+                return false;
+
+            float maxDistSqr = LegacyBedScanRadius * LegacyBedScanRadius;
+            return (transform.position - reference.position).sqrMagnitude <= maxDistSqr;
         }
     }
 }

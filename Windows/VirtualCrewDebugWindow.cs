@@ -58,6 +58,15 @@ namespace SailwindVirtualCrew
                 CrewDebugObjects.ShowStationMarkers();
 
             GUILayout.Space(6);
+            GUILayout.Label("Mooring");
+            if (GUILayout.Button("Dump Mooring Scan"))
+                MooringDebugVisualizer.DumpScan();
+            if (GUILayout.Button("Show Mooring Side Markers"))
+                MooringDebugVisualizer.ShowMarkers();
+            if (GUILayout.Button("Clear Mooring Markers"))
+                MooringDebugVisualizer.ClearMarkers();
+
+            GUILayout.Space(6);
             GUILayout.Label("Diagnostics");
             if (GUILayout.Button("Dump Stations"))
                 CrewDebugObjects.DumpStations();

@@ -100,6 +100,7 @@ Tools:
 
 - Can operate bilge pumps
 - Can repair ships with Oakum
+- Throw lines to attach to port.
 
 #### Chief Officer
 
@@ -118,8 +119,10 @@ Tools:
 - Can collaborate with the Navigator to get the island name if you have a recent lat/lon and you've visited the goods trader on that island or have a chart with that island.
   - Not sure how the latter would work with scrambled seas...
   - Note that a bad lat/lon might mean they make a mistake and name it incorrectly!
+  - Once you get very close to an island you've been to before, they'll identify it via its shape.
 - Some way to "Announce" when land sighted when coming in from the ocean
 - Maybe some kind of proximity warning for things right in front of you?
+- Would also be interesting if they were affected by the wave height/ocean swells, just like the player.
 
 #### Chef
 

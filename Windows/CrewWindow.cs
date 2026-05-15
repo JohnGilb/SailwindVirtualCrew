@@ -121,6 +121,11 @@ namespace SailwindVirtualCrew
             }
 
             // ── Sail list ───────────────────────────────────────────────────
+            GUILayout.BeginHorizontal();
+            DrawMooringButton(manager, "Moor Port", MooringSide.Port);
+            DrawMooringButton(manager, "Moor Starboard", MooringSide.Starboard);
+            GUILayout.EndHorizontal();
+
             GUILayout.Label("Sails  (click to select)");
             if (sails.Count == 0)
             {
@@ -307,6 +312,14 @@ namespace SailwindVirtualCrew
             GUI.enabled = !manager.HasPendingRequestForWinch(winch);
             if (GUILayout.Button(label))
                 manager.AddTrimRequest(new TrimRequest(sail));
+            GUI.enabled = true;
+        }
+
+        private void DrawMooringButton(VirtualCrewManager manager, string label, MooringSide side)
+        {
+            GUI.enabled = manager.CanAddMooringRequest(side);
+            if (GUILayout.Button(label))
+                manager.AddMooringRequests(side);
             GUI.enabled = true;
         }
 

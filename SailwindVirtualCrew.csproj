@@ -104,6 +104,8 @@
     <Compile Include="CrewSoundPlayer.cs" />
     <Compile Include="FavoriteAction.cs" />
     <Compile Include="ModIntegrations.cs" />
+    <Compile Include="MooringLocator.cs" />
+    <Compile Include="MooringDebugVisualizer.cs" />
     <Compile Include="ProxyBoat.cs" />
     <Compile Include="ProxyBoatBuilder.cs" />
     <Compile Include="ProxyLogicAgent.cs" />
@@ -111,11 +113,13 @@
     <Compile Include="ProxyToBoatPoseSync.cs" />
     <Compile Include="Requests\BailRequest.cs" />
     <Compile Include="Requests\LookoutTask.cs" />
+    <Compile Include="Requests\MooringRequest.cs" />
     <Compile Include="Requests\PilotTask.cs" />
     <Compile Include="Requests\SleepRequest.cs" />
     <Compile Include="IWindowPosition.cs" />
     <Compile Include="WindowResizer.cs" />
     <Compile Include="LocatorUtils.cs" />
+    <Compile Include="LookoutVisibility.cs" />
     <Compile Include="SailwindGuiStyle.cs" />
     <Compile Include="WeatherUtils.cs" />
     <Compile Include="Windows\VirtualCrewDebugWindow.cs" />
@@ -128,6 +132,7 @@
     <Compile Include="Requests\NavigationResult.cs" />
     <Compile Include="Windows\MaintenanceWindow.cs" />
     <Compile Include="Windows\NavigatorWindow.cs" />
+    <Compile Include="Patches\CrewPayPatches.cs" />
     <Compile Include="Patches\PortDudePatches.cs" />
     <Compile Include="PilotController.cs" />
     <Compile Include="Windows\PilotingWindow.cs" />

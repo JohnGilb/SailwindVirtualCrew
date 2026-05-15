@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace SailwindVirtualCrew
 {
     public class SleepRequest
@@ -5,6 +7,10 @@ namespace SailwindVirtualCrew
         public Crewman           AssignedCrewman { get; }
         public WorkRequestStatus Status          { get; set; } = WorkRequestStatus.Open;
         public UnityEngine.Component AssignedBed { get; private set; }
+
+        private const float PositioningGraceSeconds = 6f;
+        private float positioningStartTime;
+        private float positioningTimeTotal;
 
         // Full rest in 8 in-game hours (480 in-game minutes), regardless of MaxStamina.
         private float RestoreRatePerMinute => AssignedCrewman.MaxStamina / 480f;
@@ -18,11 +24,17 @@ namespace SailwindVirtualCrew
         public void BeginPositioning(UnityEngine.Component bed)
         {
             AssignedBed = bed;
-            Status      = WorkRequestStatus.Positioning;
+            positioningTimeTotal = Mathf.Max(0f, 7f - AssignedCrewman.Dexterity);
+            positioningStartTime = Time.time;
+            Status = WorkRequestStatus.Positioning;
         }
 
         public float GetPositioningProgress() =>
             CrewNavigationCoordinator.Instance.GetPositioningProgress(this);
+
+        public bool IsPositioningTimedOut() =>
+            Status == WorkRequestStatus.Positioning
+         && Time.time >= positioningStartTime + positioningTimeTotal + PositioningGraceSeconds;
 
         public void Begin()
         {
@@ -44,7 +56,8 @@ namespace SailwindVirtualCrew
         private void Complete()
         {
             Status = WorkRequestStatus.Complete;
-            AssignedCrewman.CurrentTask = null;
+            if (AssignedCrewman.CurrentTask == this)
+                AssignedCrewman.CurrentTask = null;
         }
     }
 }

@@ -39,6 +39,22 @@ namespace SailwindVirtualCrew
     }
 
     [Serializable]
+    public class CargoPaySaveData
+    {
+        public int instanceId;
+        public int prefabIndex;
+        public int purchasePrice;
+        public int purchaseCurrency;
+        public int purchaseDay;
+        public int salePrice;
+        public int saleCurrency;
+        public int saleDay;
+        public int profit;
+        public int sharePaid;
+        public bool sold;
+    }
+
+    [Serializable]
     public class VesselSaveData
     {
         public string friendlyName;
@@ -56,5 +72,9 @@ namespace SailwindVirtualCrew
         public List<CrewmanSaveData> shipCrew;
         public Dictionary<string, List<CrewmanSaveData>> portCrewPools;
         public Dictionary<string, float[]> windowPositions;
+        public int totalSalaryPay;
+        public int[] totalSharePayByCurrency;
+        public Dictionary<int, CargoPaySaveData> cargoPayRecords;
+        public Dictionary<string, float> lookoutCertainties;
     }
 }

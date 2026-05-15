@@ -103,6 +103,15 @@ namespace SailwindVirtualCrew
             actor?.RefreshRestLocation();
         }
 
+        internal void OnSleepCompleted(Crewman crewman)
+        {
+            if (crewman == null || !EnsureRuntimeReady())
+                return;
+
+            var actor = GetOrCreateActor(crewman);
+            actor?.StartReturnToRest();
+        }
+
         internal bool TryProjectLocalToNavMesh(Vector3 localPosition, out Vector3 projectedLocal)
         {
             projectedLocal = localPosition;
@@ -260,17 +269,45 @@ namespace SailwindVirtualCrew
             }
         }
 
-        internal void BeginSleep(SleepRequest request, Crewman crewman, Component bed)
+        internal bool TryBeginRolePositioning(object owner, Crewman crewman, Vector3 destinationLocal, Quaternion arrivalRotation, string label)
         {
-            if (request == null || crewman == null || !bed || !EnsureRuntimeReady())
-                return;
+            if (owner == null || crewman == null)
+                return false;
 
-            if (_actorsByOwner.ContainsKey(request))
-                return;
+            if (_actorsByOwner.ContainsKey(owner))
+                return true;
+
+            if (!EnsureRuntimeReady())
+                return false;
 
             var actor = GetOrCreateActor(crewman);
             if (actor == null || actor.ActiveOwner != null)
-                return;
+            {
+                CrewDebugLog.Warn(Phase, "Could not start role positioning crew='" + crewman.Name + "' label='" + label + "'");
+                return false;
+            }
+
+            if (!actor.BeginRole(owner, destinationLocal, arrivalRotation, label))
+                return false;
+
+            _actorsByOwner[owner] = actor;
+            return true;
+        }
+
+        internal bool BeginSleep(SleepRequest request, Crewman crewman, Component bed)
+        {
+            if (request == null || crewman == null || !bed || !EnsureRuntimeReady())
+                return false;
+
+            if (_actorsByOwner.ContainsKey(request))
+                return true;
+
+            var actor = GetOrCreateActor(crewman);
+            if (actor == null || actor.ActiveOwner != null)
+            {
+                CrewDebugLog.Warn(Phase, "Could not start sleep positioning crew='" + crewman.Name + "' bed='" + bed.name + "'");
+                return false;
+            }
 
             Vector3 bedWorld = GetBedSleepPosition(bed);
             Vector3 bedLocal = _context.WorldBoat.InverseTransformPoint(bedWorld);
@@ -282,6 +319,7 @@ namespace SailwindVirtualCrew
                 actor.TeleportToRole(request, bedLocal, bedRotation, Vector3.up * 0.33f);
             }
             _actorsByOwner[request] = actor;
+            return true;
         }
 
         private static Vector3 GetBedSleepPosition(Component bed)
@@ -306,6 +344,17 @@ namespace SailwindVirtualCrew
                 return 100f;
 
             return actor.GetPositioningProgress();
+        }
+
+        internal bool TryGetLookoutEyeWorldPosition(Crewman crewman, out Vector3 eyeWorldPosition)
+        {
+            eyeWorldPosition = Vector3.zero;
+            if (crewman == null)
+                return false;
+
+            return _actorsByCrew.TryGetValue(crewman, out var actor)
+                && actor.IsValid
+                && actor.TryGetLookoutEyeWorldPosition(out eyeWorldPosition);
         }
 
         internal float EstimateDistanceToWinch(Crewman crewman, GPButtonRopeWinch winch)
@@ -602,6 +651,8 @@ namespace SailwindVirtualCrew
             private int  _lastAppliedDexterity    = -1;
             private bool _lookoutSawLand;
             private bool _suppressNextLandDetection;
+            private float _lastLookoutCertaintyGameHour;
+            private bool _hasLastLookoutCertaintyGameHour;
 
             internal bool LookoutSawLand => _lookoutSawLand;
             internal void SetLookoutSuppressFirst(bool suppress) { _suppressNextLandDetection = suppress; }
@@ -706,6 +757,8 @@ namespace SailwindVirtualCrew
 
                 _lookoutActive = true;
                 _nextLookoutDecisionTime = 0f;
+                _lastLookoutCertaintyGameHour = GetCurrentGameHour();
+                _hasLastLookoutCertaintyGameHour = true;
                 return true;
             }
 
@@ -787,6 +840,7 @@ namespace SailwindVirtualCrew
                 _lookoutActive = false;
                 _lookoutSawLand = false;
                 _suppressNextLandDetection = false;
+                _hasLastLookoutCertaintyGameHour = false;
             }
 
             internal void Cancel()
@@ -855,14 +909,26 @@ namespace SailwindVirtualCrew
                 if (tracker == null || tracker.islands == null || tracker.islands.Count == 0)
                     return false;
 
-                Vector3 from = _context.WorldBoat.TransformPoint(_lookoutStartLocal);
-                foreach (var item in tracker.islands
+                Vector3 from = GetLookoutEyeWorldPosition();
+                float deltaGameHours = GetLookoutDeltaGameHours();
+                float zoom = LocatorUtils.FindBestLookoutSpyglassZoomOnCurrentVessel();
+
+                var nearby = tracker.islands
                     .Where(i => i != null)
                     .Select(i => new { Island = i, Distance = Vector3.Distance(i.GetPosition(), from) })
                     .OrderBy(x => x.Distance)
-                    .Take(8))
+                    .Take(8)
+                    .ToList();
+
+                foreach (var item in nearby)
                 {
-                    if (IsLandVisible(item.Island, item.Distance))
+                    bool clearView = IsLandVisible(item.Island, item.Distance, from, zoom);
+                    UpdateLookoutCertainty(item.Island, clearView, deltaGameHours);
+                }
+
+                foreach (var item in nearby)
+                {
+                    if (GetLookoutCertainty(item.Island) >= 1f)
                     {
                         islandPosition = item.Island.GetPosition();
                         return true;
@@ -877,63 +943,85 @@ namespace SailwindVirtualCrew
                 if (island == null || distance <= 0f)
                     return false;
 
-                float peak = GetPeakAboveRoot(island);
-                if (peak <= 0f)
+                float zoom = LocatorUtils.FindBestLookoutSpyglassZoomOnCurrentVessel();
+                return LookoutVisibility.TryEvaluate(island, GetLookoutEyeWorldPosition(), Crew, zoom, out var result)
+                    && result.IsVisible;
+            }
+
+            private bool IsLandVisible(IslandHorizon island, float distance, Vector3 observerWorld, float zoom)
+            {
+                if (island == null || distance <= 0f)
                     return false;
 
-                float currentDrop = GetInitialHeight(island) - island.transform.localPosition.y;
-                float visibleHeight = peak - currentDrop;
-                float angleDeg = Mathf.Atan2(visibleHeight, distance) * Mathf.Rad2Deg;
-                float threshold = 1f - Crew.Wisdom * 0.1f;
-                if (IsNightwatch()) threshold *= 5f;
-                return angleDeg >= threshold;
+                return LookoutVisibility.TryEvaluate(island, observerWorld, Crew, zoom, out var result)
+                    && result.IsVisible;
             }
 
-            private static bool IsNightwatch()
+            internal float GetLookoutCertainty(IslandHorizon island)
             {
-                float t = Sun.sun.localTime;
-                return t >= 20f || t < 4f;
+                return VirtualCrewManager.Instance.GetLookoutCertainty(island);
             }
 
-            private float GetPeakAboveRoot(IslandHorizon island)
+            private void UpdateLookoutCertainty(IslandHorizon island, bool clearView, float deltaGameHours)
             {
-                float maxY = ScanMaxWorldY(island);
-                return maxY == float.MinValue ? 0f : maxY - island.transform.position.y;
+                if (island == null || deltaGameHours <= 0f)
+                    return;
+
+                float certainty = VirtualCrewManager.Instance.GetLookoutCertainty(island);
+                float delta = clearView
+                    ? deltaGameHours * (Crew.Dexterity / 3f)
+                    : -deltaGameHours;
+
+                VirtualCrewManager.Instance.SetLookoutCertainty(island, certainty + delta);
             }
 
-            private float ScanMaxWorldY(IslandHorizon island)
+            private float GetLookoutDeltaGameHours()
             {
-                float maxY = float.MinValue;
-
-                foreach (var renderer in island.GetComponentsInChildren<Renderer>())
+                float now = GetCurrentGameHour();
+                if (!_hasLastLookoutCertaintyGameHour)
                 {
-                    if (renderer.bounds.min.y < 250f && renderer.bounds.max.y > maxY)
-                        maxY = renderer.bounds.max.y;
+                    _lastLookoutCertaintyGameHour = now;
+                    _hasLastLookoutCertaintyGameHour = true;
+                    return 0f;
                 }
 
-                if (island.islandIndex > 0 && island.SceneLoaded())
-                {
-                    var scene = SceneManager.GetSceneByBuildIndex(island.islandIndex);
-                    if (scene.isLoaded)
-                    {
-                        foreach (var root in scene.GetRootGameObjects())
-                        {
-                            foreach (var renderer in root.GetComponentsInChildren<Renderer>())
-                            {
-                                if (renderer.bounds.min.y < 250f && renderer.bounds.max.y > maxY)
-                                    maxY = renderer.bounds.max.y;
-                            }
-                        }
-                    }
-                }
+                float delta = now - _lastLookoutCertaintyGameHour;
+                if (delta < 0f)
+                    delta += 24f;
 
-                return maxY;
+                _lastLookoutCertaintyGameHour = now;
+                return Mathf.Clamp(delta, 0f, 24f);
             }
 
-            private static float GetInitialHeight(IslandHorizon island)
+            private static float GetCurrentGameHour()
             {
-                try { return Traverse.Create(island).Field("initialHeight").GetValue<float>(); }
-                catch { return 0f; }
+                return Sun.sun != null
+                    ? Sun.sun.globalTime
+                    : Time.time / 3600f;
+            }
+
+            private Vector3 GetLookoutEyeWorldPosition()
+            {
+                if (TryGetLookoutEyeWorldPosition(out var eyeWorldPosition))
+                    return eyeWorldPosition;
+
+                return _context.WorldBoat.TransformPoint(_lookoutStartLocal + Vector3.up * 1.7f);
+            }
+
+            internal bool TryGetLookoutEyeWorldPosition(out Vector3 eyeWorldPosition)
+            {
+                eyeWorldPosition = Vector3.zero;
+                if (_visualAgent == null || !_visualAgent.VisualRoot)
+                    return false;
+
+                Transform root = _visualAgent.VisualRoot.transform;
+                float topY = root.position.y + 1.7f;
+                foreach (var renderer in _visualAgent.VisualRoot.GetComponentsInChildren<Renderer>())
+                    if (renderer != null && renderer.bounds.max.y > topY)
+                        topY = renderer.bounds.max.y;
+
+                eyeWorldPosition = new Vector3(root.position.x, topY, root.position.z);
+                return true;
             }
 
             private Quaternion GetLocalLookRotationTowardWorld(Vector3 worldPosition)
@@ -988,6 +1076,24 @@ namespace SailwindVirtualCrew
                     }
                     else
                         MoveToRest();
+                }
+            }
+
+            internal void StartReturnToRest()
+            {
+                RefreshRestLocation();
+                if (!_hasRestLocation || ActiveOwner != null || Crew.IsOccupied)
+                    return;
+
+                _returningToRest = false;
+                if (LocalHorizontalDistance(_logicAgent.CurrentLocalPosition, _restStandLocalPosition) <= 0.35f)
+                {
+                    _logicAgent.Stop();
+                    _poseSync.SetPoseOverride(_logicAgent.CurrentLocalPosition, _restLocalRotation);
+                }
+                else
+                {
+                    MoveToRest();
                 }
             }
 

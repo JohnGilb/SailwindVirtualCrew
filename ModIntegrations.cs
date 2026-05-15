@@ -39,7 +39,7 @@ namespace SailwindVirtualCrew
 
                 harmony.Patch(setVisible, prefix: new HarmonyMethod(
                     typeof(CargoControllerGate), nameof(CargoControllerGate.SetVisiblePrefix)));
-                Debug.Log("[VirtualCrew] CargoController gated: Quartermaster required.");
+                Debug.Log("[VirtualCrew] CargoController gated: awake Quartermaster required.");
             }
             catch (Exception ex)
             {
@@ -62,11 +62,11 @@ namespace SailwindVirtualCrew
                 }
 
                 // Postfix at Low priority so we run after ProfitPercent's Normal-priority postfix,
-                // then clear the columns it populated if no Supercargo is hired.
+                // then clear the columns it populated if no Supercargo is awake.
                 harmony.Patch(showGoodPage, postfix: new HarmonyMethod(
                     typeof(ProfitPercentGate), nameof(ProfitPercentGate.ShowGoodPagePostfix))
                 { priority = Priority.Low });
-                Debug.Log("[VirtualCrew] ProfitPercent gated: Supercargo required.");
+                Debug.Log("[VirtualCrew] ProfitPercent gated: awake Supercargo required.");
             }
             catch (Exception ex)
             {
@@ -77,13 +77,13 @@ namespace SailwindVirtualCrew
 
     internal static class CargoControllerGate
     {
-        // Blocks CargoControllerUI.SetVisible(true) unless a Quartermaster is hired.
+        // Blocks CargoControllerUI.SetVisible(true) unless a Quartermaster is awake.
         public static bool SetVisiblePrefix(bool visible)
         {
             if (!visible) return true; // always allow closing
             var mgr = VirtualCrewManager.Instance;
             if (mgr == null) return true; // before save loaded
-            return mgr.Crew.Any(c => c.Role == ShipRole.Quartermaster);
+            return CrewRoleAvailability.HasAwakeCrew(ShipRole.Quartermaster);
         }
     }
 
@@ -104,7 +104,7 @@ namespace SailwindVirtualCrew
         {
             var mgr = VirtualCrewManager.Instance;
             if (mgr == null) return;
-            if (mgr.Crew.Any(c => c.Role == ShipRole.Supercargo)) return;
+            if (CrewRoleAvailability.HasAwakeCrew(ShipRole.Supercargo)) return;
             ClearProfitColumns();
             StripProfitColors();
         }
@@ -131,6 +131,18 @@ namespace SailwindVirtualCrew
             var tm = textProfitField?.GetValue(EconomyUI.instance) as TextMesh;
             if (tm == null) return;
             tm.text = Regex.Replace(tm.text, @"<[^>]+>", "");
+        }
+    }
+
+    internal static class CrewRoleAvailability
+    {
+        internal static bool HasAwakeCrew(ShipRole role)
+        {
+            var mgr = VirtualCrewManager.Instance;
+            return mgr != null && mgr.Crew.Any(c =>
+                c.Role == role
+                && !c.IsExhausted
+                && !(c.CurrentTask is SleepRequest));
         }
     }
 }

@@ -21,7 +21,7 @@ namespace SailwindVirtualCrew
             var worldBoat = GameState.currentBoat;
             if (!worldBoat)
             {
-                CrewDebugLog.Fail(Phase, "GameState.currentBoat is null; player may not be embarked.");
+                //CrewDebugLog.Fail(Phase, "GameState.currentBoat is null; player may not be embarked.");
                 return null;
             }
 
