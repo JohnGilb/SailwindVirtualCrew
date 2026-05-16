@@ -22,6 +22,7 @@ namespace SailwindVirtualCrew
         private float currentInputMax;
         private bool  autopilotEngaged   = false;
         private float helmSearchCooldown = 0f;
+        private PilotTask observedPilotTask;
 
         // Player order vs pilot's best attempt
         private float playerSelectedHeading;
@@ -56,6 +57,8 @@ namespace SailwindVirtualCrew
         {
             if (Plugin.ToggleCrewWindow.Value.IsDown())
                 showWindow = !showWindow;
+
+            SyncActivePilotTask();
 
             // Helm search runs regardless of window visibility.
             helmSearchCooldown -= Time.deltaTime;
@@ -114,6 +117,30 @@ namespace SailwindVirtualCrew
         {
             if (steeringWheel != null)
                 Traverse.Create(steeringWheel).Field("locked").SetValue(false);
+        }
+
+        private void SyncActivePilotTask()
+        {
+            PilotTask activePilotTask = VirtualCrewManager.Instance.ActivePilotTask;
+            if (observedPilotTask == activePilotTask)
+                return;
+
+            observedPilotTask = activePilotTask;
+            ResetPilotingOrder();
+        }
+
+        private void ResetPilotingOrder()
+        {
+            controller.ClearTarget();
+            hasPlayerSelection = false;
+            holdWindAngle = false;
+            pilotHeadingError = 0f;
+
+            if (autopilotEngaged)
+            {
+                ReleaseWheel();
+                autopilotEngaged = false;
+            }
         }
 
         private float GetCurrentHeading()
@@ -272,6 +299,8 @@ namespace SailwindVirtualCrew
 
         private void DrawWindow(int id)
         {
+            SyncActivePilotTask();
+
             // Suppress Tab so the game's free-look binding doesn't fire.
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
@@ -376,12 +405,7 @@ namespace SailwindVirtualCrew
                 GUI.enabled = true;
                 GUILayout.Space(6);
                 if (GUILayout.Button("Clear"))
-                {
-                    controller.ClearTarget();
-                    hasPlayerSelection = false;
-                    holdWindAngle = false;
-                    if (autopilotEngaged) { ReleaseWheel(); autopilotEngaged = false; }
-                }
+                    ResetPilotingOrder();
                 GUILayout.EndHorizontal();
 
                 GUILayout.BeginHorizontal();
@@ -396,12 +420,7 @@ namespace SailwindVirtualCrew
                 GUILayout.BeginHorizontal();
                 GUILayout.FlexibleSpace();
                 if (GUILayout.Button("Clear"))
-                {
-                    controller.ClearTarget();
-                    hasPlayerSelection = false;
-                    holdWindAngle = false;
-                    if (autopilotEngaged) { ReleaseWheel(); autopilotEngaged = false; }
-                }
+                    ResetPilotingOrder();
                 GUILayout.EndHorizontal();
             }
 
