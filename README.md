@@ -1,3 +1,5 @@
+Contributors, please read the Contributor Guide: (<https://github.com/JohnGilb/SailwindVirtualCrew/blob/main/ContributorGuide.md>)
+
 # SailwindVirtualCrew
 
 SailwindVirtualCrew adds crew as both an automation element and a new aspect of in-game progression to Sailwind. As part of your journey, you can collect and curate a crew to assist in managing your ship, your navigation, and quality of life.
@@ -106,6 +108,10 @@ Tools:
 - Can operate bilge pumps
 - Can repair ships with Oakum
 - Add "harden/ease" buttons to dual-sheet sails (Squares, jibs) for fine adjustment
+
+#### Pilot
+
+- Should only show Apparent Wind Angle if you have a wind compass
 
 #### Chief Officer
 

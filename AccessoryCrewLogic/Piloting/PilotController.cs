@@ -34,6 +34,11 @@ namespace SailwindVirtualCrew
             lastError     = 0f;
         }
 
+        public void UpdateTarget(float heading)
+        {
+            TargetHeading = Normalize(heading);
+        }
+
         public void ClearTarget()
         {
             TargetHeading = null;
