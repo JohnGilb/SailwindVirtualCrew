@@ -104,8 +104,17 @@ namespace SailwindVirtualCrew
 	            VirtualCrewManager.Instance.SetCurrentVessel(vesselKey);
 	            VirtualCrewManager.Instance.Reset();
 
-	            // Phase 1: Scan entire boat root for all winches and build physical mapping
-	            GPButtonRopeWinch[] winches = GameState.currentBoat.transform.root.GetComponentsInChildren<GPButtonRopeWinch>();
+                // Find the true boat root (the parent with BoatRefs) to find all sibling hardware
+                BoatRefs rootRefs = GameState.currentBoat.GetComponentInParent<BoatRefs>();
+                if (rootRefs == null)
+                {
+                    Console.WriteLine("CRITICAL ERROR: Could not find BoatRefs for current boat!");
+                    return;
+                }
+                Transform boatRoot = rootRefs.transform;
+
+	            // Phase 1: Scan this specific boat hierarchy for all winches and build physical mapping
+	            GPButtonRopeWinch[] winches = boatRoot.GetComponentsInChildren<GPButtonRopeWinch>();
                 var reefWinchesBySail = new Dictionary<Sail, GPButtonRopeWinch>();
                 var angleWinchesBySail = new Dictionary<Sail, List<GPButtonRopeWinch>>();
 
@@ -115,6 +124,10 @@ namespace SailwindVirtualCrew
 	            foreach (GPButtonRopeWinch winch in winches)
 	            {
                     if (winch.rope == null) continue; // Ignore broken templates left by mods
+
+                    // Only capture winches where this vessel is the nearest boat parent 
+                    // (prevents capturing winches from stowed/nested boats like dinghies).
+                    if (winch.GetComponentInParent<BoatRefs>() != rootRefs) continue;
 
                     if (winch.rope is RopeControllerAnchor)
                     {
@@ -142,7 +155,7 @@ namespace SailwindVirtualCrew
                         }
                     }
 	            }
-                Console.WriteLine($"Found {winches.Length} total winches on the boat root. {validSailWinches} are active sail winches. {anchorWinchesFound} are anchors.");
+                Console.WriteLine($"Found {validSailWinches} active sail winches and {anchorWinchesFound} anchors on {boatRoot.name}.");
 
 
 	            Mast[] mastList = GameState.currentBoat.GetComponentsInChildren<Mast>();
@@ -335,7 +348,8 @@ namespace SailwindVirtualCrew
             if (mirror == null || mirror.sailBelow == null) return null;
 
             HingeJoint current = mirror.sailBelow;
-            while (current != null)
+            int safety = 0;
+            while (current != null && safety < 20)
             {
                 var nextMirror = current.GetComponent<SquareTopsailAngleMirror>();
                 if (nextMirror == null || nextMirror.sailBelow == null)
@@ -343,6 +357,7 @@ namespace SailwindVirtualCrew
                     return current.GetComponent<Sail>();
                 }
                 current = nextMirror.sailBelow;
+                safety++;
             }
             return null;
         }
