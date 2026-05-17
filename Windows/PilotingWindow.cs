@@ -205,6 +205,25 @@ namespace SailwindVirtualCrew
             return $"{Mathf.Abs(angle):000.0} {(angle > 0f ? "Stbd" : "Port")}";
         }
 
+        private static string FormatWindAngleCoarse(float angle)
+        {
+            float abs = Mathf.Abs(angle);
+            string side = angle >= 0f ? "Stbd" : "Port";
+            if (abs < 10f) return "Ahead";
+            if (abs < 60f) return side + " Close";
+            if (abs < 115f) return side + " Beam";
+            if (abs < 160f) return side + " Broad";
+            return side + " Run";
+        }
+
+        private static string FormatTarget(float heading, float windAngle, bool windHold)
+        {
+            if (DeveloperMode.IsEnabled)
+                return windHold ? FormatWindAngle(windAngle) : $"{heading:000.0}";
+
+            return windHold ? FormatWindAngleCoarse(windAngle) : Cardinal(heading + 90f);
+        }
+
         // Stores the player's ordered heading and asks the pilot to steer their best attempt.
         private void SetPlayerTarget(float heading)
         {
@@ -381,12 +400,16 @@ namespace SailwindVirtualCrew
             GUILayout.BeginHorizontal();
             GUILayout.Label("HDG", noWrapLabel, GUILayout.Width(58));
             GUI.enabled = false;
-            GUILayout.TextField($"{compassHeading:000.0} {Cardinal(compassHeading)}", GUILayout.Width(96));
+            GUILayout.TextField(DeveloperMode.IsEnabled
+                ? $"{compassHeading:000.0} {Cardinal(compassHeading)}"
+                : Cardinal(compassHeading), GUILayout.Width(96));
             GUI.enabled = true;
             GUILayout.Space(12);
             GUILayout.Label("AWA", noWrapLabel, GUILayout.Width(58));
             GUI.enabled = false;
-            GUILayout.TextField(FormatWindAngle(apparentWindAngle), GUILayout.Width(118));
+            GUILayout.TextField(DeveloperMode.IsEnabled
+                ? FormatWindAngle(apparentWindAngle)
+                : FormatWindAngleCoarse(apparentWindAngle), GUILayout.Width(118));
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 
@@ -434,7 +457,7 @@ namespace SailwindVirtualCrew
             GUILayout.Label("Target", noWrapLabel, GUILayout.Width(72));
             GUI.enabled = false;
             GUILayout.TextField(hasPlayerSelection
-                ? (holdWindAngle ? FormatWindAngle(playerSelectedWindAngle) : $"{playerSelectedHeading:000.0}")
+                ? FormatTarget(playerSelectedHeading, playerSelectedWindAngle, holdWindAngle)
                 : "-", GUILayout.Width(118));
             GUI.enabled = true;
             GUILayout.EndHorizontal();
