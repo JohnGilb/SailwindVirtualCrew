@@ -42,6 +42,8 @@ namespace SailwindVirtualCrew
         public Dictionary<string, string> LookoutIdentifiedNames { get; private set; }
         public Dictionary<string, float> LookoutIgnoredUntil { get; private set; }
         public Dictionary<string, bool> VisitedPorts { get; private set; }
+        public float LookoutSpyglassZoom { get; private set; } = 1f;
+        public bool LookoutSpyglassScanned { get; private set; }
 
         public List<SailGroup> SailGroups { get; private set; }
         public SailGroup AllSailsGroup { get; private set; }
@@ -633,6 +635,7 @@ namespace SailwindVirtualCrew
         {
             if (crewman == null || crewman.Role != ShipRole.Lookout || !IsCrewAssignable(crewman)) return;
             StopLookout();
+            ScanLookoutSpyglass();
             ActiveLookoutTask = new LookoutTask(crewman);
         }
 
@@ -640,6 +643,17 @@ namespace SailwindVirtualCrew
         {
             ActiveLookoutTask?.Cancel();
             ActiveLookoutTask = null;
+        }
+
+        public void ScanLookoutSpyglass()
+        {
+            LookoutSpyglassZoom = LocatorUtils.FindBestLookoutSpyglassZoomOnCurrentVessel();
+            LookoutSpyglassScanned = true;
+        }
+
+        public float GetLookoutSpyglassZoom()
+        {
+            return LookoutSpyglassScanned ? Mathf.Max(1f, LookoutSpyglassZoom) : 1f;
         }
 
         public void AssignNavigator(Crewman crewman)
