@@ -91,10 +91,10 @@ namespace SailwindVirtualCrew
             var navigator = manager.Navigator;
             var pending   = manager.NavigateRequests.Count > 0
                             ? manager.NavigateRequests[0] : null;
-            bool showLocalTime = ShouldShowLocalTime(manager, navigator);
+            bool showGlobalTime = ShouldShowGlobalTime(manager, navigator);
 
             float contentHeight = ButtonHeight * 2                               // name + stats
-                                + (showLocalTime ? ButtonHeight : 0f)            // chronometer local time
+                                + (showGlobalTime ? ButtonHeight : 0f)           // chronometer global time
                                 + ButtonHeight                                   // Search for Tools button
                                 + 4f + ButtonHeight                              // space + "Equipment:"
                                 + 6 * ButtonHeight                               // 6 tool status labels
@@ -159,8 +159,8 @@ namespace SailwindVirtualCrew
             else
                 GUILayout.Label($"Dexterity: {navigator.AdvDexterity}   Intelligence: {navigator.AdvIntelligence}");
 
-            if (ShouldShowLocalTime(manager, navigator))
-                GUILayout.Label($"Local Time: {FormatLocalTimeMinute()}");
+            if (ShouldShowGlobalTime(manager, navigator))
+                GUILayout.Label($"Global Time: {FormatGlobalTimeMinute()}");
 
             // ── Tool search ─────────────────────────────────────────────────
             if (GUILayout.Button("Search for Tools"))
@@ -250,14 +250,14 @@ namespace SailwindVirtualCrew
 
         private static string Check(bool value) => value ? "[x]" : "[ ]";
 
-        private bool ShouldShowLocalTime(VirtualCrewManager manager, Crewman navigator)
+        private bool ShouldShowGlobalTime(VirtualCrewManager manager, Crewman navigator)
         {
             return manager.IsCrewAvailable(navigator) && hasChronometer;
         }
 
-        private static string FormatLocalTimeMinute()
+        private static string FormatGlobalTimeMinute()
         {
-            int totalMinutes = Mathf.RoundToInt(Sun.sun.localTime * 60f);
+            int totalMinutes = Mathf.RoundToInt(Sun.sun.globalTime * 60f);
             totalMinutes %= 24 * 60;
             if (totalMinutes < 0)
                 totalMinutes += 24 * 60;

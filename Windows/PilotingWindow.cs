@@ -6,7 +6,7 @@ namespace SailwindVirtualCrew
     public class PilotingWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(440, 20, 420, 800);
+        private Rect windowRect = new Rect(440, 20, 470, 800);
         private static readonly int windowId = "VirtualCrewPilotWindow".GetHashCode();
 
         private WindowResizer _resizer;
@@ -22,10 +22,14 @@ namespace SailwindVirtualCrew
         private float currentInputMax;
         private bool  autopilotEngaged   = false;
         private float helmSearchCooldown = 0f;
+        private PilotTask observedPilotTask;
 
         // Player order vs pilot's best attempt
         private float playerSelectedHeading;
+        private float playerSelectedWindAngle;
+        private float pilotHeadingError;
         private bool  hasPlayerSelection = false;
+        private bool  holdWindAngle = false;
 
         // Compass circle
         private const int CircleRadius = 100;
@@ -34,6 +38,8 @@ namespace SailwindVirtualCrew
         private Texture2D orderedDotTex;  // green  = player's ordered heading
         private Texture2D goalDotTex;     // yellow = pilot's helm (best attempt)
         private Texture2D currentDotTex;  // white  = actual current heading
+        private Texture2D windDotTex;     // cyan   = apparent wind direction
+        private Texture2D windLineTex;
 
         // PID values
         private float kp = 0.1f;
@@ -51,6 +57,8 @@ namespace SailwindVirtualCrew
         {
             if (Plugin.ToggleCrewWindow.Value.IsDown())
                 showWindow = !showWindow;
+
+            SyncActivePilotTask();
 
             // Helm search runs regardless of window visibility.
             helmSearchCooldown -= Time.deltaTime;
@@ -74,6 +82,11 @@ namespace SailwindVirtualCrew
                 ReleaseWheel();
                 autopilotEngaged = false;
                 return;
+            }
+
+            if (holdWindAngle)
+            {
+                UpdateWindAngleTarget(updateOnly: true);
             }
 
             float output  = controller.Tick(GetCurrentHeading(), Time.deltaTime);
@@ -106,6 +119,30 @@ namespace SailwindVirtualCrew
                 Traverse.Create(steeringWheel).Field("locked").SetValue(false);
         }
 
+        private void SyncActivePilotTask()
+        {
+            PilotTask activePilotTask = VirtualCrewManager.Instance.ActivePilotTask;
+            if (observedPilotTask == activePilotTask)
+                return;
+
+            observedPilotTask = activePilotTask;
+            ResetPilotingOrder();
+        }
+
+        private void ResetPilotingOrder()
+        {
+            controller.ClearTarget();
+            hasPlayerSelection = false;
+            holdWindAngle = false;
+            pilotHeadingError = 0f;
+
+            if (autopilotEngaged)
+            {
+                ReleaseWheel();
+                autopilotEngaged = false;
+            }
+        }
+
         private float GetCurrentHeading()
         {
             if (GameState.currentBoat == null) return 0f;
@@ -114,19 +151,157 @@ namespace SailwindVirtualCrew
             return PilotController.Normalize(raw);
         }
 
+        private float GetCompassHeading()
+        {
+            return PilotController.Normalize(GetCurrentHeading() + 90f);
+        }
+
+        private float GetApparentWindAngle()
+        {
+            Transform boat = GetSailInfoBoatTransform();
+            Rigidbody body = GetSailInfoBoatRigidbody(boat);
+            if (boat == null || body == null) return 0f;
+
+            if (!TryGetSailInfoApparentWind(out Vector3 apparentWind)) return 0f;
+
+            return Vector3.SignedAngle(-boat.forward, apparentWind.normalized, Vector3.up);
+        }
+
+        private bool TryGetSailInfoApparentWind(out Vector3 apparentWind)
+        {
+            apparentWind = Vector3.zero;
+            Transform boat = GetSailInfoBoatTransform();
+            Rigidbody body = GetSailInfoBoatRigidbody(boat);
+            if (boat == null || body == null) return false;
+
+            apparentWind = Wind.currentWind - body.velocity;
+            apparentWind.y = 0f;
+            return apparentWind.sqrMagnitude >= 0.001f;
+        }
+
+        private Transform GetSailInfoBoatTransform()
+        {
+            if (GameState.currentBoat == null) return null;
+            var purchasableBoat = GameState.currentBoat.GetComponentInParent<PurchasableBoat>();
+            return purchasableBoat ? purchasableBoat.transform : GameState.currentBoat.transform;
+        }
+
+        private Rigidbody GetSailInfoBoatRigidbody(Transform boat)
+        {
+            if (boat == null) return null;
+            return boat.GetComponent<Rigidbody>() ?? boat.GetComponentInParent<Rigidbody>();
+        }
+
+        private static string Cardinal(float heading)
+        {
+            string[] dirs =
+            {
+                "N", "NNE", "NE", "ENE",
+                "E", "ESE", "SE", "SSE",
+                "S", "SSW", "SW", "WSW",
+                "W", "WNW", "NW", "NNW"
+            };
+            int index = Mathf.RoundToInt(heading / 22.5f) % dirs.Length;
+            return dirs[index];
+        }
+
+        private static string FormatWindAngle(float angle)
+        {
+            if (Mathf.Abs(angle) < 0.5f) return "000.0 Ahead";
+            return $"{Mathf.Abs(angle):000.0} {(angle > 0f ? "Stbd" : "Port")}";
+        }
+
+        private static string FormatWindAngleCoarse(float angle)
+        {
+            float abs = Mathf.Abs(angle);
+            string side = angle >= 0f ? "Stbd" : "Port";
+            if (abs < 10f) return "Ahead";
+            if (abs < 60f) return side + " Close";
+            if (abs < 115f) return side + " Beam";
+            if (abs < 160f) return side + " Broad";
+            return side + " Run";
+        }
+
+        private static string FormatTarget(float heading, float windAngle, bool windHold)
+        {
+            if (DeveloperMode.IsEnabled)
+                return windHold ? FormatWindAngle(windAngle) : $"{heading:000.0}";
+
+            return windHold ? FormatWindAngleCoarse(windAngle) : Cardinal(heading + 90f);
+        }
+
         // Stores the player's ordered heading and asks the pilot to steer their best attempt.
         private void SetPlayerTarget(float heading)
         {
             playerSelectedHeading = PilotController.Normalize(heading);
             hasPlayerSelection    = true;
-            controller.SetTarget(playerSelectedHeading + ComputePilotError());
+            holdWindAngle         = false;
+            pilotHeadingError     = ComputePilotError();
+            controller.SetTarget(playerSelectedHeading + pilotHeadingError);
+        }
+
+        private void SetWindAngleTarget(float angle)
+        {
+            playerSelectedWindAngle = Mathf.Clamp(angle, -179f, 179f);
+            hasPlayerSelection      = true;
+            holdWindAngle           = true;
+            pilotHeadingError       = ComputePilotError();
+            UpdateWindAngleTarget(updateOnly: false);
         }
 
         private void AdjustPlayerTarget(float delta)
         {
             if (!hasPlayerSelection) return;
-            playerSelectedHeading = PilotController.Normalize(playerSelectedHeading + delta);
-            controller.SetTarget(playerSelectedHeading + ComputePilotError());
+            if (holdWindAngle)
+            {
+                playerSelectedWindAngle = Mathf.Clamp(playerSelectedWindAngle + delta, -179f, 179f);
+                UpdateWindAngleTarget(updateOnly: false);
+            }
+            else
+            {
+                playerSelectedHeading = PilotController.Normalize(playerSelectedHeading + delta);
+                pilotHeadingError = ComputePilotError();
+                controller.SetTarget(playerSelectedHeading + pilotHeadingError);
+            }
+        }
+
+        private void AdjustWindAngleMagnitude(float delta)
+        {
+            float sign = playerSelectedWindAngle < 0f ? -1f : 1f;
+            float magnitude = Mathf.Clamp(Mathf.Abs(playerSelectedWindAngle) + delta, 20f, 170f);
+            SetWindAngleTarget(sign * magnitude);
+        }
+
+        private void UpdateWindAngleTarget(bool updateOnly)
+        {
+            if (!TryGetSailInfoApparentWind(out Vector3 apparentWind)) return;
+
+            // SailInfo reports AWA as SignedAngle(-boat.forward, apparentWind, up).
+            // Solve that equation directly for boat.forward:
+            //   apparentWind = Rotate(desiredAwa) * -forward
+            //   forward = -Rotate(-desiredAwa) * apparentWind
+            Vector3 targetForward = -(Quaternion.AngleAxis(-playerSelectedWindAngle, Vector3.up) * apparentWind.normalized);
+            targetForward.y = 0f;
+            if (targetForward.sqrMagnitude < 0.001f) return;
+
+            Transform sailInfoBoat = GetSailInfoBoatTransform();
+            if (sailInfoBoat != null && GameState.currentBoat != null)
+            {
+                Quaternion sailInfoToHeadingTransform =
+                    Quaternion.FromToRotation(sailInfoBoat.forward, GameState.currentBoat.transform.forward);
+                targetForward = sailInfoToHeadingTransform * targetForward;
+                targetForward.y = 0f;
+                if (targetForward.sqrMagnitude < 0.001f) return;
+            }
+
+            playerSelectedHeading = PilotController.Normalize(
+                Vector3.SignedAngle(targetForward.normalized, Vector3.forward, -Vector3.up));
+
+            float helmHeading = PilotController.Normalize(playerSelectedHeading + pilotHeadingError);
+            if (updateOnly)
+                controller.UpdateTarget(helmHeading);
+            else
+                controller.SetTarget(helmHeading);
         }
 
         // Returns a random heading error based on the pilot's Intelligence.
@@ -149,6 +324,8 @@ namespace SailwindVirtualCrew
 
         private void DrawWindow(int id)
         {
+            SyncActivePilotTask();
+
             // Suppress Tab so the game's free-look binding doesn't fire.
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
                 Event.current.Use();
@@ -173,6 +350,8 @@ namespace SailwindVirtualCrew
             GUILayout.Label($"Pilot: {activePilotTask.AssignedCrewman.Name}  [{activePilotTask.AssignedCrewman.FatigueTag}]");
 
             float  currentHeading = GetCurrentHeading();
+            float  compassHeading = GetCompassHeading();
+            float  apparentWindAngle = GetApparentWindAngle();
             float? helmTarget     = controller.TargetHeading;
 
             // ── Compass circle ─────────────────────────────────────────────
@@ -196,6 +375,9 @@ namespace SailwindVirtualCrew
                 DrawCompassDot(circ, playerSelectedHeading, orderedDotTex);
             if (DeveloperMode.IsEnabled && helmTarget.HasValue)
                 DrawCompassDot(circ, helmTarget.Value, goalDotTex);
+            DrawCompassLine(circ, currentHeading + apparentWindAngle, windLineTex);
+            DrawCompassDot(circ, currentHeading + apparentWindAngle, windDotTex);
+            DrawCompassDot(circ, currentHeading, currentDotTex);
 
             // Click inside the ring to set a target heading.
             if (Event.current.type == EventType.MouseDown && circ.Contains(Event.current.mousePosition))
@@ -213,6 +395,30 @@ namespace SailwindVirtualCrew
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
+            // ── Navigation readouts ────────────────────────────────────────
+            GUIStyle noWrapLabel = new GUIStyle(GUI.skin.label)
+            {
+                wordWrap = false,
+                alignment = TextAnchor.MiddleLeft,
+                clipping = TextClipping.Clip
+            };
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("HDG", noWrapLabel, GUILayout.Width(58));
+            GUI.enabled = false;
+            GUILayout.TextField(DeveloperMode.IsEnabled
+                ? $"{compassHeading:000.0} {Cardinal(compassHeading)}"
+                : Cardinal(compassHeading), GUILayout.Width(96));
+            GUI.enabled = true;
+            GUILayout.Space(12);
+            GUILayout.Label("AWA", noWrapLabel, GUILayout.Width(58));
+            GUI.enabled = false;
+            GUILayout.TextField(DeveloperMode.IsEnabled
+                ? FormatWindAngle(apparentWindAngle)
+                : FormatWindAngleCoarse(apparentWindAngle), GUILayout.Width(118));
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
             // ── Heading readout ────────────────────────────────────────────
             if (DeveloperMode.IsEnabled)
             {
@@ -228,11 +434,7 @@ namespace SailwindVirtualCrew
                 GUI.enabled = true;
                 GUILayout.Space(6);
                 if (GUILayout.Button("Clear"))
-                {
-                    controller.ClearTarget();
-                    hasPlayerSelection = false;
-                    if (autopilotEngaged) { ReleaseWheel(); autopilotEngaged = false; }
-                }
+                    ResetPilotingOrder();
                 GUILayout.EndHorizontal();
 
                 GUILayout.BeginHorizontal();
@@ -247,13 +449,47 @@ namespace SailwindVirtualCrew
                 GUILayout.BeginHorizontal();
                 GUILayout.FlexibleSpace();
                 if (GUILayout.Button("Clear"))
-                {
-                    controller.ClearTarget();
-                    hasPlayerSelection = false;
-                    if (autopilotEngaged) { ReleaseWheel(); autopilotEngaged = false; }
-                }
+                    ResetPilotingOrder();
                 GUILayout.EndHorizontal();
             }
+
+            // ── Wind-angle hold ────────────────────────────────────────────
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Mode", noWrapLabel, GUILayout.Width(58));
+            GUI.enabled = false;
+            GUILayout.TextField(holdWindAngle ? "Wind Angle" : "Heading", GUILayout.Width(96));
+            GUI.enabled = true;
+            GUILayout.Space(12);
+            GUILayout.Label("Target", noWrapLabel, GUILayout.Width(72));
+            GUI.enabled = false;
+            GUILayout.TextField(hasPlayerSelection
+                ? FormatTarget(playerSelectedHeading, playerSelectedWindAngle, holdWindAngle)
+                : "-", GUILayout.Width(118));
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Port Close")) SetWindAngleTarget(-35f);
+            if (GUILayout.Button("Port Beam")) SetWindAngleTarget(-90f);
+            if (GUILayout.Button("Port Broad")) SetWindAngleTarget(-135f);
+            if (GUILayout.Button("Port Run")) SetWindAngleTarget(-170f);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Stbd Close")) SetWindAngleTarget(35f);
+            if (GUILayout.Button("Stbd Beam")) SetWindAngleTarget(90f);
+            if (GUILayout.Button("Stbd Broad")) SetWindAngleTarget(135f);
+            if (GUILayout.Button("Stbd Run")) SetWindAngleTarget(170f);
+            GUILayout.EndHorizontal();
+
+            GUI.enabled = holdWindAngle;
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Closer 10")) AdjustWindAngleMagnitude(-10f);
+            if (GUILayout.Button("Closer 2")) AdjustWindAngleMagnitude(-2f);
+            if (GUILayout.Button("Farther 2")) AdjustWindAngleMagnitude(2f);
+            if (GUILayout.Button("Farther 10")) AdjustWindAngleMagnitude(10f);
+            GUILayout.EndHorizontal();
+            GUI.enabled = true;
 
             // ── Relative adjustment buttons ────────────────────────────────
             GUI.enabled = hasPlayerSelection;
@@ -347,12 +583,31 @@ namespace SailwindVirtualCrew
         // Game convention: 0=East (right), 90=South (down), 270=North (up).
         private void DrawCompassDot(Rect circ, float heading, Texture2D tex)
         {
+            heading = PilotController.Normalize(heading);
             float rad = heading * Mathf.Deg2Rad;
             float r   = CircleRadius - 8f;
             GUI.DrawTexture(new Rect(
                 circ.x + CircleRadius + r * Mathf.Cos(rad) - 4,
                 circ.y + CircleRadius + r * Mathf.Sin(rad) - 4,
                 8, 8), tex);
+        }
+
+        private void DrawCompassLine(Rect circ, float heading, Texture2D tex)
+        {
+            heading = PilotController.Normalize(heading);
+            float rad = heading * Mathf.Deg2Rad;
+            float cx = circ.x + CircleRadius;
+            float cy = circ.y + CircleRadius;
+            float end = CircleRadius - 14f;
+            int steps = Mathf.RoundToInt(end / 4f);
+            for (int i = 0; i <= steps; i++)
+            {
+                float dist = i * 4f;
+                GUI.DrawTexture(new Rect(
+                    cx + dist * Mathf.Cos(rad) - 1,
+                    cy + dist * Mathf.Sin(rad) - 1,
+                    2, 2), tex);
+            }
         }
 
         private void DrawGraph(Rect r)
@@ -387,6 +642,8 @@ namespace SailwindVirtualCrew
             if (orderedDotTex   == null) orderedDotTex   = SolidTex(Color.green);
             if (goalDotTex      == null) goalDotTex      = SolidTex(Color.yellow);
             if (currentDotTex   == null) currentDotTex   = SolidTex(Color.white);
+            if (windDotTex      == null) windDotTex      = SolidTex(Color.cyan);
+            if (windLineTex     == null) windLineTex     = SolidTex(new Color(0f, 1f, 1f, 0.75f));
             if (goalGraphTex    == null) goalGraphTex    = SolidTex(Color.yellow);
             if (currentGraphTex == null) currentGraphTex = SolidTex(Color.white);
             if (outputGraphTex  == null) outputGraphTex  = SolidTex(Color.red);

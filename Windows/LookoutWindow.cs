@@ -27,9 +27,6 @@ namespace SailwindVirtualCrew
         private GameObject _lookoutEyeMarker;
         private float _nextMarkerUpdateTime;
 
-        private float _spyglassZoom = 1f;
-        private bool  _spyglassScanned = false;
-
         private static readonly string[] CompassPoints =
         {
             "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -112,9 +109,10 @@ namespace SailwindVirtualCrew
             if (GUILayout.Button("Scan for Spyglass"))
                 ScanForSpyglass();
 
-            if (_spyglassScanned)
-                GUILayout.Label(_spyglassZoom > 1f
-                    ? $"Spyglass: {_spyglassZoom:F1}x effective zoom"
+            float spyglassZoom = manager.GetLookoutSpyglassZoom();
+            if (manager.LookoutSpyglassScanned)
+                GUILayout.Label(spyglassZoom > 1f
+                    ? $"Spyglass: {spyglassZoom:F1}x effective zoom"
                     : "Spyglass: none");
 
             DrawLookoutStationControls(manager);
@@ -153,7 +151,7 @@ namespace SailwindVirtualCrew
                 if (!ignored && certainty >= 1f)
                 {
                     string bearing = GetBearing(playerPos, island.GetPosition());
-                    if (LookoutIslandKnowledge.TryIdentifyIsland(island, observerPos, lookout, _spyglassZoom, out string islandName, out _))
+                    if (LookoutIslandKnowledge.TryIdentifyIsland(island, observerPos, lookout, spyglassZoom, out string islandName, out _))
                     {
                         manager.RememberLookoutIslandName(island, islandName);
                         report = $"Land Sighted: {islandName} ({bearing})";
@@ -186,7 +184,7 @@ namespace SailwindVirtualCrew
             float threshold = LookoutVisibility.GetBaseVisibilityThreshold(lookout);
             GUILayout.Space(4);
             GUILayout.Label($"Camera Y: {cameraY:F1}  Islands tracked: {tracker.islands.Count}");
-            GUILayout.Label($"Threshold: {threshold:F2} deg  Effective: {LookoutVisibility.GetEffectiveVisibilityThreshold(lookout, _spyglassZoom):F2} deg  Zoom: {_spyglassZoom:F1}x");
+            GUILayout.Label($"Threshold: {threshold:F2} deg  Effective: {LookoutVisibility.GetEffectiveVisibilityThreshold(lookout, spyglassZoom):F2} deg  Zoom: {spyglassZoom:F1}x");
             GUILayout.Label($"Wave LOS: first {LookoutVisibility.MaxWaveOcclusionDistance:F0}m  step ~{LookoutVisibility.WaveSampleSpacing:F1}m  clearance {LookoutVisibility.WaveOcclusionClearance:F1}m");
             GUILayout.Space(4);
 
@@ -263,7 +261,7 @@ namespace SailwindVirtualCrew
                 string bearing = GetBearing(playerPos, island.GetPosition());
                 string label = bearing;
                 if (lookout != null
-                    && LookoutIslandKnowledge.TryIdentifyIsland(island, observerPos, lookout, _spyglassZoom, out string islandName, out _))
+                    && LookoutIslandKnowledge.TryIdentifyIsland(island, observerPos, lookout, GetLookoutSpyglassZoom(), out string islandName, out _))
                 {
                     manager.RememberLookoutIslandName(island, islandName);
                     label = $"{islandName} ({bearing})";
@@ -325,7 +323,7 @@ namespace SailwindVirtualCrew
 
         private void DrawIslandVisibilityRow(IslandHorizon island, float dist, Crewman lookout)
         {
-            if (!LookoutVisibility.TryEvaluate(island, GetObservationEyePosition(lookout), lookout, _spyglassZoom, out var visibility))
+            if (!LookoutVisibility.TryEvaluate(island, GetObservationEyePosition(lookout), lookout, GetLookoutSpyglassZoom(), out var visibility))
             {
                 GUILayout.Label($"{GetIslandName(island)} ({dist:F0}m)  [no-peak]");
                 GUILayout.Space(2);
@@ -337,7 +335,7 @@ namespace SailwindVirtualCrew
                 : "waves clear";
             float certainty = GetLookoutCertainty(island);
             float ignoreRemaining = VirtualCrewManager.Instance.GetLookoutIgnoreRemainingHours(island);
-            var idInfo = LookoutIslandKnowledge.GetIdentificationInfo(island, GetObservationEyePosition(lookout), lookout, _spyglassZoom);
+            var idInfo = LookoutIslandKnowledge.GetIdentificationInfo(island, GetObservationEyePosition(lookout), lookout, GetLookoutSpyglassZoom());
             string visitedTag = idInfo.HasVisited ? "visited" : "unvisited";
             string identifiedTag = idInfo.Identified
                 ? "identified"
@@ -377,7 +375,7 @@ namespace SailwindVirtualCrew
 
         private float GetEffectiveVisibilityThreshold(Crewman lookout)
         {
-            return GetVisibilityThreshold(lookout) / Mathf.Max(1f, _spyglassZoom);
+            return GetVisibilityThreshold(lookout) / Mathf.Max(1f, GetLookoutSpyglassZoom());
         }
 
         private static bool IsNightwatch()
@@ -388,8 +386,12 @@ namespace SailwindVirtualCrew
 
         private void ScanForSpyglass()
         {
-            _spyglassScanned = true;
-            _spyglassZoom = LocatorUtils.FindBestLookoutSpyglassZoomOnCurrentVessel();
+            VirtualCrewManager.Instance.ScanLookoutSpyglass();
+        }
+
+        private static float GetLookoutSpyglassZoom()
+        {
+            return VirtualCrewManager.Instance.GetLookoutSpyglassZoom();
         }
 
         private static string GetBearing(Vector3 from, Vector3 to)
@@ -525,7 +527,7 @@ namespace SailwindVirtualCrew
                 .OrderBy(i => Vector3.Distance(i.GetPosition(), eyeWorld))
                 .FirstOrDefault();
             if (closest == null
-                || !LookoutVisibility.TryEvaluate(closest, eyeWorld, lookout, _spyglassZoom, out _, _losDebugSamples))
+                || !LookoutVisibility.TryEvaluate(closest, eyeWorld, lookout, GetLookoutSpyglassZoom(), out _, _losDebugSamples))
             {
                 SetSampleMarkerCount(0);
                 return;

@@ -1218,7 +1218,7 @@ namespace SailwindVirtualCrew
 
                 Vector3 from = GetLookoutEyeWorldPosition();
                 float deltaGameHours = GetLookoutDeltaGameHours();
-                float zoom = LocatorUtils.FindBestLookoutSpyglassZoomOnCurrentVessel();
+                float zoom = VirtualCrewManager.Instance.GetLookoutSpyglassZoom();
 
                 var nearby = tracker.islands
                     .Where(i => i != null)
@@ -1250,7 +1250,7 @@ namespace SailwindVirtualCrew
                 if (island == null || distance <= 0f)
                     return false;
 
-                float zoom = LocatorUtils.FindBestLookoutSpyglassZoomOnCurrentVessel();
+                float zoom = VirtualCrewManager.Instance.GetLookoutSpyglassZoom();
                 return LookoutVisibility.TryEvaluate(island, GetLookoutEyeWorldPosition(), Crew, zoom, out var result)
                     && result.IsVisible;
             }
