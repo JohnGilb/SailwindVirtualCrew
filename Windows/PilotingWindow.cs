@@ -224,6 +224,22 @@ namespace SailwindVirtualCrew
             return windHold ? FormatWindAngleCoarse(windAngle) : Cardinal(heading + 90f);
         }
 
+        private static float QuantizeHeading(float heading)
+        {
+            return PilotController.Normalize(Mathf.Round(heading / 45f) * 45f);
+        }
+
+        private static float QuantizeWindAngle(float angle)
+        {
+            float abs = Mathf.Abs(angle);
+            float sign = angle < 0f ? -1f : 1f;
+            if (abs < 10f) return 0f;
+            if (abs < 60f) return sign * 35f;
+            if (abs < 115f) return sign * 90f;
+            if (abs < 160f) return sign * 135f;
+            return sign * 170f;
+        }
+
         // Stores the player's ordered heading and asks the pilot to steer their best attempt.
         private void SetPlayerTarget(float heading)
         {
@@ -347,6 +363,13 @@ namespace SailwindVirtualCrew
             float  compassHeading = GetCompassHeading();
             float  apparentWindAngle = GetApparentWindAngle();
             float? helmTarget     = controller.TargetHeading;
+            float  displayCurrentHeading = DeveloperMode.IsEnabled ? currentHeading : QuantizeHeading(currentHeading);
+            float  displayWindHeading = DeveloperMode.IsEnabled
+                ? currentHeading + apparentWindAngle
+                : displayCurrentHeading + QuantizeWindAngle(apparentWindAngle);
+            float  displaySelectedHeading = DeveloperMode.IsEnabled
+                ? playerSelectedHeading
+                : QuantizeHeading(playerSelectedHeading);
 
             // ── Compass circle ─────────────────────────────────────────────
             // Game convention: 0=East (screen right), 90=South (screen down), 270=North (screen up).
@@ -363,15 +386,13 @@ namespace SailwindVirtualCrew
             GUI.Label(new Rect(circ.x + 2,     cy - 7,         12, 14), "W");
 
             // Draw order: current (white) first, then ordered (green), then helm (yellow) on top.
-            if (DeveloperMode.IsEnabled)
-                DrawCompassDot(circ, currentHeading, currentDotTex);
+            DrawCompassDot(circ, displayCurrentHeading, currentDotTex);
             if (hasPlayerSelection)
-                DrawCompassDot(circ, playerSelectedHeading, orderedDotTex);
+                DrawCompassDot(circ, displaySelectedHeading, orderedDotTex);
             if (DeveloperMode.IsEnabled && helmTarget.HasValue)
                 DrawCompassDot(circ, helmTarget.Value, goalDotTex);
-            DrawCompassLine(circ, currentHeading + apparentWindAngle, windLineTex);
-            DrawCompassDot(circ, currentHeading + apparentWindAngle, windDotTex);
-            DrawCompassDot(circ, currentHeading, currentDotTex);
+            DrawCompassLine(circ, displayWindHeading, windLineTex);
+            DrawCompassDot(circ, displayWindHeading, windDotTex);
 
             // Click inside the ring to set a target heading.
             if (Event.current.type == EventType.MouseDown && circ.Contains(Event.current.mousePosition))
