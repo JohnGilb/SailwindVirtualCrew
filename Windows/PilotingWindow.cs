@@ -194,8 +194,14 @@ namespace SailwindVirtualCrew
 
         private static string Cardinal(float heading)
         {
-            string[] dirs = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
-            int index = Mathf.RoundToInt(heading / 45f) % dirs.Length;
+            string[] dirs =
+            {
+                "N", "NNE", "NE", "ENE",
+                "E", "ESE", "SE", "SSE",
+                "S", "SSW", "SW", "WSW",
+                "W", "WNW", "NW", "NNW"
+            };
+            int index = Mathf.RoundToInt(heading / 22.5f) % dirs.Length;
             return dirs[index];
         }
 
