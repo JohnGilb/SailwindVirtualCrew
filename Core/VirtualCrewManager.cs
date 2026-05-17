@@ -1234,7 +1234,7 @@ namespace SailwindVirtualCrew
         public void addSail(SimpleSail sail)
         {
             Console.WriteLine(string.Format("Finalizing Sail:{0}, with Halyard:{1}, Sheet:{2}",
-                sail.getRealSail().name, sail.getHalyardWinch().name, sail.getSheetWinch().name));
+                sail.getRealSail().name, sail.getHalyardWinch()?.name ?? "NULL", sail.getSheetWinch()?.name ?? "NULL"));
             RestoreFriendlyName(sail);
             simpleSails.Add(sail);
             allSails.Add(sail);
@@ -1243,7 +1243,7 @@ namespace SailwindVirtualCrew
         public void addDualSheetSail(DualSheetSail sail)
         {
             Console.WriteLine(string.Format("Finalizing Sail:{0}, with Halyard:{1}, PortSheet:{2}, StarboardSheet:{3}",
-                sail.getRealSail().name, sail.getHalyardWinch().name, sail.getPortSheetWinch().name, sail.getStarboardSheetWinch().name));
+                sail.getRealSail().name, sail.getHalyardWinch()?.name ?? "NULL", sail.getPortSheetWinch()?.name ?? "NULL", sail.getStarboardSheetWinch()?.name ?? "NULL"));
             RestoreFriendlyName(sail);
             dualSheetSails.Add(sail);
             allSails.Add(sail);
@@ -1252,7 +1252,7 @@ namespace SailwindVirtualCrew
         public void addSquareSail(DualSheetSail sail)
         {
             Console.WriteLine(string.Format("Finalizing Square Sail:{0}, with Halyard:{1}, PortSheet:{2}, StarboardSheet:{3}",
-                sail.getRealSail().name, sail.getHalyardWinch().name, sail.getPortSheetWinch().name, sail.getStarboardSheetWinch().name));
+                sail.getRealSail().name, sail.getHalyardWinch()?.name ?? "NULL", sail.getPortSheetWinch()?.name ?? "NULL", sail.getStarboardSheetWinch()?.name ?? "NULL"));
             RestoreFriendlyName(sail);
             squareSails.Add(sail);
             allSails.Add(sail);
@@ -2300,25 +2300,31 @@ namespace SailwindVirtualCrew
             winchInstructions = new Dictionary<GPButtonRopeWinch, float>();
             foreach (SimpleSail sail in simpleSails)
             {
-                winchInstructions.Add(sail.getHalyardWinch(), sail.halyardWinchPower);
-                winchInstructions.Add(sail.getSheetWinch(), sail.sheetWinchPower);
+                if (sail.getHalyardWinch() != null)
+                    winchInstructions.Add(sail.getHalyardWinch(), sail.halyardWinchPower);
+                if (sail.getSheetWinch() != null)
+                    winchInstructions.Add(sail.getSheetWinch(), sail.sheetWinchPower);
             }
 
             foreach (DualSheetSail sail in dualSheetSails)
             {
-                winchInstructions.Add(sail.getHalyardWinch(), sail.halyardWinchPower);
-                winchInstructions.Add(sail.getPortSheetWinch(), sail.portSheetWinchPower);
-                winchInstructions.Add(sail.getStarboardSheetWinch(), sail.starboardSheetWinchPower);
+                if (sail.getHalyardWinch() != null)
+                    winchInstructions.Add(sail.getHalyardWinch(), sail.halyardWinchPower);
+                if (sail.getPortSheetWinch() != null)
+                    winchInstructions.Add(sail.getPortSheetWinch(), sail.portSheetWinchPower);
+                if (sail.getStarboardSheetWinch() != null)
+                    winchInstructions.Add(sail.getStarboardSheetWinch(), sail.starboardSheetWinchPower);
             }
 
             foreach (DualSheetSail sail in squareSails)
             {
-                winchInstructions.Add(sail.getHalyardWinch(), sail.halyardWinchPower);
+                if (sail.getHalyardWinch() != null)
+                    winchInstructions.Add(sail.getHalyardWinch(), sail.halyardWinchPower);
 
                 // Ganged square sails share sheet winches — avoid duplicating instructions.
-                if (!winchInstructions.ContainsKey(sail.getPortSheetWinch()))
+                if (sail.getPortSheetWinch() != null && !winchInstructions.ContainsKey(sail.getPortSheetWinch()))
                     winchInstructions.Add(sail.getPortSheetWinch(), sail.portSheetWinchPower);
-                if (!winchInstructions.ContainsKey(sail.getStarboardSheetWinch()))
+                if (sail.getStarboardSheetWinch() != null && !winchInstructions.ContainsKey(sail.getStarboardSheetWinch()))
                     winchInstructions.Add(sail.getStarboardSheetWinch(), sail.starboardSheetWinchPower);
             }
         }
