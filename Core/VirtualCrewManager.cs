@@ -897,7 +897,10 @@ namespace SailwindVirtualCrew
 
         public void RememberLookoutIslandName(IslandHorizon island, string islandName)
         {
-            if (island == null || string.IsNullOrEmpty(islandName) || GetLookoutCertainty(island) < 1f)
+            if (island == null
+                || string.IsNullOrEmpty(islandName)
+                || GetLookoutCertainty(island) < 1f
+                || !LookoutIslandKnowledge.HasPlayerVisitedIsland(island))
                 return;
 
             if (LookoutIdentifiedNames == null)
@@ -914,6 +917,12 @@ namespace SailwindVirtualCrew
 
             string key = LookoutVisibility.GetIslandKey(island);
             if (GetLookoutCertainty(island) < 1f)
+            {
+                ForgetLookoutIslandName(key);
+                return false;
+            }
+
+            if (!LookoutIslandKnowledge.HasPlayerVisitedIsland(island))
             {
                 ForgetLookoutIslandName(key);
                 return false;
@@ -1100,8 +1109,7 @@ namespace SailwindVirtualCrew
                 && visited)
                 return true;
 
-            return GameState.lastVisitedPort != null
-                && GameState.lastVisitedPort.GetPortName() == portName;
+            return false;
         }
 
         public void RecordCargoPurchase(ShipItem item, int price, int currency)
