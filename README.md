@@ -109,6 +109,10 @@ Tools:
 - Can repair ships with Oakum
 - Add "harden/ease" buttons to dual-sheet sails (Squares, jibs) for fine adjustment
 
+#### Pilot
+
+- Should only show Apparent Wind Angle if you have a wind compass
+
 #### Chief Officer
 
 - New role.
