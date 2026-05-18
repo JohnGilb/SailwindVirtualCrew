@@ -343,6 +343,14 @@ namespace SailwindVirtualCrew
             return true;
         }
 
+        internal bool TryRetargetRolePositioning(object owner, Vector3 destinationLocal, Quaternion arrivalRotation, string label)
+        {
+            if (owner == null || !_actorsByOwner.TryGetValue(owner, out var actor))
+                return false;
+
+            return actor.BeginRole(owner, destinationLocal, arrivalRotation, label);
+        }
+
         internal bool BeginSleep(SleepRequest request, Crewman crewman, Component bed)
         {
             if (request == null || crewman == null || !bed || !EnsureRuntimeReady())
@@ -458,6 +466,35 @@ namespace SailwindVirtualCrew
 
             actor.Cancel();
             _actorsByOwner.Remove(owner);
+        }
+
+        internal bool TrySetPoseOverrideWorld(object owner, Vector3 worldPosition, Quaternion worldRotation)
+        {
+            if (owner == null || !_actorsByOwner.TryGetValue(owner, out var actor))
+                return false;
+
+            actor.SetPoseOverrideWorld(worldPosition, worldRotation);
+            return true;
+        }
+
+        internal bool TryGetOwnerWorldPose(object owner, out Vector3 worldPosition, out Quaternion worldRotation)
+        {
+            worldPosition = Vector3.zero;
+            worldRotation = Quaternion.identity;
+            if (owner == null || !_actorsByOwner.TryGetValue(owner, out var actor))
+                return false;
+
+            actor.GetWorldPose(out worldPosition, out worldRotation);
+            return true;
+        }
+
+        internal bool TryStopOwnerMotion(object owner)
+        {
+            if (owner == null || !_actorsByOwner.TryGetValue(owner, out var actor))
+                return false;
+
+            actor.StopMotion();
+            return true;
         }
 
         internal void CancelAllActiveTasks()
@@ -860,6 +897,24 @@ namespace SailwindVirtualCrew
                 Vector3 localOffset = _context.WorldBoat.InverseTransformDirection(arrivalWorldOffset);
                 _poseSync.SetPoseOverride(destinationLocal + localOffset, arrivalRotation);
                 CrewDebugLog.Ok(Phase, "Teleported to role crew='" + Crew.Name + "' dest=" + destinationLocal);
+            }
+
+            internal void SetPoseOverrideWorld(Vector3 worldPosition, Quaternion worldRotation)
+            {
+                Vector3 localPosition = _context.WorldBoat.InverseTransformPoint(worldPosition);
+                Quaternion localRotation = Quaternion.Inverse(_context.WorldBoat.rotation) * worldRotation;
+                _poseSync.SetPoseOverride(localPosition, localRotation);
+            }
+
+            internal void GetWorldPose(out Vector3 worldPosition, out Quaternion worldRotation)
+            {
+                worldPosition = _context.WorldBoat.TransformPoint(_logicAgent.CurrentLocalPosition);
+                worldRotation = _context.WorldBoat.rotation * _logicAgent.CurrentLocalRotation;
+            }
+
+            internal void StopMotion()
+            {
+                _logicAgent.Stop();
             }
 
             internal bool BeginLookout(object owner, Vector3 startLocal, Quaternion startRotation, System.Random random, LookoutStationSaveData station)

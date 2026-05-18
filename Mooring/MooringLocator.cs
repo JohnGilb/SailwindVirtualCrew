@@ -80,6 +80,15 @@ namespace SailwindVirtualCrew
         internal float Distance { get; set; }
     }
 
+    internal sealed class ActiveMooringRoute
+    {
+        internal MooringRopeInfo Rope { get; set; }
+        internal MooringDockInfo Dock { get; set; }
+        internal Vector3 BoatAnchorLocal => Rope.AnchorLocal;
+        internal Vector3 BoatAnchorWorld => Rope.AnchorWorld;
+        internal Vector3 DockWorld => Dock.Mooring.transform.position;
+    }
+
     internal static class MooringLocator
     {
         private const float DockSearchRadius = 90f;
@@ -223,6 +232,47 @@ namespace SailwindVirtualCrew
             }
 
             return pairs.Count > 0;
+        }
+
+        internal static bool IsCurrentBoatMoored()
+        {
+            if (!TryScan(out var scan))
+                return false;
+
+            return scan.Ropes.Any(r => r.IsMoored && r.Rope != null);
+        }
+
+        internal static bool TryFindActiveRoute(Vector3 fromWorld, out ActiveMooringRoute route)
+        {
+            route = null;
+            if (!TryScan(out var scan))
+                return false;
+
+            var mooredRopes = scan.Ropes
+                .Where(r => r.IsMoored && r.Rope != null)
+                .ToList();
+            var occupiedDocks = scan.Docks
+                .Where(d => d.IsOccupied && d.Mooring != null)
+                .ToList();
+
+            if (mooredRopes.Count == 0 || occupiedDocks.Count == 0)
+                return false;
+
+            route = mooredRopes
+                .Select(r => new
+                {
+                    Rope = r,
+                    Dock = occupiedDocks
+                        .OrderBy(d => Vector3.Distance(r.Rope.transform.position, d.Mooring.transform.position))
+                        .FirstOrDefault(),
+                    Distance = Vector3.Distance(fromWorld, r.AnchorWorld)
+                })
+                .Where(x => x.Dock != null)
+                .OrderBy(x => x.Distance)
+                .Select(x => new ActiveMooringRoute { Rope = x.Rope, Dock = x.Dock })
+                .FirstOrDefault();
+
+            return route != null;
         }
 
         private static List<MooringRopeInfo> BuildRopeInfos(CrewBoatContext context, BoatMooringRopes mooringRopes)

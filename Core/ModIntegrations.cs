@@ -1,6 +1,7 @@
 using BepInEx.Bootstrap;
 using HarmonyLib;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -83,7 +84,186 @@ namespace SailwindVirtualCrew
             if (!visible) return true; // always allow closing
             var mgr = VirtualCrewManager.Instance;
             if (mgr == null) return true; // before save loaded
+            return CanUseCargoController();
+        }
+
+        public static bool CanUseCargoController()
+        {
             return CrewRoleAvailability.HasAwakeCrew(ShipRole.Quartermaster);
+        }
+    }
+
+    internal static class CargoControllerPortCargoHotkey
+    {
+        private static Type cargoControllerType;
+        private static Type cargoControllerUiType;
+        private static Type warehouseTrackerType;
+        private static FieldInfo uiInstanceField;
+        private static FieldInfo pointerField;
+        private static FieldInfo nearestPortDistanceField;
+        private static FieldInfo maximumPortDistanceField;
+        private static FieldInfo missionGoodsField;
+        private static FieldInfo nonMissionGoodsField;
+        private static MethodInfo pickupGoodMethod;
+        private static PropertyInfo enabledProperty;
+        private static bool initialized;
+        private static bool failed;
+
+        public static void Tick()
+        {
+            if (Plugin.CargoControllerGrabPortCargoKey == null
+                || Plugin.CargoControllerGrabPortCargoKey.Value.MainKey == KeyCode.None
+                || !Plugin.CargoControllerGrabPortCargoKey.Value.IsDown())
+                return;
+
+            TryPickupTopPortCargo();
+        }
+
+        private static void TryPickupTopPortCargo()
+        {
+            if (!CargoControllerGate.CanUseCargoController())
+                return;
+            if (!EnsureInitialized())
+                return;
+            if (!IsCargoControllerEnabled())
+                return;
+
+            var ui = uiInstanceField.GetValue(null);
+            if (ui == null)
+                return;
+
+            var pointer = pointerField.GetValue(null) as GoPointer;
+            if (pointer == null || pointer.GetHeldItem() != null)
+                return;
+            if (!IsPortCargoListAvailable(ui))
+                return;
+
+            var good = GetTopPortGood();
+            if (good == null)
+                return;
+
+            try
+            {
+                pickupGoodMethod.Invoke(ui, new object[] { good });
+            }
+            catch (TargetInvocationException ex)
+            {
+                Debug.LogWarning($"[VirtualCrew] CargoController port pickup failed: {ex.InnerException?.Message ?? ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[VirtualCrew] CargoController port pickup failed: {ex.Message}");
+            }
+        }
+
+        private static bool EnsureInitialized()
+        {
+            if (initialized)
+                return true;
+            if (failed)
+                return false;
+            if (!Chainloader.PluginInfos.ContainsKey("com.jakeinaboat.cargocontroller"))
+                return FailQuietly();
+
+            try
+            {
+                cargoControllerType = AccessTools.TypeByName("CargoController.CargoController");
+                cargoControllerUiType = AccessTools.TypeByName("CargoController.CargoControllerUI");
+                warehouseTrackerType = AccessTools.TypeByName("CargoController.IslandMarketWarehouseAreaTracker");
+
+                uiInstanceField = AccessTools.Field(cargoControllerUiType, "Instance");
+                pointerField = AccessTools.Field(cargoControllerUiType, "pointer");
+                nearestPortDistanceField = AccessTools.Field(cargoControllerUiType, "nearestPortDistance");
+                maximumPortDistanceField = AccessTools.Field(cargoControllerUiType, "maximumPortDistance");
+                pickupGoodMethod = AccessTools.Method(cargoControllerUiType, "PickupGood");
+                enabledProperty = AccessTools.Property(cargoControllerType, "Enabled");
+                missionGoodsField = AccessTools.Field(warehouseTrackerType, "missionGoodsInArea");
+                nonMissionGoodsField = AccessTools.Field(warehouseTrackerType, "nonMissionGoodsInArea");
+
+                if (cargoControllerType == null
+                    || cargoControllerUiType == null
+                    || warehouseTrackerType == null
+                    || uiInstanceField == null
+                    || pointerField == null
+                    || nearestPortDistanceField == null
+                    || maximumPortDistanceField == null
+                    || pickupGoodMethod == null
+                    || enabledProperty == null
+                    || missionGoodsField == null
+                    || nonMissionGoodsField == null)
+                {
+                    Debug.LogWarning("[VirtualCrew] CargoController hotkey setup failed: expected CargoController members were not found.");
+                    failed = true;
+                    return false;
+                }
+
+                initialized = true;
+                Debug.Log("[VirtualCrew] CargoController port cargo hotkey enabled.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[VirtualCrew] CargoController hotkey setup failed: {ex.Message}");
+                failed = true;
+                return false;
+            }
+        }
+
+        private static bool FailQuietly()
+        {
+            failed = true;
+            return false;
+        }
+
+        private static bool IsCargoControllerEnabled()
+        {
+            try
+            {
+                return (bool)enabledProperty.GetValue(null, null);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsPortCargoListAvailable(object ui)
+        {
+            var distance = (float)nearestPortDistanceField.GetValue(ui);
+            var maximumDistance = (float)maximumPortDistanceField.GetValue(ui);
+            return distance <= maximumDistance;
+        }
+
+        private static Good GetTopPortGood()
+        {
+            var missionGoods = GetGoods(missionGoodsField);
+            var nonMissionGoods = GetGoods(nonMissionGoodsField);
+
+            if (PlayerMissions.missions != null)
+            {
+                foreach (var mission in PlayerMissions.missions)
+                {
+                    if (mission == null)
+                        continue;
+
+                    var missionGood = missionGoods.FirstOrDefault(good =>
+                        good != null && good.GetMissionIndex() == mission.missionIndex);
+                    if (missionGood != null)
+                        return missionGood;
+                }
+            }
+
+            var firstNonMission = nonMissionGoods.FirstOrDefault(good =>
+                good != null && good.GetMissionIndex() == -1);
+            return firstNonMission;
+        }
+
+        private static List<Good> GetGoods(FieldInfo field)
+        {
+            var goods = field.GetValue(null) as IEnumerable<Good>;
+            if (goods == null)
+                return new List<Good>();
+            return goods.Where(good => good != null).ToList();
         }
     }
 

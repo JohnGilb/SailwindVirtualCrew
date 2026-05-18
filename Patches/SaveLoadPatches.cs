@@ -8,6 +8,13 @@ namespace SailwindVirtualCrew
     [HarmonyPatch(typeof(SaveLoadManager))]
     class SaveLoadPatches
     {
+        [HarmonyPrefix]
+        [HarmonyPatch("SaveGame")]
+        static void BeforeSaveGame()
+        {
+            VirtualCrewManager.Instance.SettleHaulSellRequestsForSave();
+        }
+
         [HarmonyPostfix]
         [HarmonyPatch("SaveModData")]
         static void DoSave()

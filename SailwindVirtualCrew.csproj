@@ -95,6 +95,7 @@
     <Compile Include="Core\FavoriteAction.cs" />
     <Compile Include="Core\ModIntegrations.cs" />
     <Compile Include="Core\ShipRole.cs" />
+    <Compile Include="Core\SupercargoTradeService.cs" />
     <Compile Include="Core\VirtualCrewManager.cs" />
     <Compile Include="Core\VirtualCrewSaveData.cs" />
     <Compile Include="Crew\CrewAgent.cs" />
@@ -120,6 +121,7 @@
     <Compile Include="Mooring\MooringLocator.cs" />
     <Compile Include="Mooring\MooringRopeThrowAnimator.cs" />
     <Compile Include="Requests\BailRequest.cs" />
+    <Compile Include="Requests\HaulSellRequest.cs" />
     <Compile Include="Requests\LookoutTask.cs" />
     <Compile Include="Requests\MooringRequest.cs" />
     <Compile Include="Requests\PilotTask.cs" />
@@ -142,6 +144,7 @@
     <Compile Include="Patches\LookoutVisitPatches.cs" />
     <Compile Include="Patches\PortDudePatches.cs" />
     <Compile Include="Patches\SleepPatches.cs" />
+    <Compile Include="Patches\SupercargoTradePatches.cs" />
     <Compile Include="Windows\PilotingWindow.cs" />
     <Compile Include="Windows\CrewWindow.cs" />
     <Compile Include="Windows\SailGroupsWindow.cs" />

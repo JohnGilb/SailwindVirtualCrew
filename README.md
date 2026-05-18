@@ -143,6 +143,10 @@ Tools:
 - Manages repairs
 - Can fill up a few barrels of water at larger ports from wells for free (not unlimited; at some point people don't let you hog all the water)
 
+#### Supercargo
+
+- Assist in rapid load/unload of bulk trade goods (method TBD)
+
 ### UI / UX
 
 - For now, most features are accessed via windows; long-term the goal would be to achieve the same immersion Sailwind generally aims for (character models on board)

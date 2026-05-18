@@ -23,6 +23,7 @@ namespace SailwindVirtualCrew
         public List<NavigateRequest> NavigateRequests { get; private set; }
         public List<BailRequest>     BailRequests     { get; private set; }
         public List<MooringRequest>  MooringRequests  { get; private set; }
+        public List<HaulSellRequest> HaulSellRequests { get; private set; }
         public List<SleepRequest>    SleepRequests    { get; private set; }
         public Dictionary<GPButtonRopeWinch, WinchTarget> crewWinchInstructions;
 
@@ -568,6 +569,7 @@ namespace SailwindVirtualCrew
             NavigateRequests = new List<NavigateRequest>();
             BailRequests     = new List<BailRequest>();
             MooringRequests  = new List<MooringRequest>();
+            HaulSellRequests = new List<HaulSellRequest>();
             SleepRequests    = new List<SleepRequest>();
             crewWinchInstructions = new Dictionary<GPButtonRopeWinch, WinchTarget>();
             AnchorWinches = new List<GPButtonRopeWinch>();
@@ -1513,6 +1515,20 @@ namespace SailwindVirtualCrew
             BailRequests.Add(request);
         }
 
+        public void AddHaulSellRequest(HaulSellRequest request)
+        {
+            if (request == null || HasPendingHaulSellRequest(request.Item))
+                return;
+
+            HaulSellRequests.Add(request);
+        }
+
+        public bool HasPendingHaulSellRequest(ShipItem item)
+        {
+            return item
+                && HaulSellRequests.Any(r => r.Item == item && r.Status != WorkRequestStatus.Complete);
+        }
+
         public bool HasPendingMooringRequest(MooringSide side)
         {
             return MooringRequests.Any(r => r.Side == side && r.Status != WorkRequestStatus.Complete);
@@ -1553,6 +1569,27 @@ namespace SailwindVirtualCrew
             if (request.AssignedCrewman != null)
                 request.AssignedCrewman.CurrentTask = null;
             BailRequests.Remove(request);
+        }
+
+        public void CancelHaulSellRequest(HaulSellRequest request)
+        {
+            if (request == null)
+                return;
+
+            request.Cancel();
+            if (request.Status == WorkRequestStatus.Complete)
+                HaulSellRequests.Remove(request);
+        }
+
+        public void SettleHaulSellRequestsForSave()
+        {
+            if (HaulSellRequests == null || HaulSellRequests.Count == 0)
+                return;
+
+            foreach (var request in HaulSellRequests.ToList())
+                request.ForceCompleteForSave();
+
+            HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
         }
 
         private void TickQuartermasterBailing()
@@ -2048,6 +2085,18 @@ namespace SailwindVirtualCrew
 
             MooringRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
+            // Haul & Sell requests: walk to the cargo, then hand off to the per-frame cargo haul.
+            foreach (var haul in HaulSellRequests)
+            {
+                if (haul.Status == WorkRequestStatus.Positioning
+                    && (haul.IsPositioningComplete() || haul.IsPositioningTimedOut()))
+                {
+                    haul.BeginHaul();
+                }
+            }
+
+            HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+
             // Bail requests: tick active ones, then assign free deckhands to open ones.
             foreach (var bail in BailRequests)
             {
@@ -2149,6 +2198,14 @@ namespace SailwindVirtualCrew
                     EstimateDistanceToMooringRequest(crewman, request),
                     c => request.BeginPositioning(c));
             }
+
+            foreach (var request in HaulSellRequests.Where(r => r.Status == WorkRequestStatus.Open))
+            {
+                yield return new DeckhandTaskCandidate(
+                    request.CommandName + " " + request.ItemName,
+                    EstimateDistanceToHaulSellRequest(crewman, request),
+                    c => request.BeginPositioning(c));
+            }
         }
 
         private static float EstimateDistanceToWorkRequest(Crewman crewman, WorkRequest request)
@@ -2164,6 +2221,15 @@ namespace SailwindVirtualCrew
             if (request == null || !request.TryGetWorkLocalPosition(out var localPosition))
                 return float.MaxValue;
 
+            return CrewNavigationCoordinator.Instance.EstimateDistanceToLocalPosition(crewman, localPosition);
+        }
+
+        private static float EstimateDistanceToHaulSellRequest(Crewman crewman, HaulSellRequest request)
+        {
+            if (request == null || !request.Item || !GameState.currentBoat)
+                return float.MaxValue;
+
+            Vector3 localPosition = GameState.currentBoat.InverseTransformPoint(request.Item.transform.position);
             return CrewNavigationCoordinator.Instance.EstimateDistanceToLocalPosition(crewman, localPosition);
         }
 
@@ -2231,6 +2297,12 @@ namespace SailwindVirtualCrew
             {
                 if (strim.Status == WorkRequestStatus.InProgress)
                     strim.UpdateFrame();
+            }
+
+            foreach (var haul in HaulSellRequests)
+            {
+                if (haul.Status == WorkRequestStatus.InProgress)
+                    haul.UpdateFrame();
             }
         }
 

@@ -21,6 +21,8 @@ namespace SailwindVirtualCrew
         //--settings--
         internal static ConfigEntry<bool> exampleSetting;
         internal static ConfigEntry<KeyboardShortcut> ToggleCrewWindow;
+        internal static ConfigEntry<KeyboardShortcut> SupercargoSellAtPortKey;
+        internal static ConfigEntry<KeyboardShortcut> CargoControllerGrabPortCargoKey;
         internal static ConfigEntry<bool> ExtraWorkingStaminaDrain;
 
         // PID slider ranges
@@ -54,6 +56,8 @@ namespace SailwindVirtualCrew
                 "When enabled, crew assigned to active tasks lose stamina twice as fast. When disabled, working and idle crew use the same baseline stamina drain.");
 
             ToggleCrewWindow = Config.Bind("CrewHotkeys", "ToggleCrewWindow", new KeyboardShortcut(KeyCode.B));
+            SupercargoSellAtPortKey = Config.Bind("CrewHotkeys", "SupercargoSellAtPort", new KeyboardShortcut(KeyCode.X));
+            CargoControllerGrabPortCargoKey = Config.Bind("CrewHotkeys", "CargoControllerGrabPortCargo", new KeyboardShortcut(KeyCode.Z));
             BuildShipMap = Config.Bind("CrewHotkeys", "BuildShipMap", new KeyboardShortcut(KeyCode.V));
 
             ScanItems = Config.Bind("CrewHotkeys", "ScanItems", new KeyboardShortcut(KeyCode.P));
@@ -92,6 +96,7 @@ namespace SailwindVirtualCrew
             VirtualCrewManager.Instance.TrimTick();
             CrewDebugObjects.Tick();
             CrewNavigationCoordinator.Instance.Tick();
+            CargoControllerPortCargoHotkey.Tick();
 
             if (BuildShipMap.Value.IsDown())
             {
