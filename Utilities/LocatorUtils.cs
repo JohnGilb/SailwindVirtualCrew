@@ -15,7 +15,8 @@ namespace SailwindVirtualCrew
 
         public static int[] findItemCounts(string[] targetItemNames)
         {
-            Vector3 playerPos = GameState.currentBoat.transform.position;
+            Transform vesselReference = CrewBoatContextResolver.GetActiveTopBoat()
+                ?? CrewBoatContextResolver.GetActiveWorldBoat();
             float maxDistSqr = 100f * 100f;
 
             int[] counts = new int[targetItemNames.Length];
@@ -30,8 +31,8 @@ namespace SailwindVirtualCrew
                         continue;
 
                     bool inInventory = item.GetCurrentInventorySlot() != -1 || item.held != null;
-                    float distSqr = (item.transform.position - playerPos).sqrMagnitude;
-                    bool isClose = distSqr <= maxDistSqr;
+                    bool isClose = vesselReference
+                        && (item.transform.position - vesselReference.position).sqrMagnitude <= maxDistSqr;
 
                     if (inInventory || isClose)
                         counts[i]++;
@@ -214,17 +215,17 @@ namespace SailwindVirtualCrew
             if (!transform)
                 return false;
 
-            Transform worldBoat = GameState.currentBoat;
+            Transform worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
             if (worldBoat && (transform == worldBoat || transform.IsChildOf(worldBoat)))
                 return true;
 
-            Transform topBoat = GameState.lastBoat;
+            Transform topBoat = CrewBoatContextResolver.GetActiveTopBoat();
             return topBoat && (transform == topBoat || transform.IsChildOf(topBoat));
         }
 
         private static int GetCurrentVesselSceneIndex()
         {
-            Transform topBoat = GameState.lastBoat;
+            Transform topBoat = CrewBoatContextResolver.GetActiveTopBoat();
             if (!topBoat)
                 return -1;
 
@@ -237,7 +238,8 @@ namespace SailwindVirtualCrew
             if (!transform)
                 return false;
 
-            Transform reference = GameState.lastBoat ? GameState.lastBoat : GameState.currentBoat;
+            Transform reference = CrewBoatContextResolver.GetActiveTopBoat()
+                ?? CrewBoatContextResolver.GetActiveWorldBoat();
             if (!reference)
                 return false;
 

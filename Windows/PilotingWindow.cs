@@ -101,8 +101,10 @@ namespace SailwindVirtualCrew
 
         private void FindHelmComponents()
         {
-            if (GameState.currentBoat == null) return;
-            var rudder = GameState.currentBoat.GetComponentInChildren<Rudder>();
+            var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (!worldBoat) return;
+
+            var rudder = worldBoat.GetComponentInChildren<Rudder>();
             if (rudder == null) return;
             foreach (var wheel in FindObjectsOfType<GPButtonSteeringWheel>())
             {
@@ -146,9 +148,11 @@ namespace SailwindVirtualCrew
 
         private float GetCurrentHeading()
         {
-            if (GameState.currentBoat == null) return 0f;
+            var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (!worldBoat) return 0f;
+
             float raw = Vector3.SignedAngle(
-                GameState.currentBoat.transform.forward, Vector3.forward, -Vector3.up);
+                worldBoat.transform.forward, Vector3.forward, -Vector3.up);
             return PilotController.Normalize(raw);
         }
 
@@ -182,9 +186,11 @@ namespace SailwindVirtualCrew
 
         private Transform GetSailInfoBoatTransform()
         {
-            if (GameState.currentBoat == null) return null;
-            var purchasableBoat = GameState.currentBoat.GetComponentInParent<PurchasableBoat>();
-            return purchasableBoat ? purchasableBoat.transform : GameState.currentBoat.transform;
+            var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (!worldBoat) return null;
+
+            var purchasableBoat = worldBoat.GetComponentInParent<PurchasableBoat>();
+            return purchasableBoat ? purchasableBoat.transform : worldBoat.transform;
         }
 
         private Rigidbody GetSailInfoBoatRigidbody(Transform boat)
@@ -286,10 +292,11 @@ namespace SailwindVirtualCrew
             if (targetForward.sqrMagnitude < 0.001f) return;
 
             Transform sailInfoBoat = GetSailInfoBoatTransform();
-            if (sailInfoBoat != null && GameState.currentBoat != null)
+            Transform worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (sailInfoBoat != null && worldBoat != null)
             {
                 Quaternion sailInfoToHeadingTransform =
-                    Quaternion.FromToRotation(sailInfoBoat.forward, GameState.currentBoat.transform.forward);
+                    Quaternion.FromToRotation(sailInfoBoat.forward, worldBoat.transform.forward);
                 targetForward = sailInfoToHeadingTransform * targetForward;
                 targetForward.y = 0f;
                 if (targetForward.sqrMagnitude < 0.001f) return;

@@ -23,8 +23,11 @@ namespace SailwindVirtualCrew
         private const float MugUnits    = 3f;
         private const float BucketUnits = 10f;
 
-        private static BoatDamage GetBoatDamage() =>
-            GameState.lastBoat != null ? GameState.lastBoat.GetComponent<BoatDamage>() : null;
+        private static BoatDamage GetBoatDamage()
+        {
+            var topBoat = CrewBoatContextResolver.GetActiveTopBoat();
+            return topBoat ? topBoat.GetComponent<BoatDamage>() : null;
+        }
 
         private void Update()
         {

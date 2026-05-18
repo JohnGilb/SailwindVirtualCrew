@@ -108,14 +108,22 @@ namespace SailwindVirtualCrew
 	            Console.WriteLine("====================");
 	            Console.WriteLine("Building ship map!");
 	            Console.WriteLine("====================");
+                var context = CrewBoatContextResolver.ResolveAndLog();
+                if (context == null)
+                {
+                    Console.WriteLine("CRITICAL ERROR: Could not resolve active vessel context!");
+                    return;
+                }
+
+                Transform worldBoat = context.WorldBoat;
 	            // Ok, now to learn about iteration. Grab each mast, get all sails on mast, give them a name, spray output.
-	            string vesselKey = GameState.currentBoat.name.Replace("(Clone)", "").Trim();
-                Console.WriteLine($"Vessel detected: {GameState.currentBoat.name} (Key: {vesselKey})");
+	            string vesselKey = worldBoat.name.Replace("(Clone)", "").Trim();
+                Console.WriteLine($"Vessel detected: {worldBoat.name} (Key: {vesselKey})");
 	            VirtualCrewManager.Instance.SetCurrentVessel(vesselKey);
 	            VirtualCrewManager.Instance.Reset();
 
                 // Find the true boat root (the parent with BoatRefs) to find all sibling hardware
-                BoatRefs rootRefs = GameState.currentBoat.GetComponentInParent<BoatRefs>();
+                BoatRefs rootRefs = context.TopBoat.GetComponent<BoatRefs>() ?? worldBoat.GetComponentInParent<BoatRefs>();
                 if (rootRefs == null)
                 {
                     Console.WriteLine("CRITICAL ERROR: Could not find BoatRefs for current boat!");
@@ -168,7 +176,7 @@ namespace SailwindVirtualCrew
                 Console.WriteLine($"Found {validSailWinches} active sail winches and {anchorWinchesFound} anchors on {boatRoot.name}.");
 
 
-	            Mast[] mastList = GameState.currentBoat.GetComponentsInChildren<Mast>();
+	            Mast[] mastList = worldBoat.GetComponentsInChildren<Mast>();
 
 	            var mastNameDictionary = new Dictionary<string, Mast>();
 	            var processedSails = new HashSet<Sail>();

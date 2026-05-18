@@ -18,17 +18,9 @@ namespace SailwindVirtualCrew
 
         internal static CrewBoatContext Resolve()
         {
-            var worldBoat = GameState.currentBoat;
-            if (!worldBoat)
+            if (!TryResolveBoatTransforms(out var topBoat, out var worldBoat, out bool playerEmbarked))
             {
-                //CrewDebugLog.Fail(Phase, "GameState.currentBoat is null; player may not be embarked.");
-                return null;
-            }
-
-            var topBoat = worldBoat.parent;
-            if (!topBoat)
-            {
-                CrewDebugLog.Fail(Phase, "GameState.currentBoat has no parent; cannot resolve top boat.");
+                //CrewDebugLog.Fail(Phase, "No active vessel context; player may not have visited a boat yet.");
                 return null;
             }
 
@@ -47,8 +39,90 @@ namespace SailwindVirtualCrew
                 TopBoat = topBoat,
                 WorldBoat = worldBoat,
                 WalkCol = walkCol,
-                SaveSceneIndex = sceneIndex
+                SaveSceneIndex = sceneIndex,
+                PlayerEmbarked = playerEmbarked
             };
+        }
+
+        internal static bool TryResolveBoatTransforms(out Transform topBoat, out Transform worldBoat)
+        {
+            return TryResolveBoatTransforms(out topBoat, out worldBoat, out _);
+        }
+
+        internal static Transform GetActiveTopBoat()
+        {
+            return TryResolveBoatTransforms(out var topBoat, out _) ? topBoat : null;
+        }
+
+        internal static Transform GetActiveWorldBoat()
+        {
+            return TryResolveBoatTransforms(out _, out var worldBoat) ? worldBoat : null;
+        }
+
+        internal static bool IsActiveTopBoat(Transform topBoat)
+        {
+            return topBoat && TryResolveBoatTransforms(out var activeTopBoat, out _) && activeTopBoat == topBoat;
+        }
+
+        internal static string GetActiveVesselKey()
+        {
+            var worldBoat = GetActiveWorldBoat();
+            return worldBoat ? worldBoat.name.Replace("(Clone)", "").Trim() : null;
+        }
+
+        private static bool TryResolveBoatTransforms(out Transform topBoat, out Transform worldBoat, out bool playerEmbarked)
+        {
+            topBoat = null;
+            worldBoat = null;
+            playerEmbarked = false;
+
+            if (GameState.currentBoat)
+            {
+                worldBoat = GameState.currentBoat;
+                topBoat = worldBoat.parent ? worldBoat.parent : GameState.lastBoat;
+                playerEmbarked = GameState.lastBoat && topBoat == GameState.lastBoat;
+            }
+            else if (GameState.lastBoat)
+            {
+                topBoat = GameState.lastBoat;
+                worldBoat = ResolveWorldBoatFromTopBoat(topBoat);
+            }
+
+            if (!topBoat && worldBoat && worldBoat.parent)
+                topBoat = worldBoat.parent;
+
+            if (!worldBoat && topBoat)
+                worldBoat = ResolveWorldBoatFromTopBoat(topBoat);
+
+            if (!topBoat || !worldBoat)
+                return false;
+
+            if (worldBoat.parent && worldBoat.parent != topBoat)
+            {
+                CrewDebugLog.Warn(Phase,
+                    "Resolved world boat parent differs from top boat. world='"
+                    + worldBoat.name + "' parent='" + worldBoat.parent.name
+                    + "' top='" + topBoat.name + "'");
+            }
+
+            return true;
+        }
+
+        private static Transform ResolveWorldBoatFromTopBoat(Transform topBoat)
+        {
+            if (!topBoat)
+                return null;
+
+            var refs = topBoat.GetComponent<BoatRefs>();
+            if (refs && refs.boatModel)
+                return refs.boatModel;
+
+            var embarkColliders = topBoat.GetComponentsInChildren<BoatEmbarkCollider>(true);
+            foreach (var embarkCollider in embarkColliders)
+                if (embarkCollider && embarkCollider.transform.parent)
+                    return embarkCollider.transform.parent;
+
+            return null;
         }
 
         private static Transform ResolveWalkCol(Transform topBoat, Transform worldBoat)
@@ -95,7 +169,9 @@ namespace SailwindVirtualCrew
 
         private static void LogContext(CrewBoatContext context)
         {
-            CrewDebugLog.Ok(Phase, "currentBoat='" + context.WorldBoat.name + "'");
+            CrewDebugLog.Ok(Phase,
+                "worldBoat='" + context.WorldBoat.name
+                + "', playerEmbarked=" + context.PlayerEmbarked);
 
             var saveable = context.Saveable;
             var rigidbody = context.Rigidbody;

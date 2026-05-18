@@ -540,11 +540,12 @@ namespace SailwindVirtualCrew
 
         private void EnsureCurrentVesselKey()
         {
-            if (CurrentVesselKey != null || GameState.currentBoat == null)
+            if (CurrentVesselKey != null)
                 return;
 
-            string vesselKey = GameState.currentBoat.name.Replace("(Clone)", "").Trim();
-            SetCurrentVessel(vesselKey);
+            string vesselKey = CrewBoatContextResolver.GetActiveVesselKey();
+            if (!string.IsNullOrEmpty(vesselKey))
+                SetCurrentVessel(vesselKey);
         }
 
         public void Reset()
@@ -1421,9 +1422,6 @@ namespace SailwindVirtualCrew
 
         public bool HasNavigationTool(NavigationMethod method)
         {
-            if (GameState.currentBoat == null)
-                return false;
-
             return LocatorUtils.findItem(new[] { GetNavigationToolItemName(method) })[0];
         }
 
@@ -1655,9 +1653,6 @@ namespace SailwindVirtualCrew
 
         private float GetNextBailToolUnits()
         {
-            if (GameState.currentBoat == null)
-                return BailMugUnits;
-
             int bucketCount = LocatorUtils.findItemCounts(new[] { "bucket" })[0];
             int bucketUsersQueued = BailRequests.Count(r =>
                 r.Status != WorkRequestStatus.Complete
@@ -1667,7 +1662,8 @@ namespace SailwindVirtualCrew
 
         private static BoatDamage GetCurrentBoatDamage()
         {
-            return GameState.lastBoat != null ? GameState.lastBoat.GetComponent<BoatDamage>() : null;
+            var topBoat = CrewBoatContextResolver.GetActiveTopBoat();
+            return topBoat ? topBoat.GetComponent<BoatDamage>() : null;
         }
 
         public void CancelSquareTrimRequest(SquareTrimRequest request)
@@ -2050,7 +2046,7 @@ namespace SailwindVirtualCrew
                     nav.Status = WorkRequestStatus.Complete;
                     if (nav.Navigator != null) nav.Navigator.CurrentTask = null;
 
-                    var boat = GameState.currentBoat;
+                    var boat = CrewBoatContextResolver.GetActiveWorldBoat();
                     if (boat != null)
                     {
                         var coords  = FloatingOriginManager.instance.GetGlobeCoords(boat);
@@ -2243,10 +2239,16 @@ namespace SailwindVirtualCrew
 
         private static float EstimateDistanceToHaulSellRequest(Crewman crewman, HaulSellRequest request)
         {
-            if (request == null || !request.Item || !GameState.currentBoat)
+            if (request == null || !request.Item)
                 return float.MaxValue;
 
-            Vector3 localPosition = GameState.currentBoat.InverseTransformPoint(request.Item.transform.position);
+            Transform worldBoat = request.Item.currentActualBoat
+                ? request.Item.currentActualBoat
+                : CrewBoatContextResolver.GetActiveWorldBoat();
+            if (!worldBoat)
+                return float.MaxValue;
+
+            Vector3 localPosition = worldBoat.InverseTransformPoint(request.Item.transform.position);
             return CrewNavigationCoordinator.Instance.EstimateDistanceToLocalPosition(crewman, localPosition);
         }
 

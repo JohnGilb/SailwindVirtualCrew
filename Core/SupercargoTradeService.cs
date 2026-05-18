@@ -92,10 +92,10 @@ namespace SailwindVirtualCrew
         internal static bool TryFindNearestPortDude(out PortDude nearest)
         {
             nearest = null;
-            if (!GameState.currentBoat || Port.ports == null)
+            if (!CrewBoatContextResolver.TryResolveBoatTransforms(out var topBoat, out var worldBoat) || Port.ports == null)
                 return false;
 
-            Vector3 boatPosition = GameState.currentBoat.position;
+            Vector3 boatPosition = topBoat ? topBoat.position : worldBoat.position;
             float bestDistance = float.MaxValue;
             foreach (var port in Port.ports)
             {
@@ -186,17 +186,33 @@ namespace SailwindVirtualCrew
 
         private static bool IsEligibleCargo(ShipItem item)
         {
-            if (!item || !GameState.currentBoat)
+            if (!item)
                 return false;
 
             if (!item.sold || item.nailed || item.held != null)
                 return false;
 
-            if (item.currentActualBoat != GameState.currentBoat)
+            if (!IsCargoOnActiveVessel(item))
                 return false;
 
             var good = item.GetComponent<Good>();
             return good != null && good.GetMissionIndex() == -1;
+        }
+
+        private static bool IsCargoOnActiveVessel(ShipItem item)
+        {
+            if (!item || !CrewBoatContextResolver.TryResolveBoatTransforms(out var topBoat, out var worldBoat))
+                return false;
+
+            if (item.currentActualBoat && item.currentActualBoat == worldBoat)
+                return true;
+
+            if (item.transform.IsChildOf(worldBoat) || item.transform.IsChildOf(topBoat))
+                return true;
+
+            var saveable = item.GetComponent<SaveablePrefab>();
+            var vesselSaveable = topBoat ? topBoat.GetComponent<SaveableObject>() : null;
+            return saveable && vesselSaveable && saveable.GetParentObject() == vesselSaveable.sceneIndex;
         }
 
         private static bool IsCargoValidForSale(ShipItem item)

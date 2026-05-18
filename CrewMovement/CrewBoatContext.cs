@@ -8,6 +8,7 @@ namespace SailwindVirtualCrew
         internal Transform WorldBoat { get; set; }
         internal Transform WalkCol { get; set; }
         internal int SaveSceneIndex { get; set; }
+        internal bool PlayerEmbarked { get; set; }
 
         internal SaveableObject Saveable => TopBoat ? TopBoat.GetComponent<SaveableObject>() : null;
         internal Rigidbody Rigidbody => TopBoat ? TopBoat.GetComponent<Rigidbody>() : null;

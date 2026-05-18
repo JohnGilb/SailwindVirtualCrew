@@ -510,9 +510,24 @@ namespace SailwindVirtualCrew
 
         private bool EnsureRuntimeReady()
         {
-            _context = CrewBoatContextResolver.Resolve();
-            if (_context == null)
+            var context = CrewBoatContextResolver.Resolve();
+            if (context == null)
                 return false;
+
+            if (_context != null
+                && (_context.TopBoat != context.TopBoat || _context.WorldBoat != context.WorldBoat || _context.WalkCol != context.WalkCol))
+            {
+                CancelAllActiveTasks();
+                foreach (var actor in _actorsByCrew.Values.ToList())
+                    actor.Destroy();
+                _actorsByCrew.Clear();
+                _actorsByOwner.Clear();
+                _proxyBoat = null;
+                _navMeshProvider = null;
+                _stations = new List<CrewStation>();
+            }
+
+            _context = context;
 
             if (_proxyBoat == null || !_proxyBoat.IsValid)
                 _proxyBoat = ProxyBoatBuilder.Create(_context);

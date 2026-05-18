@@ -17,6 +17,7 @@ namespace SailwindVirtualCrew
         private readonly int goodIndex;
 
         private Transform originBoat;
+        private Transform originTopBoat;
         private float positioningStartTime;
         private float positioningTimeTotal;
         private bool concretePositioning;
@@ -77,7 +78,7 @@ namespace SailwindVirtualCrew
 
         public bool AbortIfPlayerLeftOriginBoat()
         {
-            if (Status == WorkRequestStatus.Complete || IsPlayerOnOriginBoat())
+            if (Status == WorkRequestStatus.Complete || IsOriginBoatActive())
                 return false;
 
             AbortAndUnmark();
@@ -92,6 +93,7 @@ namespace SailwindVirtualCrew
             this.market = port ? port.GetComponent<IslandMarket>() : null;
             this.goodIndex = goodIndex;
             this.originBoat = item ? item.currentActualBoat : null;
+            this.originTopBoat = originBoat && originBoat.parent ? originBoat.parent : CrewBoatContextResolver.GetActiveTopBoat();
         }
 
         public void BeginPositioning(Crewman crewman)
@@ -103,10 +105,9 @@ namespace SailwindVirtualCrew
             Status = WorkRequestStatus.Positioning;
 
             concretePositioning = false;
-            if (item && !originBoat)
-                originBoat = item.currentActualBoat ? item.currentActualBoat : GameState.currentBoat;
+            ResolveOriginBoat();
 
-            if (item && IsPlayerOnOriginBoat())
+            if (item && IsOriginBoatActive())
             {
                 Vector3 localPosition = originBoat.InverseTransformPoint(item.transform.position);
                 Quaternion localRotation = Quaternion.Inverse(originBoat.rotation) * item.transform.rotation;
@@ -147,7 +148,7 @@ namespace SailwindVirtualCrew
             if (Status != WorkRequestStatus.Positioning)
                 return;
 
-            if (!IsPlayerOnOriginBoat())
+            if (!IsOriginBoatActive())
             {
                 AbortAndUnmark();
                 return;
@@ -168,8 +169,7 @@ namespace SailwindVirtualCrew
             RemoveCargoFromBoatMass();
             haulStartPosition = item.transform.position;
             haulStartRotation = item.transform.rotation;
-            if (!originBoat)
-                originBoat = item.currentActualBoat ? item.currentActualBoat : GameState.currentBoat;
+            ResolveOriginBoat();
             returnLocalPosition = originBoat
                 ? originBoat.InverseTransformPoint(haulStartPosition)
                 : Vector3.zero;
@@ -199,7 +199,7 @@ namespace SailwindVirtualCrew
             if (Status != WorkRequestStatus.InProgress)
                 return;
 
-            if (!IsPlayerOnOriginBoat())
+            if (!IsOriginBoatActive())
             {
                 AbortAndUnmark();
                 return;
@@ -339,8 +339,7 @@ namespace SailwindVirtualCrew
             if (!removedFromBoatMass || boatMass == null || itemRigidbody == null || !item)
                 return;
 
-            if (!originBoat)
-                originBoat = item.currentActualBoat ? item.currentActualBoat : GameState.currentBoat;
+            ResolveOriginBoat();
 
             if (item.currentActualBoat == originBoat)
                 boatMass.AddItem(itemRigidbody);
@@ -691,12 +690,32 @@ namespace SailwindVirtualCrew
             Complete();
         }
 
-        private bool IsPlayerOnOriginBoat()
+        private bool IsOriginBoatActive()
+        {
+            ResolveOriginBoat();
+
+            if (!originBoat)
+                return false;
+
+            if (originTopBoat)
+                return CrewBoatContextResolver.IsActiveTopBoat(originTopBoat);
+
+            var activeWorldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            return activeWorldBoat && activeWorldBoat == originBoat;
+        }
+
+        private void ResolveOriginBoat()
         {
             if (!originBoat && item)
-                originBoat = item.currentActualBoat ? item.currentActualBoat : GameState.currentBoat;
+                originBoat = item.currentActualBoat ? item.currentActualBoat : CrewBoatContextResolver.GetActiveWorldBoat();
 
-            return originBoat && GameState.currentBoat == originBoat;
+            if (!originTopBoat)
+            {
+                if (originBoat && originBoat.parent)
+                    originTopBoat = originBoat.parent;
+                else
+                    originTopBoat = CrewBoatContextResolver.GetActiveTopBoat();
+            }
         }
 
         private void AbortAndUnmark()

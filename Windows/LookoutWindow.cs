@@ -494,7 +494,8 @@ namespace SailwindVirtualCrew
         private static Vector3 GetPlayerPosition()
         {
             if (Refs.observerMirror != null) return Refs.observerMirror.transform.position;
-            if (GameState.currentBoat  != null) return GameState.currentBoat.transform.position;
+            var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (worldBoat != null) return worldBoat.transform.position;
             return Vector3.zero;
         }
 
@@ -635,7 +636,8 @@ namespace SailwindVirtualCrew
         {
             if (Refs.ovrCameraRig != null) return Refs.ovrCameraRig.position;
             if (Refs.observerMirror != null) return Refs.observerMirror.transform.position + Vector3.up * 1.7f;
-            if (GameState.currentBoat != null) return GameState.currentBoat.transform.position + Vector3.up * 2f;
+            var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (worldBoat != null) return worldBoat.transform.position + Vector3.up * 2f;
             return Vector3.up * 2f;
         }
     }
