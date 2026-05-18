@@ -1529,6 +1529,20 @@ namespace SailwindVirtualCrew
                 && HaulSellRequests.Any(r => r.Item == item && r.Status != WorkRequestStatus.Complete);
         }
 
+        public bool TryCancelHaulSellRequestForItem(ShipItem item)
+        {
+            if (!item)
+                return false;
+
+            var request = HaulSellRequests.FirstOrDefault(r =>
+                r.Item == item && r.Status != WorkRequestStatus.Complete);
+            if (request == null)
+                return false;
+
+            CancelHaulSellRequest(request);
+            return true;
+        }
+
         public bool HasPendingMooringRequest(MooringSide side)
         {
             return MooringRequests.Any(r => r.Side == side && r.Status != WorkRequestStatus.Complete);
@@ -2086,6 +2100,9 @@ namespace SailwindVirtualCrew
             MooringRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
             // Haul & Sell requests: walk to the cargo, then hand off to the per-frame cargo haul.
+            foreach (var haul in HaulSellRequests)
+                haul.AbortIfPlayerLeftOriginBoat();
+
             foreach (var haul in HaulSellRequests)
             {
                 if (haul.Status == WorkRequestStatus.Positioning

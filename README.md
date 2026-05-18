@@ -168,6 +168,7 @@ Tools:
 - Mooring range is too large.
 - The Jong generally is a big buggy, but getting less so with every release.
 - Documentation on how to mechanically use the features is bare
+- Tasks started while you're on the boat can get real weird if you leave the boat.
 
 ---
 

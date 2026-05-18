@@ -10,7 +10,30 @@ namespace SailwindVirtualCrew
 
         internal static bool CanOfferSellAtPort(ShipItem item)
         {
-            return TryGetSellContext(item, out _, out _);
+            return HasStamp(item) || TryGetSellContext(item, out _, out _);
+        }
+
+        internal static bool IsMarkedForHaulSell(ShipItem item)
+        {
+            return HasStamp(item);
+        }
+
+        internal static bool TryToggleSellAtPort(ShipItem item)
+        {
+            if (!item)
+                return false;
+
+            var manager = VirtualCrewManager.Instance;
+            if (manager != null && manager.TryCancelHaulSellRequestForItem(item))
+                return true;
+
+            if (HasStamp(item))
+            {
+                RemoveStamp(item);
+                return true;
+            }
+
+            return TryQueueSellAtPort(item);
         }
 
         internal static bool TryQueueSellAtPort(ShipItem item)
@@ -154,6 +177,11 @@ namespace SailwindVirtualCrew
             var stamp = item.transform.Find(StampName);
             if (stamp)
                 Object.Destroy(stamp.gameObject);
+        }
+
+        private static bool HasStamp(ShipItem item)
+        {
+            return item && item.transform.Find(StampName) != null;
         }
 
         private static bool IsEligibleCargo(ShipItem item)

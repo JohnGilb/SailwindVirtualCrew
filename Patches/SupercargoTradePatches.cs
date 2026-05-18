@@ -21,7 +21,7 @@ namespace SailwindVirtualCrew
             if (!item)
                 return;
 
-            SupercargoTradeService.TryQueueSellAtPort(item);
+            SupercargoTradeService.TryToggleSellAtPort(item);
         }
     }
 
@@ -47,7 +47,8 @@ namespace SailwindVirtualCrew
             if (!string.IsNullOrEmpty(controlsText.text) && !controlsText.text.EndsWith("\n"))
                 controlsText.text += "\n";
 
-            controlsText.text += GetKeyName() + " sell at port";
+            controlsText.text += GetKeyName()
+                + (SupercargoTradeService.IsMarkedForHaulSell(item) ? " cancel port sale" : " sell at port");
         }
 
         private static string GetKeyName()

@@ -16,6 +16,7 @@ namespace SailwindVirtualCrew
         private readonly IslandMarket market;
         private readonly int goodIndex;
 
+        private Transform originBoat;
         private float positioningStartTime;
         private float positioningTimeTotal;
         private bool concretePositioning;
@@ -74,6 +75,15 @@ namespace SailwindVirtualCrew
         public bool IsReturning => phase == Phase.Returning && Status == WorkRequestStatus.InProgress;
         public bool IsReturningCanceledCargo => restoringCanceledCargo && IsReturning;
 
+        public bool AbortIfPlayerLeftOriginBoat()
+        {
+            if (Status == WorkRequestStatus.Complete || IsPlayerOnOriginBoat())
+                return false;
+
+            AbortAndUnmark();
+            return true;
+        }
+
         public HaulSellRequest(ShipItem item, PortDude portDude, int goodIndex)
         {
             this.item = item;
@@ -81,6 +91,7 @@ namespace SailwindVirtualCrew
             this.port = portDude ? portDude.GetPort() : null;
             this.market = port ? port.GetComponent<IslandMarket>() : null;
             this.goodIndex = goodIndex;
+            this.originBoat = item ? item.currentActualBoat : null;
         }
 
         public void BeginPositioning(Crewman crewman)
@@ -92,10 +103,13 @@ namespace SailwindVirtualCrew
             Status = WorkRequestStatus.Positioning;
 
             concretePositioning = false;
-            if (item && GameState.currentBoat)
+            if (item && !originBoat)
+                originBoat = item.currentActualBoat ? item.currentActualBoat : GameState.currentBoat;
+
+            if (item && IsPlayerOnOriginBoat())
             {
-                Vector3 localPosition = GameState.currentBoat.InverseTransformPoint(item.transform.position);
-                Quaternion localRotation = Quaternion.Inverse(GameState.currentBoat.rotation) * item.transform.rotation;
+                Vector3 localPosition = originBoat.InverseTransformPoint(item.transform.position);
+                Quaternion localRotation = Quaternion.Inverse(originBoat.rotation) * item.transform.rotation;
                 concretePositioning = CrewNavigationCoordinator.Instance.TryBeginRolePositioning(
                     this, crewman, localPosition, localRotation, "haul sell cargo='" + item.name + "'");
             }
@@ -133,6 +147,12 @@ namespace SailwindVirtualCrew
             if (Status != WorkRequestStatus.Positioning)
                 return;
 
+            if (!IsPlayerOnOriginBoat())
+            {
+                AbortAndUnmark();
+                return;
+            }
+
             if (concretePositioning)
             {
                 concretePositioning = false;
@@ -140,7 +160,7 @@ namespace SailwindVirtualCrew
 
             if (!item || !portDude || market == null)
             {
-                Complete();
+                AbortAndUnmark();
                 return;
             }
 
@@ -148,17 +168,20 @@ namespace SailwindVirtualCrew
             RemoveCargoFromBoatMass();
             haulStartPosition = item.transform.position;
             haulStartRotation = item.transform.rotation;
-            returnLocalPosition = GameState.currentBoat
-                ? GameState.currentBoat.InverseTransformPoint(haulStartPosition)
+            if (!originBoat)
+                originBoat = item.currentActualBoat ? item.currentActualBoat : GameState.currentBoat;
+            returnLocalPosition = originBoat
+                ? originBoat.InverseTransformPoint(haulStartPosition)
                 : Vector3.zero;
-            returnLocalRotation = GameState.currentBoat
-                ? Quaternion.Inverse(GameState.currentBoat.rotation) * haulStartRotation
+            returnLocalRotation = originBoat
+                ? Quaternion.Inverse(originBoat.rotation) * haulStartRotation
                 : haulStartRotation;
             if (!MooringLocator.TryFindActiveRoute(haulStartPosition, out activeRoute))
             {
                 ReturnCargoToOrigin();
                 RestoreCargoCollision();
                 RestoreCargoToBoatMass();
+                SupercargoTradeService.RemoveStamp(item);
                 Complete();
                 return;
             }
@@ -175,6 +198,12 @@ namespace SailwindVirtualCrew
         {
             if (Status != WorkRequestStatus.InProgress)
                 return;
+
+            if (!IsPlayerOnOriginBoat())
+            {
+                AbortAndUnmark();
+                return;
+            }
 
             if (phase == Phase.Returning)
             {
@@ -243,6 +272,7 @@ namespace SailwindVirtualCrew
 
             if (Status == WorkRequestStatus.InProgress && item && phase == Phase.Hauling)
             {
+                SupercargoTradeService.RemoveStamp(item);
                 BeginCanceledCargoReturn();
                 return;
             }
@@ -309,7 +339,10 @@ namespace SailwindVirtualCrew
             if (!removedFromBoatMass || boatMass == null || itemRigidbody == null || !item)
                 return;
 
-            if (item.currentActualBoat == GameState.currentBoat)
+            if (!originBoat)
+                originBoat = item.currentActualBoat ? item.currentActualBoat : GameState.currentBoat;
+
+            if (item.currentActualBoat == originBoat)
                 boatMass.AddItem(itemRigidbody);
 
             removedFromBoatMass = false;
@@ -567,8 +600,8 @@ namespace SailwindVirtualCrew
             ActiveMooringRoute activeRoute,
             bool toPort)
         {
-            Vector3 boatAnchor = GameState.currentBoat
-                ? GameState.currentBoat.TransformPoint(activeRoute.BoatAnchorLocal)
+            Vector3 boatAnchor = originBoat
+                ? originBoat.TransformPoint(activeRoute.BoatAnchorLocal)
                 : activeRoute.BoatAnchorWorld;
             Vector3 dock = activeRoute.DockWorld;
 
@@ -658,6 +691,32 @@ namespace SailwindVirtualCrew
             Complete();
         }
 
+        private bool IsPlayerOnOriginBoat()
+        {
+            if (!originBoat && item)
+                originBoat = item.currentActualBoat ? item.currentActualBoat : GameState.currentBoat;
+
+            return originBoat && GameState.currentBoat == originBoat;
+        }
+
+        private void AbortAndUnmark()
+        {
+            if (concretePositioning)
+            {
+                CrewNavigationCoordinator.Instance.Cancel(this);
+                concretePositioning = false;
+            }
+
+            if (phase != Phase.Waiting)
+            {
+                ReturnCargoToOrigin();
+                RestoreCargoCollision();
+                RestoreCargoToBoatMass();
+            }
+            SupercargoTradeService.RemoveStamp(item);
+            Complete();
+        }
+
         private void MoveDeckhandWithCargo(Vector3 cargoPosition, Quaternion cargoRotation)
         {
             if (AssignedCrewman == null)
@@ -669,15 +728,15 @@ namespace SailwindVirtualCrew
 
         private Vector3 GetReturnWorldPosition()
         {
-            return GameState.currentBoat
-                ? GameState.currentBoat.TransformPoint(returnLocalPosition)
+            return originBoat
+                ? originBoat.TransformPoint(returnLocalPosition)
                 : haulStartPosition;
         }
 
         private Quaternion GetReturnWorldRotation()
         {
-            return GameState.currentBoat
-                ? GameState.currentBoat.rotation * returnLocalRotation
+            return originBoat
+                ? originBoat.rotation * returnLocalRotation
                 : haulStartRotation;
         }
 
