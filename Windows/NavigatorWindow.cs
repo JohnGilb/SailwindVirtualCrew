@@ -13,6 +13,7 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "NavigatorWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 860f, 340f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         // Equipment state (auto-detected by ScanForTools)
@@ -68,7 +69,7 @@ namespace SailwindVirtualCrew
 
         private void Update()
         {
-            if (Plugin.ToggleCrewWindow.Value.IsDown())
+            if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
 
             weatherPollTimer -= Time.deltaTime;
@@ -130,7 +131,7 @@ namespace SailwindVirtualCrew
             }
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : BaseContentHeight + contentHeight;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Navigator");
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Navigator");
         }
 
         private void DrawWindow(int id)

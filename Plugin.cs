@@ -21,6 +21,7 @@ namespace SailwindVirtualCrew
         //--settings--
         internal static ConfigEntry<bool> exampleSetting;
         internal static ConfigEntry<KeyboardShortcut> ToggleCrewWindow;
+        internal static ConfigEntry<KeyboardShortcut> ResetWindowPositions;
         internal static ConfigEntry<KeyboardShortcut> SupercargoSellAtPortKey;
         internal static ConfigEntry<KeyboardShortcut> CargoControllerGrabPortCargoKey;
         internal static ConfigEntry<bool> ExtraWorkingStaminaDrain;
@@ -56,6 +57,7 @@ namespace SailwindVirtualCrew
                 "When enabled, crew assigned to active tasks lose stamina twice as fast. When disabled, working and idle crew use the same baseline stamina drain.");
 
             ToggleCrewWindow = Config.Bind("CrewHotkeys", "ToggleCrewWindow", new KeyboardShortcut(KeyCode.B));
+            ResetWindowPositions = Config.Bind("CrewHotkeys", "ResetWindowPositions", new KeyboardShortcut(KeyCode.Backslash));
             SupercargoSellAtPortKey = Config.Bind("CrewHotkeys", "SupercargoSellAtPort", new KeyboardShortcut(KeyCode.X));
             CargoControllerGrabPortCargoKey = Config.Bind("CrewHotkeys", "CargoControllerGrabPortCargo", new KeyboardShortcut(KeyCode.Z));
             BuildShipMap = Config.Bind("CrewHotkeys", "BuildShipMap", new KeyboardShortcut(KeyCode.V));
@@ -97,6 +99,9 @@ namespace SailwindVirtualCrew
             CrewDebugObjects.Tick();
             CrewNavigationCoordinator.Instance.Tick();
             CargoControllerPortCargoHotkey.Tick();
+
+            if (ResetWindowPositions.Value.IsDown())
+                ResetAllWindowPositions();
 
             if (BuildShipMap.Value.IsDown())
             {
@@ -348,6 +353,18 @@ namespace SailwindVirtualCrew
             if (ScanItems.Value.IsDown())
             {
                 CrewNavigationCoordinator.Instance.ForceRingLookoutBell();
+            }
+        }
+
+        private void ResetAllWindowPositions()
+        {
+            foreach (var window in GetComponents<IWindowPosition>())
+            {
+                var position = window.GetDefaultPosition();
+                if (position == null || position.Length < 2)
+                    continue;
+
+                window.SetPosition(position[0], position[1], position.Length >= 3 ? position[2] : 0f);
             }
         }
 

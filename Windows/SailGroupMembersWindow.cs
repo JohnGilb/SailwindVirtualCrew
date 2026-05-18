@@ -13,6 +13,7 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "SailGroupMembersWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 860f, 20f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private const float ButtonHeight      = 28f;
@@ -48,7 +49,7 @@ namespace SailwindVirtualCrew
                 contentHeight += selectedGroup.GetMembers(sails).Count() * ButtonHeight;
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : BaseContentHeight + contentHeight;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Group Members");
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Group Members");
         }
 
         private void DrawWindow(int id)

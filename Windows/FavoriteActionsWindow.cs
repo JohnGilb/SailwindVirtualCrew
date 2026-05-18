@@ -15,11 +15,12 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "FavoriteActionsWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 20f, 840f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private void Update()
         {
-            if (Plugin.ToggleCrewWindow.Value.IsDown())
+            if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
 
             if (!string.IsNullOrEmpty(_captureActionId))
@@ -39,7 +40,7 @@ namespace SailwindVirtualCrew
             SailwindGuiStyle.Apply();
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : 360f;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Favorite Actions");
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Favorite Actions");
         }
 
         private void DrawWindow(int id)

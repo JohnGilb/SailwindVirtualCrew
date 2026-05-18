@@ -18,6 +18,7 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "WorkstationCustomizerWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 1240f, 20f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         public bool IsVisible => showWindow;
@@ -45,7 +46,7 @@ namespace SailwindVirtualCrew
             SailwindGuiStyle.Apply();
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : 520f;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Workstation Customizer");
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Workstation Customizer");
         }
 
         private void DrawWindow(int id)

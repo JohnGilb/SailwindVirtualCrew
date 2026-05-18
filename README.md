@@ -110,6 +110,7 @@ Tools:
 - Can operate bilge pumps
 - Can repair ships with Oakum
 - Add "harden/ease" buttons to dual-sheet sails (Squares, jibs) for fine adjustment
+- Can unmoor from the dock
 
 #### Pilot
 
@@ -126,6 +127,7 @@ Tools:
   - Rotate out station roles as they become tired (e.g. pilots, lookouts).
 - Checks hull status and issues repairs at sea.
 - Their Charisma acts as a buff (or detriment) to the statistics of other crew members.
+- 
 
 #### Lookout
 
@@ -165,6 +167,7 @@ Tools:
 - If your ship sinks, the code really bugs out. Don't sink your ship!
 - Mooring range is too large.
 - The Jong generally is a big buggy, but getting less so with every release.
+- Documentation on how to mechanically use the features is bare
 
 ---
 

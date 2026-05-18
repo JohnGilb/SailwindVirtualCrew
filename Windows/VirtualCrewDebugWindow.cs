@@ -11,6 +11,7 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "VirtualCrewDebugWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 20f, 660f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private void OnGUI()
@@ -20,7 +21,7 @@ namespace SailwindVirtualCrew
 
             float height = 170f;
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Virtual Crew Debug");
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Virtual Crew Debug");
         }
 
         private void DrawWindow(int id)

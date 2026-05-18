@@ -4,6 +4,7 @@ namespace SailwindVirtualCrew
     {
         string WindowKey { get; }
         float[] GetPosition();
+        float[] GetDefaultPosition();
         void SetPosition(float x, float y, float userHeight);
     }
 }

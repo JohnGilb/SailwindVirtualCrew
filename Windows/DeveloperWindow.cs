@@ -13,11 +13,12 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "DeveloperWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 20f, 20f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private void Update()
         {
-            if (Plugin.ToggleCrewWindow.Value.IsDown())
+            if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
         }
 
@@ -31,7 +32,7 @@ namespace SailwindVirtualCrew
                 height += 30f * 5; // add basic crew + refresh ports + stamina buttons + workstation customizer
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Developer Tools");
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Developer Tools");
         }
 
         private void DrawWindow(int id)

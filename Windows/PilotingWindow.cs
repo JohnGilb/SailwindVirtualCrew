@@ -13,6 +13,7 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "PilotingWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 440f, 20f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private readonly PilotController controller = new PilotController();
@@ -55,7 +56,7 @@ namespace SailwindVirtualCrew
 
         private void Update()
         {
-            if (Plugin.ToggleCrewWindow.Value.IsDown())
+            if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
 
             SyncActivePilotTask();
@@ -319,7 +320,7 @@ namespace SailwindVirtualCrew
             if (!showWindow) return;
             SailwindGuiStyle.Apply();
             if (_resizer.UserHeight > 0f) windowRect.height = _resizer.UserHeight;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Piloting");
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Piloting");
         }
 
         private void DrawWindow(int id)

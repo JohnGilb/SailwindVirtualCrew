@@ -127,6 +127,7 @@
     <Compile Include="Requests\PilotTask.cs" />
     <Compile Include="Requests\SleepRequest.cs" />
     <Compile Include="UI\IWindowPosition.cs" />
+    <Compile Include="UI\WindowLayoutUtility.cs" />
     <Compile Include="UI\SailwindGuiStyle.cs" />
     <Compile Include="UI\WindowResizer.cs" />
     <Compile Include="Utilities\CrewApiProbe.cs" />

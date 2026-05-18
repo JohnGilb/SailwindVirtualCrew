@@ -12,6 +12,7 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "CrewWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 20f, 20f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private ICommonSailActions selectedSail = null;
@@ -25,7 +26,7 @@ namespace SailwindVirtualCrew
 
         private void Update()
         {
-            if (Plugin.ToggleCrewWindow.Value.IsDown())
+            if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
         }
 
@@ -64,7 +65,7 @@ namespace SailwindVirtualCrew
             // Vessel label + rename row + "Sails" label = 3 rows
             float autoHeight = BaseContentHeight + ButtonHeight * 3 + sailListHeight + commandHeight;
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : autoHeight;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, "Deck Orders");
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Deck Orders");
         }
 
         private void DrawWindow(int id)

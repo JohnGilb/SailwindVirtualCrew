@@ -37,11 +37,12 @@ namespace SailwindVirtualCrew
 
         public string WindowKey => "LookoutWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
+        public float[] GetDefaultPosition() => new[] { 20f, 300f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private void Update()
         {
-            if (Plugin.ToggleCrewWindow.Value.IsDown())
+            if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
 
             if (!showWindow || !DeveloperMode.IsEnabled)
@@ -70,10 +71,10 @@ namespace SailwindVirtualCrew
             string title = DeveloperMode.IsEnabled ? "Lookout [Debug]" : "Lookout";
             windowRect.width = DeveloperMode.IsEnabled ? 500f : 280f;
             if (_resizer.UserHeight > 0f) windowRect.height = _resizer.UserHeight;
-            windowRect = GUI.Window(windowId, windowRect, DrawWindow, title);
+            windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, title);
 
             if (showIgnoredWindow)
-                ignoredWindowRect = GUI.Window(ignoredWindowId, ignoredWindowRect, DrawIgnoredWindow, "Ignored Land");
+                ignoredWindowRect = WindowLayoutUtility.DrawClampedWindow(ignoredWindowId, ignoredWindowRect, DrawIgnoredWindow, "Ignored Land");
         }
 
         private void DrawWindow(int id)
