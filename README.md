@@ -86,12 +86,14 @@ Tools:
 
 #### Quartermaster
 - Helps move supplies around the boat.
-  - (Having one activates/enables the CargoController mod, if you have it installed)
+  - Having one activates/enables the CargoController mod, if you have it installed
+	- Additionally, the hotkey Z will grab the next "Port" cargo and place it directly in your hands.
 
 #### Supercargo
 
 - Pays attention to the market and prices.
   - (Having one activates/enables the ProfitPercent mod, if you have it installed)
+- Grants access to the "Sell" command for cargo on the boat if you are moored near a Port trader (X by default); deckhands will unload and sell cargo for you. 
 
 ---
 
@@ -145,7 +147,7 @@ Tools:
 
 #### Supercargo
 
-- Assist in rapid load/unload of bulk trade goods (method TBD)
+- None currently planned
 
 ### UI / UX
 
@@ -162,13 +164,13 @@ Tools:
 - Can see Water % even without Quartermaster
 - If your ship sinks, the code really bugs out. Don't sink your ship!
 - Mooring range is too large.
+- The Jong generally is a big buggy, but getting less so with every release.
 
 ---
 
 ## Suspected Issues
 
 - Very little testing has been done around adding/removing sails from the ship.
-- Some scenarios seem to cause deckhands to take the "furthest" job from them rather than the closest, but I haven't found a clean repro yet.
 
 ---
 
