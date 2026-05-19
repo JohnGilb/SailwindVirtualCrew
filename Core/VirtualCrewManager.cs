@@ -414,6 +414,38 @@ namespace SailwindVirtualCrew
             vesselData.favoriteActions.Remove(action);
         }
 
+        public bool IsCargoMarkedKeep(ShipItem item)
+        {
+            if (!TryGetCargoInstanceId(item, out int instanceId))
+                return false;
+
+            var vesselData = GetCurrentVesselData();
+            return vesselData != null
+                && vesselData.keptCargoInstanceIds != null
+                && vesselData.keptCargoInstanceIds.Contains(instanceId);
+        }
+
+        public void SetCargoKeepMark(ShipItem item, bool keepMarked)
+        {
+            if (!TryGetCargoInstanceId(item, out int instanceId))
+                return;
+
+            var vesselData = GetCurrentVesselData();
+            if (vesselData == null)
+                return;
+
+            var keptCargo = vesselData.keptCargoInstanceIds ?? (vesselData.keptCargoInstanceIds = new List<int>());
+            if (keepMarked)
+            {
+                if (!keptCargo.Contains(instanceId))
+                    keptCargo.Add(instanceId);
+            }
+            else
+            {
+                keptCargo.Remove(instanceId);
+            }
+        }
+
         public void RemoveFavoriteActionsForGroup(string groupId)
         {
             if (string.IsNullOrEmpty(groupId)) return;
@@ -535,7 +567,20 @@ namespace SailwindVirtualCrew
             var vesselData = AllVesselsData[CurrentVesselKey];
             if (vesselData.favoriteActions == null)
                 vesselData.favoriteActions = new List<FavoriteAction>();
+            if (vesselData.keptCargoInstanceIds == null)
+                vesselData.keptCargoInstanceIds = new List<int>();
             return vesselData;
+        }
+
+        private static bool TryGetCargoInstanceId(ShipItem item, out int instanceId)
+        {
+            instanceId = -1;
+            var saveable = item != null ? item.GetComponent<SaveablePrefab>() : null;
+            if (saveable == null || saveable.instanceId <= 0)
+                return false;
+
+            instanceId = saveable.instanceId;
+            return true;
         }
 
         private void EnsureCurrentVesselKey()

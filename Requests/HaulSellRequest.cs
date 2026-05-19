@@ -181,7 +181,7 @@ namespace SailwindVirtualCrew
                 ReturnCargoToOrigin();
                 RestoreCargoCollision();
                 RestoreCargoToBoatMass();
-                SupercargoTradeService.RemoveStamp(item);
+                SupercargoTradeService.RemoveSellStamp(item);
                 Complete();
                 return;
             }
@@ -272,7 +272,7 @@ namespace SailwindVirtualCrew
 
             if (Status == WorkRequestStatus.InProgress && item && phase == Phase.Hauling)
             {
-                SupercargoTradeService.RemoveStamp(item);
+                SupercargoTradeService.RemoveSellStamp(item);
                 BeginCanceledCargoReturn();
                 return;
             }
@@ -281,7 +281,7 @@ namespace SailwindVirtualCrew
                 ReturnCargoToOrigin();
             RestoreCargoCollision();
             RestoreCargoToBoatMass();
-            SupercargoTradeService.RemoveStamp(item);
+            SupercargoTradeService.RemoveSellStamp(item);
             Complete();
         }
 
@@ -469,8 +469,8 @@ namespace SailwindVirtualCrew
             restoringCanceledCargo = false;
             Vector3 start = portDude ? portDude.transform.position : haulEndPosition;
             Quaternion startRotation = haulEndRotation;
-            if (MooringLocator.TryFindActiveRoute(GetReturnWorldPosition(), out var activeRoute))
-                BeginRoute(BuildRoute(start, startRotation, GetReturnWorldPosition(), GetReturnWorldRotation(), activeRoute, toPort: false), carriesCargo: false);
+            if (TryFindReturnRoute(out var returnRoute))
+                BeginRoute(BuildCrewReturnRouteToBoatAnchor(start, startRotation, returnRoute), carriesCargo: false);
             else
                 BeginRoute(new[] { CreateSegment(start, startRotation, GetReturnWorldPosition(), GetReturnWorldRotation(), 0f, ReturnSpeed) }, carriesCargo: false);
         }
@@ -500,7 +500,7 @@ namespace SailwindVirtualCrew
                 ReturnCargoToOrigin();
                 RestoreCargoCollision();
                 RestoreCargoToBoatMass();
-                SupercargoTradeService.RemoveStamp(item);
+                SupercargoTradeService.RemoveSellStamp(item);
             }
 
             Complete();
@@ -591,6 +591,12 @@ namespace SailwindVirtualCrew
             return routeSegmentIndex >= routeSegments.Length;
         }
 
+        private bool TryFindReturnRoute(out ActiveMooringRoute returnRoute)
+        {
+            returnRoute = activeRoute;
+            return returnRoute != null || MooringLocator.TryFindActiveRoute(GetReturnWorldPosition(), out returnRoute);
+        }
+
         private HaulSegment[] BuildRoute(
             Vector3 start,
             Quaternion startRotation,
@@ -619,6 +625,24 @@ namespace SailwindVirtualCrew
                 CreateSegment(start, startRotation, dock, GetLookRotation(start, dock, startRotation), 0f, ReturnSpeed),
                 CreateSegment(dock, GetLookRotation(dock, boatAnchor, startRotation), boatAnchor, GetLookRotation(dock, boatAnchor, startRotation), JumpHeight, ReturnSpeed),
                 CreateSegment(boatAnchor, GetLookRotation(boatAnchor, end, endRotation), end, endRotation, 0f, ReturnSpeed)
+            };
+        }
+
+        private HaulSegment[] BuildCrewReturnRouteToBoatAnchor(
+            Vector3 start,
+            Quaternion startRotation,
+            ActiveMooringRoute returnRoute)
+        {
+            Vector3 boatAnchor = originBoat
+                ? originBoat.TransformPoint(returnRoute.BoatAnchorLocal)
+                : returnRoute.BoatAnchorWorld;
+            Vector3 dock = returnRoute.DockWorld;
+            Quaternion boatRotation = GetLookRotation(dock, boatAnchor, startRotation);
+
+            return new[]
+            {
+                CreateSegment(start, startRotation, dock, GetLookRotation(start, dock, startRotation), 0f, ReturnSpeed),
+                CreateSegment(dock, boatRotation, boatAnchor, boatRotation, JumpHeight, ReturnSpeed)
             };
         }
 
@@ -686,7 +710,7 @@ namespace SailwindVirtualCrew
                 RestoreCargoToBoatMass();
             }
 
-            SupercargoTradeService.RemoveStamp(item);
+            SupercargoTradeService.RemoveSellStamp(item);
             Complete();
         }
 
@@ -732,7 +756,7 @@ namespace SailwindVirtualCrew
                 RestoreCargoCollision();
                 RestoreCargoToBoatMass();
             }
-            SupercargoTradeService.RemoveStamp(item);
+            SupercargoTradeService.RemoveSellStamp(item);
             Complete();
         }
 

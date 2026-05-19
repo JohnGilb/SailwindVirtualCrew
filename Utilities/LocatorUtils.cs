@@ -118,7 +118,8 @@ namespace SailwindVirtualCrew
 
         public static float FindBestLookoutSpyglassZoomOnCurrentVessel()
         {
-            return Mathf.Max(1f, FindBestSpyglassZoomOnCurrentVessel() / 5f);
+            // This used to divide by 5, but it looks like we might just need to patch the level 2 spyglass.
+            return Mathf.Max(1f, FindBestSpyglassZoomOnCurrentVessel() / 1f);
         }
 
         private static bool IsItemAvailableOnCurrentVessel(ShipItem item)

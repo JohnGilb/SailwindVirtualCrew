@@ -8,20 +8,18 @@ namespace SailwindVirtualCrew
     {
         private static void Postfix(GoPointer __instance)
         {
-            if (__instance == null || Plugin.SupercargoSellAtPortKey == null)
-                return;
-
-            if (!Plugin.SupercargoSellAtPortKey.Value.IsDown())
-                return;
-
-            if (__instance.GetHeldItem() != null)
+            if (__instance == null || __instance.GetHeldItem() != null)
                 return;
 
             var item = __instance.GetPointedAtItem();
             if (!item)
                 return;
 
-            SupercargoTradeService.TryToggleSellAtPort(item);
+            if (Plugin.SupercargoSellAtPortKey != null && Plugin.SupercargoSellAtPortKey.Value.IsDown())
+                SupercargoTradeService.TryToggleSellAtPort(item);
+
+            if (Plugin.SupercargoKeepCargoKey != null && Plugin.SupercargoKeepCargoKey.Value.IsDown())
+                SupercargoTradeService.TryToggleKeep(item);
         }
     }
 
@@ -37,7 +35,12 @@ namespace SailwindVirtualCrew
                 return;
 
             var item = button.GetComponent<ShipItem>();
-            if (!item || !SupercargoTradeService.CanOfferSellAtPort(item))
+            if (!item)
+                return;
+
+            bool canSell = SupercargoTradeService.CanOfferSellAtPort(item);
+            bool canKeep = SupercargoTradeService.CanMarkKeep(item);
+            if (!canSell && !canKeep)
                 return;
 
             var controlsText = ControlsTextField.GetValue(__instance) as TextMesh;
@@ -47,17 +50,51 @@ namespace SailwindVirtualCrew
             if (!string.IsNullOrEmpty(controlsText.text) && !controlsText.text.EndsWith("\n"))
                 controlsText.text += "\n";
 
-            controlsText.text += GetKeyName()
-                + (SupercargoTradeService.IsMarkedForHaulSell(item) ? " cancel port sale" : " sell at port");
+            if (canSell)
+            {
+                controlsText.text += GetSellKeyName()
+                    + (SupercargoTradeService.IsMarkedForHaulSell(item) ? " cancel port sale" : " sell at port");
+            }
+
+            if (canKeep)
+            {
+                if (!controlsText.text.EndsWith("\n"))
+                    controlsText.text += "\n";
+
+                controlsText.text += GetKeepKeyName()
+                    + (SupercargoTradeService.IsMarkedKeep(item) ? " unmark keep" : " mark keep");
+            }
         }
 
-        private static string GetKeyName()
+        private static string GetSellKeyName()
         {
             if (Plugin.SupercargoSellAtPortKey == null
                 || Plugin.SupercargoSellAtPortKey.Value.MainKey == KeyCode.None)
                 return "X";
 
             return Plugin.SupercargoSellAtPortKey.Value.MainKey.ToString();
+        }
+
+        private static string GetKeepKeyName()
+        {
+            if (Plugin.SupercargoKeepCargoKey == null
+                || Plugin.SupercargoKeepCargoKey.Value.MainKey == KeyCode.None)
+                return "N";
+
+            return Plugin.SupercargoKeepCargoKey.Value.MainKey.ToString();
+        }
+    }
+
+    [HarmonyPatch(typeof(SaveablePrefab), "RegisterToSave")]
+    internal static class SupercargoKeepMarkerRestorePatch
+    {
+        private static void Postfix(SaveablePrefab __instance)
+        {
+            var item = __instance != null ? __instance.GetComponent<ShipItem>() : null;
+            if (item == null)
+                return;
+
+            SupercargoTradeService.RefreshPersistentKeepMarker(item);
         }
     }
 }

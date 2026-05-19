@@ -84,6 +84,7 @@ namespace SailwindVirtualCrew
         public Dictionary<string, WorkstationLocationSaveData> customWorkstationLocations = new Dictionary<string, WorkstationLocationSaveData>();
         public LookoutStationSaveData lookoutStation;
         public List<FavoriteAction> favoriteActions = new List<FavoriteAction>();
+        public List<int> keptCargoInstanceIds = new List<int>();
     }
 
     [Serializable]

@@ -23,6 +23,7 @@ namespace SailwindVirtualCrew
         internal static ConfigEntry<KeyboardShortcut> ToggleCrewWindow;
         internal static ConfigEntry<KeyboardShortcut> ResetWindowPositions;
         internal static ConfigEntry<KeyboardShortcut> SupercargoSellAtPortKey;
+        internal static ConfigEntry<KeyboardShortcut> SupercargoKeepCargoKey;
         internal static ConfigEntry<KeyboardShortcut> CargoControllerGrabPortCargoKey;
         internal static ConfigEntry<bool> ExtraWorkingStaminaDrain;
 
@@ -59,6 +60,7 @@ namespace SailwindVirtualCrew
             ToggleCrewWindow = Config.Bind("CrewHotkeys", "ToggleCrewWindow", new KeyboardShortcut(KeyCode.B));
             ResetWindowPositions = Config.Bind("CrewHotkeys", "ResetWindowPositions", new KeyboardShortcut(KeyCode.Backslash));
             SupercargoSellAtPortKey = Config.Bind("CrewHotkeys", "SupercargoSellAtPort", new KeyboardShortcut(KeyCode.X));
+            SupercargoKeepCargoKey = Config.Bind("CrewHotkeys", "SupercargoKeepCargo", new KeyboardShortcut(KeyCode.N));
             CargoControllerGrabPortCargoKey = Config.Bind("CrewHotkeys", "CargoControllerGrabPortCargo", new KeyboardShortcut(KeyCode.Z));
             BuildShipMap = Config.Bind("CrewHotkeys", "BuildShipMap", new KeyboardShortcut(KeyCode.V));
 
@@ -73,6 +75,7 @@ namespace SailwindVirtualCrew
             gameObject.AddComponent<WorkRequestsWindow>();
             gameObject.AddComponent<NavigatorWindow>();
             gameObject.AddComponent<MaintenanceWindow>();
+            gameObject.AddComponent<SupercargoWindow>();
             gameObject.AddComponent<PilotingWindow>();
             gameObject.AddComponent<CrewRosterWindow>();
             gameObject.AddComponent<LookoutWindow>();

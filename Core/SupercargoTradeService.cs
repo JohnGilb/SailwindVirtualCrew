@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
@@ -6,16 +7,28 @@ namespace SailwindVirtualCrew
     internal static class SupercargoTradeService
     {
         private const float PortDudeRange = 100f;
-        private const string StampName = "VC_HaulSellStamp";
+        private const string SellStampName = "VC_HaulSellStamp";
+        private const string KeepStampName = "VC_KeepCargoStamp";
 
         internal static bool CanOfferSellAtPort(ShipItem item)
         {
-            return HasStamp(item) || TryGetSellContext(item, out _, out _);
+            return IsMarkedForHaulSell(item) || TryGetSellContext(item, out _, out _);
         }
 
         internal static bool IsMarkedForHaulSell(ShipItem item)
         {
-            return HasStamp(item);
+            return HasMarker(item, SellStampName);
+        }
+
+        internal static bool CanMarkKeep(ShipItem item)
+        {
+            return IsEligibleCargo(item);
+        }
+
+        internal static bool IsMarkedKeep(ShipItem item)
+        {
+            var manager = VirtualCrewManager.Instance;
+            return manager != null && manager.IsCargoMarkedKeep(item);
         }
 
         internal static bool TryToggleSellAtPort(ShipItem item)
@@ -27,13 +40,31 @@ namespace SailwindVirtualCrew
             if (manager != null && manager.TryCancelHaulSellRequestForItem(item))
                 return true;
 
-            if (HasStamp(item))
+            if (IsMarkedForHaulSell(item))
             {
-                RemoveStamp(item);
+                RemoveSellStamp(item);
                 return true;
             }
 
             return TryQueueSellAtPort(item);
+        }
+
+        internal static bool TryToggleKeep(ShipItem item)
+        {
+            if (!CanMarkKeep(item))
+                return false;
+
+            if (IsMarkedKeep(item))
+            {
+                SetKeepState(item, false);
+                return true;
+            }
+
+            var manager = VirtualCrewManager.Instance;
+            manager?.TryCancelHaulSellRequestForItem(item);
+            RemoveSellStamp(item);
+            SetKeepState(item, true);
+            return true;
         }
 
         internal static bool TryQueueSellAtPort(ShipItem item)
@@ -45,9 +76,48 @@ namespace SailwindVirtualCrew
             if (manager == null || manager.HasPendingHaulSellRequest(item))
                 return false;
 
-            AttachStamp(item);
+            SetKeepState(item, false);
+            AttachSellStamp(item);
             manager.AddHaulSellRequest(new HaulSellRequest(item, portDude, goodIndex));
             return true;
+        }
+
+        internal static bool CanBulkSellUnmarkedCargo()
+        {
+            if (!TryGetSellMarket(out _, out _))
+                return false;
+
+            return FindCurrentVesselCargo()
+                .Any(item => !IsMarkedKeep(item) && !IsMarkedForHaulSell(item) && TryGetSellContext(item, out _, out _));
+        }
+
+        internal static int MarkAllUnkeptCargoForSale()
+        {
+            if (!TryGetSellMarket(out _, out _))
+                return 0;
+
+            int queued = 0;
+            foreach (var item in FindCurrentVesselCargo())
+            {
+                if (IsMarkedKeep(item) || IsMarkedForHaulSell(item))
+                    continue;
+
+                if (TryQueueSellAtPort(item))
+                    queued++;
+            }
+
+            return queued;
+        }
+
+        internal static void RefreshPersistentKeepMarker(ShipItem item)
+        {
+            if (!item)
+                return;
+
+            if (IsMarkedKeep(item))
+                AttachKeepStamp(item);
+            else
+                RemoveKeepStamp(item);
         }
 
         internal static bool TryGetSellContext(ShipItem item, out PortDude portDude, out int goodIndex)
@@ -59,25 +129,12 @@ namespace SailwindVirtualCrew
                 return false;
 
             var manager = VirtualCrewManager.Instance;
-            if (manager == null)
+            if (manager == null || manager.HasPendingHaulSellRequest(item))
                 return false;
 
-            if (manager.HasPendingHaulSellRequest(item))
+            if (!TryGetSellMarket(out portDude, out var market))
                 return false;
 
-            if (!CrewRoleAvailability.HasAwakeCrew(ShipRole.Supercargo))
-                return false;
-
-            if (!manager.Crew.Any(c => c.Role == ShipRole.Deckhand))
-                return false;
-
-            if (!MooringLocator.IsCurrentBoatMoored())
-                return false;
-
-            if (!TryFindNearestPortDude(out portDude))
-                return false;
-
-            var market = portDude.GetPort()?.GetComponent<IslandMarket>();
             if (!CanSellCargoAtMarket(item, market))
                 return false;
 
@@ -143,45 +200,113 @@ namespace SailwindVirtualCrew
 
             PlayerGold.currency[currency] += sellPrice;
             LogTransaction(item, goodIndex, sellPrice, currency, market.GetPortName());
-            RemoveStamp(item);
+            RemoveSellStamp(item);
+            SetKeepState(item, false);
             item.DestroyItem();
             UISoundPlayer.instance?.PlayGoldSound();
             return true;
         }
 
-        internal static void AttachStamp(ShipItem item)
+        internal static void AttachSellStamp(ShipItem item)
         {
-            if (!item || item.transform.Find(StampName) != null)
-                return;
-
-            var stamp = new GameObject(StampName);
-            stamp.transform.SetParent(item.transform, false);
-            stamp.transform.localPosition = GetStampLocalPosition(item);
-            stamp.transform.localRotation = Quaternion.Euler(75f, 0f, 0f);
-            stamp.transform.localScale = Vector3.one * 0.16f;
-
-            var text = stamp.AddComponent<TextMesh>();
-            text.text = "SELL";
-            text.anchor = TextAnchor.MiddleCenter;
-            text.alignment = TextAlignment.Center;
-            text.characterSize = 0.2f;
-            text.fontSize = 72;
-            text.color = new Color(0.75f, 0.05f, 0.03f, 1f);
+            RemoveKeepStamp(item);
+            AttachMarker(item, SellStampName, "SELL", new Color(0.75f, 0.05f, 0.03f, 1f));
         }
 
-        internal static void RemoveStamp(ShipItem item)
+        internal static void RemoveSellStamp(ShipItem item)
+        {
+            RemoveMarker(item, SellStampName);
+        }
+
+        internal static void RemoveKeepStamp(ShipItem item)
+        {
+            RemoveMarker(item, KeepStampName);
+        }
+
+        private static void AttachKeepStamp(ShipItem item)
+        {
+            RemoveSellStamp(item);
+            AttachMarker(item, KeepStampName, "KEEP", new Color(0.1f, 0.45f, 0.9f, 1f));
+        }
+
+        private static void AttachMarker(ShipItem item, string markerName, string textValue, Color color)
         {
             if (!item)
                 return;
 
-            var stamp = item.transform.Find(StampName);
-            if (stamp)
-                Object.Destroy(stamp.gameObject);
+            RemoveMarker(item, markerName);
+
+            var marker = new GameObject(markerName);
+            marker.transform.SetParent(item.transform, false);
+            marker.transform.localPosition = GetStampLocalPosition(item);
+            marker.transform.localRotation = Quaternion.Euler(75f, 0f, 0f);
+            marker.transform.localScale = Vector3.one * 0.16f;
+
+            var text = marker.AddComponent<TextMesh>();
+            text.text = textValue;
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
+            text.characterSize = 0.2f;
+            text.fontSize = 72;
+            text.color = color;
         }
 
-        private static bool HasStamp(ShipItem item)
+        private static void RemoveMarker(ShipItem item, string markerName)
         {
-            return item && item.transform.Find(StampName) != null;
+            if (!item)
+                return;
+
+            var marker = item.transform.Find(markerName);
+            if (marker)
+                Object.Destroy(marker.gameObject);
+        }
+
+        private static bool HasMarker(ShipItem item, string markerName)
+        {
+            return item && item.transform.Find(markerName) != null;
+        }
+
+        private static void SetKeepState(ShipItem item, bool keepMarked)
+        {
+            var manager = VirtualCrewManager.Instance;
+            if (manager == null)
+                return;
+
+            manager.SetCargoKeepMark(item, keepMarked);
+            if (keepMarked)
+                AttachKeepStamp(item);
+            else
+                RemoveKeepStamp(item);
+        }
+
+        private static bool TryGetSellMarket(out PortDude portDude, out IslandMarket market)
+        {
+            portDude = null;
+            market = null;
+
+            var manager = VirtualCrewManager.Instance;
+            if (manager == null)
+                return false;
+
+            if (!CrewRoleAvailability.HasAwakeCrew(ShipRole.Supercargo))
+                return false;
+
+            if (!manager.Crew.Any(c => c.Role == ShipRole.Deckhand))
+                return false;
+
+            if (!MooringLocator.IsCurrentBoatMoored())
+                return false;
+
+            if (!TryFindNearestPortDude(out portDude))
+                return false;
+
+            market = portDude.GetPort()?.GetComponent<IslandMarket>();
+            return market != null;
+        }
+
+        private static IEnumerable<ShipItem> FindCurrentVesselCargo()
+        {
+            return GameObject.FindObjectsOfType<ShipItem>().Where(IsEligibleCargo);
         }
 
         private static bool IsEligibleCargo(ShipItem item)
