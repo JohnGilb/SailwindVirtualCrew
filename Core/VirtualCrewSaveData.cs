@@ -14,6 +14,7 @@ namespace SailwindVirtualCrew
         // Negative sentinel means "use MaxStamina on load" (handles saves from before this field existed).
         public float currentStamina = -1f;
         public int modelIndex = -1;
+        public CrewShift shift = CrewShift.AdHoc;
     }
 
     [Serializable]

@@ -1,5 +1,12 @@
 namespace SailwindVirtualCrew
 {
+    public enum CrewShift
+    {
+        AdHoc,
+        Day,
+        Night
+    }
+
     public enum ShipRole
     {
         Deckhand,
@@ -10,6 +17,29 @@ namespace SailwindVirtualCrew
         Quartermaster,
         Supercargo,
         Lookout
+    }
+
+    public static class CrewShiftExtensions
+    {
+        public static string DisplayName(this CrewShift shift)
+        {
+            switch (shift)
+            {
+                case CrewShift.Day:   return "Day";
+                case CrewShift.Night: return "Night";
+                default:              return "Ad-Hoc";
+            }
+        }
+
+        public static string DisplayTag(this CrewShift shift)
+        {
+            switch (shift)
+            {
+                case CrewShift.Day:   return " [Day]";
+                case CrewShift.Night: return " [Night]";
+                default:              return string.Empty;
+            }
+        }
     }
 
     public static class ShipRoleExtensions

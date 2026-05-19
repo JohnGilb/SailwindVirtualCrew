@@ -7,6 +7,7 @@ namespace SailwindVirtualCrew
         public string   Id         { get; private set; }
         public string   Name       { get; private set; }
         public ShipRole Role       { get; }
+        public CrewShift Shift     { get; private set; } = CrewShift.AdHoc;
         public int      ModelIndex { get; private set; }
 
         // True stat backing fields — always hold the real value regardless of exhaustion.
@@ -40,6 +41,7 @@ namespace SailwindVirtualCrew
 
         public object CurrentTask { get; set; }
         public bool IsOccupied => CurrentTask != null;
+        public bool ShiftSleepPending { get; private set; }
 
         // ── Stamina ─────────────────────────────────────────────────────────
         // MaxStamina in minutes; baseline 960 min (16 h) at Constitution 3.
@@ -99,11 +101,13 @@ namespace SailwindVirtualCrew
             int advStrength, int advDexterity, int advConstitution, int advIntelligence, int advWisdom, int advCharisma,
             float currentStamina = -1f,
             string id = null,
-            int modelIndex = -1)
+            int modelIndex = -1,
+            CrewShift shift = CrewShift.AdHoc)
         {
             Id           = string.IsNullOrEmpty(id) ? Guid.NewGuid().ToString("N") : id;
             Name         = name;
             Role         = role;
+            Shift        = shift;
             ModelIndex   = modelIndex >= 0 ? modelIndex : 0;
             _strength    = strength;
             _dexterity   = dexterity;
@@ -166,6 +170,8 @@ namespace SailwindVirtualCrew
         }
 
         public void Rename(string newName) { Name = newName; }
+        public void SetShift(CrewShift shift) { Shift = shift; }
+        public void SetShiftSleepPending(bool pending) { ShiftSleepPending = pending; }
 
         public CrewmanSaveData ToSaveData() => new CrewmanSaveData
         {
@@ -176,7 +182,8 @@ namespace SailwindVirtualCrew
             advStrength = AdvStrength, advDexterity = AdvDexterity, advConstitution = AdvConstitution,
             advIntelligence = AdvIntelligence, advWisdom = AdvWisdom, advCharisma = AdvCharisma,
             currentStamina = CurrentStamina,
-            modelIndex = ModelIndex
+            modelIndex = ModelIndex,
+            shift = Shift
         };
     }
 }

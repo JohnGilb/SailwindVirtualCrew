@@ -29,10 +29,15 @@ namespace SailwindVirtualCrew
 
         private readonly System.Random rng = new System.Random();
         private const float NavigatorWakeStaminaRatio = 0.33f;
+        private const float OffShiftSleepStaminaRatio = 0.8f;
         private const float FirstOfficerTrimIntervalHours = 2f;
+        private const float DayShiftStartHour = 6f;
+        private const float NightShiftStartHour = 18f;
+        private const float ShiftSleepDelayHours = 5f / 60f;
         private const int MaxNavigationResults = 3;
         private float _lastFirstOfficerLocalTime = -1f;
         private float _lastFirstOfficerTrimGameHours = -1f;
+        private float _lastShiftLocalTime = -1f;
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownEnd = new Dictionary<NavigationMethod, float>();
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownTotal = new Dictionary<NavigationMethod, float>();
         private readonly List<string> recentNavigationResults = new List<string>();
@@ -623,6 +628,7 @@ namespace SailwindVirtualCrew
             _lastLookoutPassiveDecayGameHours = -1f;
             _lastFirstOfficerLocalTime = -1f;
             _lastFirstOfficerTrimGameHours = -1f;
+            _lastShiftLocalTime = -1f;
 
             // Rebuild the AllSails group; keep user-created groups intact.
             AllSailsGroup = new SailGroup("All Sails", isAllSails: true);
@@ -836,6 +842,7 @@ namespace SailwindVirtualCrew
         public void RestoreShipCrew(List<CrewmanSaveData> saved)
         {
             _lastGlobalTime = -1f;
+            _lastShiftLocalTime = -1f;
             Crew.Clear();
             if (saved == null || saved.Count == 0) { return; }
             foreach (var d in saved)
@@ -853,6 +860,16 @@ namespace SailwindVirtualCrew
         public void RestorePortCrewRefreshDay(int day)
         {
             LastPortCrewRefreshDay = day;
+        }
+
+        public void SetCrewShift(Crewman crewman, CrewShift shift)
+        {
+            if (crewman == null)
+                return;
+
+            crewman.SetShift(shift);
+            if (shift == CrewShift.AdHoc)
+                crewman.SetShiftSleepPending(false);
         }
 
         public void RestorePayData(int totalSalaryPay, int[] totalSharePayByCurrency, Dictionary<int, CargoPaySaveData> cargoPayRecords)
@@ -1299,7 +1316,8 @@ namespace SailwindVirtualCrew
                 d.advStrength, d.advDexterity, d.advConstitution, d.advIntelligence, d.advWisdom, d.advCharisma,
                 d.currentStamina,
                 d.id,
-                d.modelIndex);
+                d.modelIndex,
+                d.shift);
 
         public void addSail(SimpleSail sail)
         {
@@ -1842,6 +1860,78 @@ namespace SailwindVirtualCrew
             }
         }
 
+        private void TickShiftSchedule()
+        {
+            if (Sun.sun == null)
+                return;
+
+            float currentLocalTime = NormalizeHour(Sun.sun.localTime);
+            bool hasPreviousLocalTime = _lastShiftLocalTime >= 0f;
+            if (hasPreviousLocalTime)
+            {
+                if (CrossedLocalHour(_lastShiftLocalTime, currentLocalTime, DayShiftStartHour))
+                    WakeCrewForShift(CrewShift.Day);
+
+                if (CrossedLocalHour(_lastShiftLocalTime, currentLocalTime, DayShiftStartHour + ShiftSleepDelayHours))
+                    SendShiftToSleep(CrewShift.Night);
+
+                if (CrossedLocalHour(_lastShiftLocalTime, currentLocalTime, NightShiftStartHour))
+                    WakeCrewForShift(CrewShift.Night);
+
+                if (CrossedLocalHour(_lastShiftLocalTime, currentLocalTime, NightShiftStartHour + ShiftSleepDelayHours))
+                    SendShiftToSleep(CrewShift.Day);
+            }
+
+            _lastShiftLocalTime = currentLocalTime;
+        }
+
+        private void WakeCrewForShift(CrewShift shift)
+        {
+            foreach (var crewman in Crew.Where(c => c.Shift == shift))
+            {
+                crewman.SetShiftSleepPending(false);
+                var sleep = SleepRequests.FirstOrDefault(r => r.AssignedCrewman == crewman);
+                if (sleep != null)
+                    CancelSleepRequest(sleep);
+            }
+        }
+
+        private void SendShiftToSleep(CrewShift shift)
+        {
+            foreach (var crewman in Crew.Where(c => c.Shift == shift))
+            {
+                if (crewman.CurrentStamina >= crewman.MaxStamina * OffShiftSleepStaminaRatio)
+                {
+                    crewman.SetShiftSleepPending(false);
+                    continue;
+                }
+
+                crewman.SetShiftSleepPending(true);
+                if (!crewman.IsOccupied)
+                    AddSleepRequest(crewman);
+            }
+        }
+
+        private void QueuePendingShiftSleepRequests()
+        {
+            foreach (var crewman in Crew)
+            {
+                if (!crewman.ShiftSleepPending)
+                    continue;
+
+                if (crewman.CurrentStamina >= crewman.MaxStamina * OffShiftSleepStaminaRatio)
+                {
+                    crewman.SetShiftSleepPending(false);
+                    continue;
+                }
+
+                if (crewman.IsOccupied)
+                    continue;
+
+                AddSleepRequest(crewman);
+            }
+        }
+
         private static bool CrossedLocalHour(float previous, float current, float hour)
         {
             previous = NormalizeHour(previous);
@@ -1920,8 +2010,11 @@ namespace SailwindVirtualCrew
             }
             _lastGlobalTime = currentTime;
 
+            TickShiftSchedule();
             TickFirstOfficer();
             TickLookoutPassiveCertaintyDecay();
+
+            QueuePendingShiftSleepRequests();
 
             // Auto-trigger sleep for exhausted, unoccupied crew, but only up to the number of
             // available beds. Crew with no bed to claim stay unoccupied so the player can still
@@ -1932,7 +2025,7 @@ namespace SailwindVirtualCrew
                 if (!c.IsExhausted || c.IsOccupied) continue;
                 if (autoTriggerBedCount == null) autoTriggerBedCount = LocatorUtils.CountBeds();
                 if (SleepRequests.Count >= autoTriggerBedCount.Value) break;
-                SleepRequests.Add(new SleepRequest(c));
+                AddSleepRequest(c);
             }
 
             TickQuartermasterBailing();
@@ -2211,7 +2304,10 @@ namespace SailwindVirtualCrew
 
         public void AddSleepRequest(Crewman crewman)
         {
-            if (crewman == null || crewman.IsOccupied) return;
+            if (crewman == null || crewman.IsOccupied)
+                return;
+            if (SleepRequests.Any(r => r.AssignedCrewman == crewman))
+                return;
             SleepRequests.Add(new SleepRequest(crewman));
         }
 

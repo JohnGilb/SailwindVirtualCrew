@@ -82,7 +82,8 @@ namespace SailwindVirtualCrew
                 bool sel = c == selectedShipCrew;
                 string fatigue = DeveloperMode.IsEnabled ? "" : $"  [{c.FatigueTag}]";
                 string roleName = c.Role.DisplayName();
-                string label = sel ? $"► {c.Name}  ({roleName}){fatigue}" : $"  {c.Name}  ({roleName}){fatigue}";
+                string shiftTag = c.Shift.DisplayTag();
+                string label = sel ? $"► {c.Name}  ({roleName}){shiftTag}{fatigue}" : $"  {c.Name}  ({roleName}){shiftTag}{fatigue}";
                 if (GUILayout.Button(label))
                 {
                     if (sel) { selectedShipCrew = null; crewRenameBuffer = ""; _renamingShipCrew = false; }
@@ -111,6 +112,14 @@ namespace SailwindVirtualCrew
                     }
                     GUILayout.EndHorizontal();
                 }
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("Day"))
+                    mgr.SetCrewShift(selectedShipCrew, CrewShift.Day);
+                if (GUILayout.Button("Night"))
+                    mgr.SetCrewShift(selectedShipCrew, CrewShift.Night);
+                if (GUILayout.Button("Ad-Hoc"))
+                    mgr.SetCrewShift(selectedShipCrew, CrewShift.AdHoc);
+                GUILayout.EndHorizontal();
                 GUI.enabled = !selectedShipCrew.IsOccupied;
                 if (GUILayout.Button("Sleep"))
                     mgr.AddSleepRequest(selectedShipCrew);

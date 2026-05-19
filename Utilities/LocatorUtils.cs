@@ -113,6 +113,12 @@ namespace SailwindVirtualCrew
                     bestZoom = zoom;
             }
 
+            // Patch for the 2nd tier spyglass, which for some reason returns 18x max zoom.
+            if (bestZoom >  15)
+            {
+                return 4f;
+            }
+
             return bestZoom;
         }
 
