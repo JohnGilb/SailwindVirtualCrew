@@ -654,6 +654,11 @@ namespace SailwindVirtualCrew
                 .OrderByDescending(c => (float)c.CurrentStamina / c.MaxStamina)
                 .FirstOrDefault();
 
+        private Crewman FreshestContinuousDutyCrewman(ShipRole role) =>
+            Crew.Where(c => c.Role == role && IsCrewAssignable(c) && IsCrewEligibleForContinuousDuty(c))
+                .OrderByDescending(c => (float)c.CurrentStamina / c.MaxStamina)
+                .FirstOrDefault();
+
         public bool IsCrewAvailable(Crewman crewman) =>
             crewman != null
             && Crew.Contains(crewman)
@@ -1790,17 +1795,22 @@ namespace SailwindVirtualCrew
 
         private void RotateWatchCrew()
         {
-            if (ActivePilotTask != null && ActivePilotTask.AssignedCrewman.IsExhausted)
+            if (ActivePilotTask != null
+                && (ActivePilotTask.AssignedCrewman.IsExhausted || !IsCrewEligibleForContinuousDuty(ActivePilotTask.AssignedCrewman)))
                 StopPilot();
 
-            if (ActiveLookoutTask != null && ActiveLookoutTask.AssignedCrewman.IsExhausted)
+            if (ActiveLookoutTask != null
+                && (ActiveLookoutTask.AssignedCrewman.IsExhausted || !IsCrewEligibleForContinuousDuty(ActiveLookoutTask.AssignedCrewman)))
                 StopLookout();
 
+            if (!Crew.Any(c => c.Role == ShipRole.ChiefOfficer))
+                return;
+
             if (ActivePilotTask == null)
-                StartPilot(FreshestCrewman(ShipRole.Pilot));
+                StartPilot(FreshestContinuousDutyCrewman(ShipRole.Pilot));
 
             if (ActiveLookoutTask == null)
-                StartLookout(FreshestCrewman(ShipRole.Lookout));
+                StartLookout(FreshestContinuousDutyCrewman(ShipRole.Lookout));
         }
 
         private void CommandMidnightNavigation()
@@ -1932,6 +1942,38 @@ namespace SailwindVirtualCrew
             }
         }
 
+        private void EvaluateOffShiftSleepNeeds()
+        {
+            foreach (var crewman in Crew)
+            {
+                if (!IsCrewOffShift(crewman))
+                    continue;
+
+                bool shouldSleep = crewman.CurrentStamina < crewman.MaxStamina * OffShiftSleepStaminaRatio;
+                crewman.SetShiftSleepPending(shouldSleep);
+            }
+        }
+
+        private CrewShift GetActiveShift()
+        {
+            float currentLocalHour = GetCurrentLocalHour();
+            return currentLocalHour >= DayShiftStartHour && currentLocalHour < NightShiftStartHour
+                ? CrewShift.Day
+                : CrewShift.Night;
+        }
+
+        private bool IsCrewOffShift(Crewman crewman)
+        {
+            return crewman != null
+                && crewman.Shift != CrewShift.AdHoc
+                && crewman.Shift != GetActiveShift();
+        }
+
+        private bool IsCrewEligibleForContinuousDuty(Crewman crewman)
+        {
+            return crewman != null && !IsCrewOffShift(crewman);
+        }
+
         private static bool CrossedLocalHour(float previous, float current, float hour)
         {
             previous = NormalizeHour(previous);
@@ -2014,6 +2056,7 @@ namespace SailwindVirtualCrew
             TickFirstOfficer();
             TickLookoutPassiveCertaintyDecay();
 
+            EvaluateOffShiftSleepNeeds();
             QueuePendingShiftSleepRequests();
 
             // Auto-trigger sleep for exhausted, unoccupied crew, but only up to the number of
