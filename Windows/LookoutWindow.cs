@@ -326,7 +326,11 @@ namespace SailwindVirtualCrew
         {
             if (!LookoutVisibility.TryEvaluate(island, GetObservationEyePosition(lookout), lookout, GetLookoutSpyglassZoom(), out var visibility))
             {
+                GUILayout.BeginHorizontal();
                 GUILayout.Label($"{GetIslandName(island)} ({dist:F0}m)  [no-peak]");
+                if (GUILayout.Button("Dump Renderers", GUILayout.Width(120)))
+                    DumpRenderers(island);
+                GUILayout.EndHorizontal();
                 GUILayout.Space(2);
                 return;
             }
@@ -345,7 +349,11 @@ namespace SailwindVirtualCrew
                     : "unidentified";
             string clearTag = idInfo.CurrentlyVisible ? "clear" : "blocked";
             string ignoreTag = ignoreRemaining > 0f ? $"IGNORED {ignoreRemaining:F1}h" : "";
+            GUILayout.BeginHorizontal();
             GUILayout.Label($"{GetIslandName(island)} ({dist:F0}m)  certainty:{certainty:F2}  [{(island.SceneLoaded() ? "scene" : "horizon")}]  {(certainty >= 1f ? "SIGHTED" : "")} {ignoreTag}");
+            if (GUILayout.Button("Dump Renderers", GUILayout.Width(120)))
+                DumpRenderers(island);
+            GUILayout.EndHorizontal();
             GUILayout.Label($"  drop:{visibility.CurrentDrop:F1}m  peak:{visibility.PeakAboveRoot:F0}m  angle:{visibility.AngleDeg:F2} deg  {waveTag}");
             GUILayout.Label($"  name:{identifiedTag}  visit:{visitedTag}  current:{clearTag}  identify angle:{idInfo.EffectiveAngleDeg:F2}>{LookoutIslandKnowledge.IdentificationAngleDeg:F1} deg");
             if (visibility.WaveSampleCount > 0)
@@ -424,10 +432,11 @@ namespace SailwindVirtualCrew
         private float ScanMaxWorldY(IslandHorizon island)
         {
             float maxY = float.MinValue;
+            float islandRootY = island.transform.position.y;
 
             // Try children of the IslandHorizon transform (works if terrain is reparented after scene load)
             foreach (var r in island.GetComponentsInChildren<Renderer>())
-                if (r.bounds.min.y < 250f && r.bounds.max.y > maxY)
+                if (LookoutVisibility.IsPeakCandidateRenderer(r, islandRootY, maxY))
                     maxY = r.bounds.max.y;
 
             // Also scan the additively-loaded island scene directly
@@ -437,7 +446,7 @@ namespace SailwindVirtualCrew
                 if (scene.isLoaded)
                     foreach (var root in scene.GetRootGameObjects())
                         foreach (var r in root.GetComponentsInChildren<Renderer>())
-                            if (r.bounds.min.y < 250f && r.bounds.max.y > maxY)
+                            if (LookoutVisibility.IsPeakCandidateRenderer(r, islandRootY, maxY))
                                 maxY = r.bounds.max.y;
             }
 

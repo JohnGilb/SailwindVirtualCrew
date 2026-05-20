@@ -37,6 +37,7 @@ namespace SailwindVirtualCrew
 
     internal static class LookoutVisibility
     {
+        internal const float MaxRendererBaseHeightAboveIsland = 250f;
         internal const float MaxWaveOcclusionDistance = 100f;
         internal const float WaveSampleSpacing = 1f;
         internal const float FirstWaveSampleDistance = 2f;
@@ -127,9 +128,10 @@ namespace SailwindVirtualCrew
             float maxY = float.MinValue;
             Bounds bestBounds = default(Bounds);
             bool found = false;
+            float islandRootY = island.transform.position.y;
 
             foreach (var renderer in island.GetComponentsInChildren<Renderer>())
-                ConsiderRenderer(renderer, ref maxY, ref bestBounds, ref found);
+                ConsiderRenderer(renderer, islandRootY, ref maxY, ref bestBounds, ref found);
 
             if (island.islandIndex > 0 && island.SceneLoaded())
             {
@@ -137,7 +139,7 @@ namespace SailwindVirtualCrew
                 if (scene.isLoaded)
                     foreach (var root in scene.GetRootGameObjects())
                         foreach (var renderer in root.GetComponentsInChildren<Renderer>())
-                            ConsiderRenderer(renderer, ref maxY, ref bestBounds, ref found);
+                            ConsiderRenderer(renderer, islandRootY, ref maxY, ref bestBounds, ref found);
             }
 
             if (!found)
@@ -147,9 +149,18 @@ namespace SailwindVirtualCrew
             return true;
         }
 
-        private static void ConsiderRenderer(Renderer renderer, ref float maxY, ref Bounds bestBounds, ref bool found)
+        internal static bool IsPeakCandidateRenderer(Renderer renderer, float islandRootY, float currentMaxY)
         {
-            if (renderer == null || renderer.bounds.min.y >= 250f || renderer.bounds.max.y <= maxY)
+            if (renderer == null || renderer.bounds.max.y <= currentMaxY)
+                return false;
+
+            float minHeightAboveIsland = renderer.bounds.min.y - islandRootY;
+            return minHeightAboveIsland < MaxRendererBaseHeightAboveIsland;
+        }
+
+        private static void ConsiderRenderer(Renderer renderer, float islandRootY, ref float maxY, ref Bounds bestBounds, ref bool found)
+        {
+            if (!IsPeakCandidateRenderer(renderer, islandRootY, maxY))
                 return;
 
             maxY = renderer.bounds.max.y;
