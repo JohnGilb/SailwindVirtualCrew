@@ -1910,6 +1910,8 @@ namespace SailwindVirtualCrew
         {
             foreach (var crewman in Crew.Where(c => c.Shift == shift))
             {
+                StopContinuousDutyForCrewman(crewman);
+
                 if (crewman.CurrentStamina >= crewman.MaxStamina * OffShiftSleepStaminaRatio)
                 {
                     crewman.SetShiftSleepPending(false);
@@ -1920,6 +1922,18 @@ namespace SailwindVirtualCrew
                 if (!crewman.IsOccupied)
                     AddSleepRequest(crewman);
             }
+        }
+
+        private void StopContinuousDutyForCrewman(Crewman crewman)
+        {
+            if (crewman == null)
+                return;
+
+            if (ActivePilotTask?.AssignedCrewman == crewman)
+                StopPilot();
+
+            if (ActiveLookoutTask?.AssignedCrewman == crewman)
+                StopLookout();
         }
 
         private void QueuePendingShiftSleepRequests()
