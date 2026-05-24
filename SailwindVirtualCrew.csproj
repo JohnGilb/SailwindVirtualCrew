@@ -141,6 +141,7 @@
     <Compile Include="Requests\NavigationResult.cs" />
     <Compile Include="Windows\MaintenanceWindow.cs" />
     <Compile Include="Windows\SupercargoWindow.cs" />
+    <Compile Include="Windows\FirstOfficerWindow.cs" />
     <Compile Include="Windows\NavigatorWindow.cs" />
     <Compile Include="Patches\CrewPayPatches.cs" />
     <Compile Include="Patches\LookoutVisitPatches.cs" />

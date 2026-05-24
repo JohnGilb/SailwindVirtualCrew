@@ -91,6 +91,8 @@ namespace SailwindVirtualCrew
     [Serializable]
     public class VirtualCrewSaveData
     {
+        public int firstOfficerSettingsVersion;
+        public bool firstOfficerAutoTrimEnabled = true;
         public Dictionary<string, VesselSaveData> vessels = new Dictionary<string, VesselSaveData>();
         public List<CrewmanSaveData> shipCrew;
         public Dictionary<string, List<CrewmanSaveData>> portCrewPools;

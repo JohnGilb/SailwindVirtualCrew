@@ -314,7 +314,7 @@ namespace SailwindVirtualCrew
             {
                 _actorsByOwner[task] = actor;
                 bool isShiftChange = (UnityEngine.Time.realtimeSinceStartup - _lastLookoutStopReal) < ShiftChangeWindow;
-                actor.SetLookoutSuppressFirst(isShiftChange && _landVisibleAtLastStop);
+                actor.SetLookoutSuppressFirst(task.SuppressFirstLandBell || (isShiftChange && _landVisibleAtLastStop));
             }
         }
 

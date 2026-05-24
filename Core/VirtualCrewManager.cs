@@ -38,6 +38,7 @@ namespace SailwindVirtualCrew
         private float _lastFirstOfficerLocalTime = -1f;
         private float _lastFirstOfficerTrimGameHours = -1f;
         private float _lastShiftLocalTime = -1f;
+        private PilotTask _pilotShiftHandoffTask;
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownEnd = new Dictionary<NavigationMethod, float>();
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownTotal = new Dictionary<NavigationMethod, float>();
         private readonly List<string> recentNavigationResults = new List<string>();
@@ -50,6 +51,7 @@ namespace SailwindVirtualCrew
         public Dictionary<string, bool> VisitedPorts { get; private set; }
         public float LookoutSpyglassZoom { get; private set; } = 1f;
         public bool LookoutSpyglassScanned { get; private set; }
+        public bool FirstOfficerAutoTrimEnabled { get; private set; } = true;
 
         public List<SailGroup> SailGroups { get; private set; }
         public SailGroup AllSailsGroup { get; private set; }
@@ -629,6 +631,7 @@ namespace SailwindVirtualCrew
             _lastFirstOfficerLocalTime = -1f;
             _lastFirstOfficerTrimGameHours = -1f;
             _lastShiftLocalTime = -1f;
+            _pilotShiftHandoffTask = null;
 
             // Rebuild the AllSails group; keep user-created groups intact.
             AllSailsGroup = new SailGroup("All Sails", isAllSails: true);
@@ -646,6 +649,7 @@ namespace SailwindVirtualCrew
         public Crewman Navigator => _assignedNavigator ?? Crew.FirstOrDefault(c => c.Role == ShipRole.Navigator);
         public Crewman Lookout   => ActiveLookoutTask?.AssignedCrewman;
         public Crewman FirstOfficer => Crew.FirstOrDefault(c => c.Role == ShipRole.ChiefOfficer);
+        public bool HasFirstOfficer => Crew.Any(c => c.Role == ShipRole.ChiefOfficer);
         public IReadOnlyList<string> RecentNavigationResults => recentNavigationResults.AsReadOnly();
 
         // Returns the crew member of the given role with the highest stamina ratio.
@@ -679,9 +683,17 @@ namespace SailwindVirtualCrew
 
         public void StartPilot(Crewman crewman)
         {
+            StartPilot(crewman, false);
+        }
+
+        private void StartPilot(Crewman crewman, bool shiftHandoff)
+        {
             if (crewman == null || crewman.Role != ShipRole.Pilot || !IsCrewAssignable(crewman)) return;
+            var previousTask = ActivePilotTask;
             StopPilot();
             ActivePilotTask = new PilotTask(crewman);
+            if (shiftHandoff && previousTask != null)
+                _pilotShiftHandoffTask = ActivePilotTask;
         }
 
         public void StopPilot()
@@ -692,10 +704,15 @@ namespace SailwindVirtualCrew
 
         public void StartLookout(Crewman crewman)
         {
+            StartLookout(crewman, false);
+        }
+
+        private void StartLookout(Crewman crewman, bool suppressFirstLandBell)
+        {
             if (crewman == null || crewman.Role != ShipRole.Lookout || !IsCrewAssignable(crewman)) return;
             StopLookout();
             ScanLookoutSpyglass();
-            ActiveLookoutTask = new LookoutTask(crewman);
+            ActiveLookoutTask = new LookoutTask(crewman, suppressFirstLandBell);
         }
 
         public void StopLookout()
@@ -708,6 +725,17 @@ namespace SailwindVirtualCrew
         {
             LookoutSpyglassZoom = LocatorUtils.FindBestLookoutSpyglassZoomOnCurrentVessel();
             LookoutSpyglassScanned = true;
+        }
+
+        public bool ShouldPreservePilotOrderForShiftHandoff(PilotTask task)
+        {
+            return task != null && task == _pilotShiftHandoffTask;
+        }
+
+        public void ClearPilotShiftHandoff(PilotTask task)
+        {
+            if (task != null && task == _pilotShiftHandoffTask)
+                _pilotShiftHandoffTask = null;
         }
 
         public float GetLookoutSpyglassZoom()
@@ -825,6 +853,7 @@ namespace SailwindVirtualCrew
 
         public void FireCrew(Crewman c)
         {
+            bool wasFirstOfficer = c != null && c.Role == ShipRole.ChiefOfficer;
             var navReq = NavigateRequests.FirstOrDefault(r => r.Navigator == c);
             if (navReq != null) CancelNavigateRequest(navReq);
             if (ActivePilotTask?.AssignedCrewman == c)   StopPilot();
@@ -842,6 +871,9 @@ namespace SailwindVirtualCrew
                 PortCrewPools[key].Add(c);
                 AvailableAtPort = PortCrewPools[key];
             }
+
+            if (wasFirstOfficer && !HasFirstOfficer)
+                ResetAllCrewShiftsToAdHoc();
         }
 
         public void RestoreShipCrew(List<CrewmanSaveData> saved)
@@ -852,6 +884,7 @@ namespace SailwindVirtualCrew
             if (saved == null || saved.Count == 0) { return; }
             foreach (var d in saved)
                 Crew.Add(FromSaveData(d));
+            EnsureFirstOfficerShiftAuthority();
         }
 
         public void RestorePortPools(Dictionary<string, List<CrewmanSaveData>> saved)
@@ -872,9 +905,29 @@ namespace SailwindVirtualCrew
             if (crewman == null)
                 return;
 
+            if (shift != CrewShift.AdHoc && !HasFirstOfficer)
+                return;
+
             crewman.SetShift(shift);
             if (shift == CrewShift.AdHoc)
                 crewman.SetShiftSleepPending(false);
+        }
+
+        public bool CanSetCrewShift(CrewShift shift)
+        {
+            return shift == CrewShift.AdHoc || HasFirstOfficer;
+        }
+
+        public void SetFirstOfficerAutoTrimEnabled(bool enabled)
+        {
+            FirstOfficerAutoTrimEnabled = enabled;
+            if (!enabled)
+                _lastFirstOfficerTrimGameHours = GetCurrentGameHours();
+        }
+
+        public void RestoreFirstOfficerSettings(int settingsVersion, bool autoTrimEnabled)
+        {
+            FirstOfficerAutoTrimEnabled = settingsVersion <= 0 || autoTrimEnabled;
         }
 
         public void RestorePayData(int totalSalaryPay, int[] totalSharePayByCurrency, Dictionary<int, CargoPaySaveData> cargoPayRecords)
@@ -1784,6 +1837,10 @@ namespace SailwindVirtualCrew
             {
                 _lastFirstOfficerTrimGameHours = currentGameHours;
             }
+            else if (!FirstOfficerAutoTrimEnabled)
+            {
+                _lastFirstOfficerTrimGameHours = currentGameHours;
+            }
             else if (currentGameHours - _lastFirstOfficerTrimGameHours >= FirstOfficerTrimIntervalHours)
             {
                 QueueAutoTrimAllSails();
@@ -1796,11 +1853,11 @@ namespace SailwindVirtualCrew
         private void RotateWatchCrew()
         {
             if (ActivePilotTask != null
-                && (ActivePilotTask.AssignedCrewman.IsExhausted || !IsCrewEligibleForContinuousDuty(ActivePilotTask.AssignedCrewman)))
+                && ActivePilotTask.AssignedCrewman.IsExhausted)
                 StopPilot();
 
             if (ActiveLookoutTask != null
-                && (ActiveLookoutTask.AssignedCrewman.IsExhausted || !IsCrewEligibleForContinuousDuty(ActiveLookoutTask.AssignedCrewman)))
+                && ActiveLookoutTask.AssignedCrewman.IsExhausted)
                 StopLookout();
 
             if (!Crew.Any(c => c.Role == ShipRole.ChiefOfficer))
@@ -1824,14 +1881,17 @@ namespace SailwindVirtualCrew
             if (HasNavigationTool(NavigationMethod.Chronocompass))
             {
                 TryAddNavigateRequest(NavigationMethod.Chronocompass, out _, requireTool: true, allowQueue: true);
-                return;
             }
 
             if (HasNavigationTool(NavigationMethod.Chronometer))
+            {
                 TryAddNavigateRequest(NavigationMethod.Chronometer, out _, requireTool: true, allowQueue: true);
+            }
 
             if (HasNavigationTool(NavigationMethod.SunCompass))
+            {
                 TryAddNavigateRequest(NavigationMethod.SunCompass, out _, requireTool: true, allowQueue: true);
+            }
         }
 
         private void SendNavigatorToSleep()
@@ -1875,24 +1935,80 @@ namespace SailwindVirtualCrew
             if (Sun.sun == null)
                 return;
 
+            if (!EnsureFirstOfficerShiftAuthority())
+                return;
+
             float currentLocalTime = NormalizeHour(Sun.sun.localTime);
             bool hasPreviousLocalTime = _lastShiftLocalTime >= 0f;
             if (hasPreviousLocalTime)
             {
                 if (CrossedLocalHour(_lastShiftLocalTime, currentLocalTime, DayShiftStartHour))
-                    WakeCrewForShift(CrewShift.Day);
+                    BeginShiftChange(CrewShift.Day);
 
                 if (CrossedLocalHour(_lastShiftLocalTime, currentLocalTime, DayShiftStartHour + ShiftSleepDelayHours))
                     SendShiftToSleep(CrewShift.Night);
 
                 if (CrossedLocalHour(_lastShiftLocalTime, currentLocalTime, NightShiftStartHour))
-                    WakeCrewForShift(CrewShift.Night);
+                    BeginShiftChange(CrewShift.Night);
 
                 if (CrossedLocalHour(_lastShiftLocalTime, currentLocalTime, NightShiftStartHour + ShiftSleepDelayHours))
                     SendShiftToSleep(CrewShift.Day);
             }
 
             _lastShiftLocalTime = currentLocalTime;
+        }
+
+        private bool EnsureFirstOfficerShiftAuthority()
+        {
+            if (HasFirstOfficer)
+                return true;
+
+            ResetAllCrewShiftsToAdHoc();
+            _lastShiftLocalTime = -1f;
+            return false;
+        }
+
+        private void ResetAllCrewShiftsToAdHoc()
+        {
+            foreach (var crewman in Crew)
+            {
+                crewman.SetShift(CrewShift.AdHoc);
+                crewman.SetShiftSleepPending(false);
+            }
+        }
+
+        private void BeginShiftChange(CrewShift newShift)
+        {
+            WakeCrewForShift(newShift);
+            AssignShiftPilot(newShift);
+            AssignShiftLookout(newShift);
+        }
+
+        private void AssignShiftPilot(CrewShift shift)
+        {
+            if (ActivePilotTask?.AssignedCrewman?.Shift == shift)
+                return;
+
+            var pilot = FreshestCrewmanInShift(ShipRole.Pilot, shift);
+            if (pilot != null)
+                StartPilot(pilot, shiftHandoff: true);
+        }
+
+        private void AssignShiftLookout(CrewShift shift)
+        {
+            if (ActiveLookoutTask?.AssignedCrewman?.Shift == shift)
+                return;
+
+            var lookout = FreshestCrewmanInShift(ShipRole.Lookout, shift);
+            if (lookout != null)
+                StartLookout(lookout, suppressFirstLandBell: true);
+        }
+
+        private Crewman FreshestCrewmanInShift(ShipRole role, CrewShift shift)
+        {
+            return Crew.Where(c => c.Role == role && c.Shift == shift && IsCrewAssignable(c))
+                .OrderByDescending(c => (float)c.CurrentStamina / c.MaxStamina)
+                .FirstOrDefault();
         }
 
         private void WakeCrewForShift(CrewShift shift)
@@ -1912,7 +2028,7 @@ namespace SailwindVirtualCrew
             {
                 StopContinuousDutyForCrewman(crewman);
 
-                if (crewman.CurrentStamina >= crewman.MaxStamina * OffShiftSleepStaminaRatio)
+                if (!ShouldOffShiftCrewSleep(crewman))
                 {
                     crewman.SetShiftSleepPending(false);
                     continue;
@@ -1943,7 +2059,7 @@ namespace SailwindVirtualCrew
                 if (!crewman.ShiftSleepPending)
                     continue;
 
-                if (crewman.CurrentStamina >= crewman.MaxStamina * OffShiftSleepStaminaRatio)
+                if (crewman.CurrentStamina >= crewman.MaxStamina)
                 {
                     crewman.SetShiftSleepPending(false);
                     continue;
@@ -1963,9 +2079,21 @@ namespace SailwindVirtualCrew
                 if (!IsCrewOffShift(crewman))
                     continue;
 
-                bool shouldSleep = crewman.CurrentStamina < crewman.MaxStamina * OffShiftSleepStaminaRatio;
-                crewman.SetShiftSleepPending(shouldSleep);
+                if (crewman.CurrentStamina >= crewman.MaxStamina)
+                {
+                    crewman.SetShiftSleepPending(false);
+                    continue;
+                }
+
+                if (!crewman.ShiftSleepPending && ShouldOffShiftCrewSleep(crewman))
+                    crewman.SetShiftSleepPending(true);
             }
+        }
+
+        private static bool ShouldOffShiftCrewSleep(Crewman crewman)
+        {
+            return crewman != null
+                && crewman.CurrentStamina < crewman.MaxStamina * OffShiftSleepStaminaRatio;
         }
 
         private CrewShift GetActiveShift()
@@ -2329,7 +2457,10 @@ namespace SailwindVirtualCrew
                 {
                     sleep.Tick(deltaMinutes);
                     if (sleep.Status == WorkRequestStatus.Complete)
+                    {
+                        sleep.AssignedCrewman.SetShiftSleepPending(false);
                         navCoord.OnSleepCompleted(sleep.AssignedCrewman);
+                    }
                 }
                 else if (sleep.Status == WorkRequestStatus.Positioning
                       && (navCoord.IsPositioningComplete(sleep) || sleep.IsPositioningTimedOut()))

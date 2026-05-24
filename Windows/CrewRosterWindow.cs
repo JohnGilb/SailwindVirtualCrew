@@ -113,10 +113,13 @@ namespace SailwindVirtualCrew
                     GUILayout.EndHorizontal();
                 }
                 GUILayout.BeginHorizontal();
+                GUI.enabled = mgr.CanSetCrewShift(CrewShift.Day);
                 if (GUILayout.Button("Day"))
                     mgr.SetCrewShift(selectedShipCrew, CrewShift.Day);
+                GUI.enabled = mgr.CanSetCrewShift(CrewShift.Night);
                 if (GUILayout.Button("Night"))
                     mgr.SetCrewShift(selectedShipCrew, CrewShift.Night);
+                GUI.enabled = true;
                 if (GUILayout.Button("Ad-Hoc"))
                     mgr.SetCrewShift(selectedShipCrew, CrewShift.AdHoc);
                 GUILayout.EndHorizontal();
@@ -147,8 +150,12 @@ namespace SailwindVirtualCrew
                 }
                 else if (DeveloperMode.IsEnabled && GUILayout.Button($"Remove {selectedShipCrew.Name}"))
                 {
+                    bool wasFirstOfficer = selectedShipCrew.Role == ShipRole.ChiefOfficer;
                     selectedShipCrew.CurrentTask = null;
                     mgr.Crew.Remove(selectedShipCrew);
+                    if (wasFirstOfficer && !mgr.HasFirstOfficer)
+                        foreach (var crewman in mgr.Crew)
+                            mgr.SetCrewShift(crewman, CrewShift.AdHoc);
                     selectedShipCrew = null;
                     crewRenameBuffer = "";
                     _renamingShipCrew = false;

@@ -31,6 +31,11 @@ namespace SailwindVirtualCrew
         private float pilotHeadingError;
         private bool  hasPlayerSelection = false;
         private bool  holdWindAngle = false;
+        private Transform headingBoat;
+        private bool hasFilteredHeading = false;
+        private float filteredHeading = 0f;
+        private int headingFrame = -1;
+        private float cachedHeading = 0f;
 
         // Compass circle
         private const int CircleRadius = 100;
@@ -50,6 +55,7 @@ namespace SailwindVirtualCrew
         // History graph
         private const int   GraphHeight    = 100;
         private const float GraphOutputMax = 50f;
+        private const float HeadingFilterSeconds = 0.25f;
         private Texture2D goalGraphTex;
         private Texture2D currentGraphTex;
         private Texture2D outputGraphTex;
@@ -124,12 +130,33 @@ namespace SailwindVirtualCrew
 
         private void SyncActivePilotTask()
         {
-            PilotTask activePilotTask = VirtualCrewManager.Instance.ActivePilotTask;
+            var manager = VirtualCrewManager.Instance;
+            PilotTask activePilotTask = manager.ActivePilotTask;
             if (observedPilotTask == activePilotTask)
                 return;
 
             observedPilotTask = activePilotTask;
+            bool preserveOrder = manager.ShouldPreservePilotOrderForShiftHandoff(activePilotTask)
+                && autopilotEngaged
+                && hasPlayerSelection;
+            manager.ClearPilotShiftHandoff(activePilotTask);
+
+            if (preserveOrder)
+            {
+                RetargetPilotOrderForNewPilot();
+                return;
+            }
+
             ResetPilotingOrder();
+        }
+
+        private void RetargetPilotOrderForNewPilot()
+        {
+            pilotHeadingError = ComputePilotError();
+            if (holdWindAngle)
+                UpdateWindAngleTarget(updateOnly: false);
+            else
+                controller.SetTarget(playerSelectedHeading + pilotHeadingError);
         }
 
         private void ResetPilotingOrder()
@@ -148,12 +175,42 @@ namespace SailwindVirtualCrew
 
         private float GetCurrentHeading()
         {
-            var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
-            if (!worldBoat) return 0f;
+            if (headingFrame == Time.frameCount)
+                return cachedHeading;
 
-            float raw = Vector3.SignedAngle(
-                worldBoat.transform.forward, Vector3.forward, -Vector3.up);
-            return PilotController.Normalize(raw);
+            var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (!worldBoat)
+            {
+                ResetHeadingFilter();
+                headingFrame = Time.frameCount;
+                cachedHeading = 0f;
+                return cachedHeading;
+            }
+
+            if (headingBoat != worldBoat)
+            {
+                ResetHeadingFilter();
+                headingBoat = worldBoat;
+            }
+
+            float raw;
+            if (!TryHeadingFromForward(worldBoat.transform.forward, out raw))
+                raw = hasFilteredHeading ? filteredHeading : 0f;
+
+            if (!hasFilteredHeading)
+            {
+                filteredHeading = raw;
+                hasFilteredHeading = true;
+            }
+            else
+            {
+                float alpha = 1f - Mathf.Exp(-Time.deltaTime / HeadingFilterSeconds);
+                filteredHeading = Mathf.LerpAngle(filteredHeading, raw, alpha);
+            }
+
+            headingFrame = Time.frameCount;
+            cachedHeading = PilotController.Normalize(filteredHeading);
+            return cachedHeading;
         }
 
         private float GetCompassHeading()
@@ -295,15 +352,20 @@ namespace SailwindVirtualCrew
             Transform worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
             if (sailInfoBoat != null && worldBoat != null)
             {
-                Quaternion sailInfoToHeadingTransform =
-                    Quaternion.FromToRotation(sailInfoBoat.forward, worldBoat.transform.forward);
-                targetForward = sailInfoToHeadingTransform * targetForward;
+                float sailInfoHeading;
+                float worldHeading;
+                if (!TryHeadingFromForward(sailInfoBoat.forward, out sailInfoHeading)
+                    || !TryHeadingFromForward(worldBoat.transform.forward, out worldHeading))
+                    return;
+
+                float headingDelta = Mathf.DeltaAngle(sailInfoHeading, worldHeading);
+                targetForward = Quaternion.AngleAxis(headingDelta, Vector3.up) * targetForward;
                 targetForward.y = 0f;
                 if (targetForward.sqrMagnitude < 0.001f) return;
             }
 
             playerSelectedHeading = PilotController.Normalize(
-                Vector3.SignedAngle(targetForward.normalized, Vector3.forward, -Vector3.up));
+                HeadingFromHorizontalForward(targetForward.normalized));
 
             float helmHeading = PilotController.Normalize(playerSelectedHeading + pilotHeadingError);
             if (updateOnly)
@@ -320,6 +382,33 @@ namespace SailwindVirtualCrew
             if (pilot == null) return 0f;
             float range = Mathf.Max(0f, (6f - pilot.Intelligence) * 2f);
             return Random.Range(-range, range);
+        }
+
+        private static bool TryHeadingFromForward(Vector3 forward, out float heading)
+        {
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.001f)
+            {
+                heading = 0f;
+                return false;
+            }
+
+            heading = HeadingFromHorizontalForward(forward.normalized);
+            return true;
+        }
+
+        private static float HeadingFromHorizontalForward(Vector3 forward)
+        {
+            return PilotController.Normalize(
+                Vector3.SignedAngle(forward, Vector3.forward, -Vector3.up));
+        }
+
+        private void ResetHeadingFilter()
+        {
+            headingBoat = null;
+            hasFilteredHeading = false;
+            headingFrame = -1;
+            cachedHeading = 0f;
         }
 
         private void OnGUI()
