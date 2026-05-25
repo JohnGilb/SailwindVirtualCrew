@@ -67,12 +67,16 @@ namespace SailwindVirtualCrew
 
         private const int SalaryCurrency = 0;
         private const int SalaryPerCrewPerDay = 10;
+        private const int QuartermasterWaterRefillCooldownDays = 7;
+        private const float WaterLiquidIndex = 1f;
+        private const float BarrelCapacityThreshold = 30f;
         private const float BailMugUnits = 3f;
         private const float BailBucketUnits = 10f;
 
         public int TotalSalaryPay { get; private set; }
         public int[] TotalSharePayByCurrency { get; private set; }
         public Dictionary<int, CargoPaySaveData> CargoPayRecords { get; private set; }
+        private Dictionary<string, int> quartermasterWaterRefillNextAllowedDay;
 
         private static readonly string[] CrewNamePool =
         {
@@ -106,6 +110,7 @@ namespace SailwindVirtualCrew
             Crew = new List<Crewman>();
             TotalSharePayByCurrency = new int[4];
             CargoPayRecords = new Dictionary<int, CargoPaySaveData>();
+            quartermasterWaterRefillNextAllowedDay = new Dictionary<string, int>();
             Reset();
             Sun.OnNewDay += OnNewDay;
         }
@@ -167,6 +172,7 @@ namespace SailwindVirtualCrew
                     pool.Add(GenerateRandomCrewman(hub));
                 PortCrewPools[key] = pool;
                 portIsHub[key] = hub;
+                EnsureLegendaryCrewAtPort(key);
             }
 
             LastPortCrewRefreshDay = GameState.day;
@@ -672,6 +678,11 @@ namespace SailwindVirtualCrew
         public bool IsCrewAssignable(Crewman crewman) =>
             IsCrewAvailable(crewman) && !crewman.IsOccupied;
 
+        private Crewman BestAvailableQuartermaster() =>
+            Crew.Where(c => c.Role == ShipRole.Quartermaster && IsCrewAvailable(c))
+                .OrderByDescending(c => c.Charisma)
+                .FirstOrDefault();
+
         public int GetFirstOfficerStatModifier(Crewman target)
         {
             if (target == null || target.Role == ShipRole.ChiefOfficer || !Crew.Contains(target))
@@ -774,6 +785,9 @@ namespace SailwindVirtualCrew
 
         public void SetCurrentPort(Port port)
         {
+            if (port == null)
+                return;
+
             CurrentPort = port;
             string key = port.GetPortName();
             portIsHub[key] = port.hubPort;
@@ -785,7 +799,105 @@ namespace SailwindVirtualCrew
                     pool.Add(GenerateRandomCrewman(port.hubPort));
                 PortCrewPools[key] = pool;
             }
+            EnsureLegendaryCrewAtPort(key);
             AvailableAtPort = PortCrewPools[key];
+        }
+
+        public void TryQuartermasterRefillWaterAtPort(Port port)
+        {
+            if (port == null)
+                return;
+
+            string portName = port.GetPortName();
+            if (string.IsNullOrEmpty(portName) || !CanQuartermasterRefillWaterAtPort(portName))
+                return;
+
+            var quartermaster = BestAvailableQuartermaster();
+            if (quartermaster == null)
+                return;
+
+            int refillLimit = Math.Max(0, quartermaster.Charisma);
+            if (refillLimit <= 0)
+                return;
+
+            int refilled = RefillWaterBarrels(refillLimit);
+            if (refilled <= 0)
+                return;
+
+            quartermasterWaterRefillNextAllowedDay[portName] =
+                GameState.day + QuartermasterWaterRefillCooldownDays;
+
+            NotificationUi.instance?.ShowNotification(
+                $"{quartermaster.Name} refilled {refilled} water barrel{(refilled == 1 ? "" : "s")}.");
+        }
+
+        private bool CanQuartermasterRefillWaterAtPort(string portName)
+        {
+            if (string.IsNullOrEmpty(portName))
+                return false;
+
+            if (quartermasterWaterRefillNextAllowedDay == null)
+                quartermasterWaterRefillNextAllowedDay = new Dictionary<string, int>();
+
+            return !quartermasterWaterRefillNextAllowedDay.TryGetValue(portName, out int nextAllowedDay)
+                || GameState.day >= nextAllowedDay;
+        }
+
+        private int RefillWaterBarrels(int limit)
+        {
+            int refilled = 0;
+            foreach (var barrel in GameObject.FindObjectsOfType<ShipItemBottle>()
+                .Where(IsRefillableWaterBarrelOnActiveVessel)
+                .OrderByDescending(b => b.GetRemainingCapacity()))
+            {
+                barrel.amount = WaterLiquidIndex;
+                barrel.health = barrel.GetCapacity();
+                barrel.UpdateLookText();
+                if (barrel.itemRigidbodyC != null)
+                    barrel.itemRigidbodyC.UpdateMass();
+
+                refilled++;
+                if (refilled >= limit)
+                    break;
+            }
+
+            return refilled;
+        }
+
+        private static bool IsRefillableWaterBarrelOnActiveVessel(ShipItemBottle bottle)
+        {
+            if (bottle == null || !bottle.sold || bottle.GetCapacity() < BarrelCapacityThreshold)
+                return false;
+
+            if (bottle.health >= bottle.GetCapacity())
+                return false;
+
+            if (bottle.amount != 0f && Mathf.RoundToInt(bottle.amount) != Mathf.RoundToInt(WaterLiquidIndex))
+                return false;
+
+            var good = bottle.GetComponent<Good>();
+            if (good != null && good.GetMissionIndex() > -1)
+                return false;
+
+            return IsItemOnActiveVessel(bottle);
+        }
+
+        private static bool IsItemOnActiveVessel(ShipItem item)
+        {
+            if (item == null || !CrewBoatContextResolver.TryResolveBoatTransforms(out var topBoat, out var worldBoat))
+                return false;
+
+            if (item.currentActualBoat != null && item.currentActualBoat == worldBoat)
+                return true;
+
+            if (item.transform.IsChildOf(worldBoat) || item.transform.IsChildOf(topBoat))
+                return true;
+
+            var saveable = item.GetComponent<SaveablePrefab>();
+            var vesselSaveable = topBoat != null ? topBoat.GetComponent<SaveableObject>() : null;
+            return saveable != null
+                && vesselSaveable != null
+                && saveable.GetParentObject() == vesselSaveable.sceneIndex;
         }
 
         public void ClearCurrentPort()
@@ -826,6 +938,130 @@ namespace SailwindVirtualCrew
             return new Crewman(name, role, rng);
         }
 
+        public IReadOnlyList<LegendaryCrewDefinition> LegendaryCrewDefinitions => LegendaryCrewCatalog.All;
+
+        public bool IsLegendaryCrew(Crewman c)
+        {
+            return c != null && LegendaryCrewCatalog.IsLegendaryId(c.Id);
+        }
+
+        public bool IsLegendaryCrewOnShip(string id)
+        {
+            return Crew.Any(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public bool CanAddLegendaryCrewToRoster(LegendaryCrewDefinition definition, out string reason)
+        {
+            reason = null;
+            if (definition == null)
+            {
+                reason = "No legendary crew selected.";
+                return false;
+            }
+
+            if (IsLegendaryCrewOnShip(definition.Id))
+            {
+                reason = definition.Name + " is already aboard.";
+                return false;
+            }
+
+            if (definition.Role == ShipRole.ChiefOfficer && Crew.Any(existing => existing.Role == ShipRole.ChiefOfficer))
+            {
+                reason = "A First Officer is already aboard.";
+                return false;
+            }
+
+            return true;
+        }
+
+        public bool AddLegendaryCrewToRoster(string id, out string reason)
+        {
+            reason = null;
+            if (!LegendaryCrewCatalog.TryGet(id, out var definition))
+            {
+                reason = "Unknown legendary crew.";
+                return false;
+            }
+
+            if (!CanAddLegendaryCrewToRoster(definition, out reason))
+                return false;
+
+            RemoveLegendaryCrewFromPortPools(definition.Id);
+            Crew.Add(LegendaryCrewCatalog.Create(definition));
+            if (CurrentPort != null && PortCrewPools.TryGetValue(CurrentPort.GetPortName(), out var current))
+                AvailableAtPort = current;
+            return true;
+        }
+
+        private void EnsureLegendaryCrewAtPort(string portName)
+        {
+            if (string.IsNullOrEmpty(portName))
+                return;
+
+            if (!PortCrewPools.ContainsKey(portName))
+                PortCrewPools[portName] = new List<Crewman>();
+
+            foreach (var definition in LegendaryCrewCatalog.ForPort(portName))
+            {
+                RemoveLegendaryCrewFromNonHomePortPools(definition);
+                if (IsLegendaryCrewOnShip(definition.Id) || IsLegendaryCrewWaitingAtHome(definition))
+                    continue;
+
+                PortCrewPools[portName].Add(LegendaryCrewCatalog.Create(definition));
+            }
+        }
+
+        private bool IsLegendaryCrewWaitingAtHome(LegendaryCrewDefinition definition)
+        {
+            if (definition == null)
+                return false;
+
+            foreach (var kv in PortCrewPools)
+            {
+                if (!LegendaryCrewCatalog.IsPortMatch(definition.HomePort, kv.Key))
+                    continue;
+
+                return kv.Value.Any(c => string.Equals(c.Id, definition.Id, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return false;
+        }
+
+        private void RemoveLegendaryCrewFromNonHomePortPools(LegendaryCrewDefinition definition)
+        {
+            if (definition == null)
+                return;
+
+            foreach (var kv in PortCrewPools)
+            {
+                if (LegendaryCrewCatalog.IsPortMatch(definition.HomePort, kv.Key))
+                    continue;
+
+                kv.Value.RemoveAll(c => string.Equals(c.Id, definition.Id, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        private void RemoveLegendaryCrewFromPortPools(string id)
+        {
+            foreach (var pool in PortCrewPools.Values)
+                pool.RemoveAll(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void AddCrewToPortPool(string portName, Crewman crewman)
+        {
+            if (string.IsNullOrEmpty(portName) || crewman == null)
+                return;
+
+            if (!PortCrewPools.ContainsKey(portName))
+                PortCrewPools[portName] = new List<Crewman>();
+
+            if (!PortCrewPools[portName].Any(c => c.Id == crewman.Id))
+                PortCrewPools[portName].Add(crewman);
+
+            if (CurrentPort != null && LegendaryCrewCatalog.IsPortMatch(CurrentPort.GetPortName(), portName))
+                AvailableAtPort = PortCrewPools[portName];
+        }
+
         public bool CanHireCrew(Crewman c, out string reason)
         {
             reason = null;
@@ -863,13 +1099,14 @@ namespace SailwindVirtualCrew
             if (sleepReq != null) CancelSleepRequest(sleepReq);
             c.CurrentTask = null;
             Crew.Remove(c);
-            if (CurrentPort != null)
+            if (IsLegendaryCrew(c) && LegendaryCrewCatalog.TryGet(c.Id, out var legendary))
+            {
+                AddCrewToPortPool(legendary.HomePort, c);
+            }
+            else if (CurrentPort != null)
             {
                 string key = CurrentPort.GetPortName();
-                if (!PortCrewPools.ContainsKey(key))
-                    PortCrewPools[key] = new List<Crewman>();
-                PortCrewPools[key].Add(c);
-                AvailableAtPort = PortCrewPools[key];
+                AddCrewToPortPool(key, c);
             }
 
             if (wasFirstOfficer && !HasFirstOfficer)
@@ -892,7 +1129,10 @@ namespace SailwindVirtualCrew
             PortCrewPools.Clear();
             if (saved == null) return;
             foreach (var kv in saved)
+            {
                 PortCrewPools[kv.Key] = kv.Value.Select(FromSaveData).ToList();
+                EnsureLegendaryCrewAtPort(kv.Key);
+            }
         }
 
         public void RestorePortCrewRefreshDay(int day)
@@ -1233,6 +1473,36 @@ namespace SailwindVirtualCrew
                 return true;
 
             return false;
+        }
+
+        public void StoreQuartermasterWaterRefills(Dictionary<string, int> nextAllowedDays)
+        {
+            quartermasterWaterRefillNextAllowedDay = new Dictionary<string, int>();
+            if (nextAllowedDays == null)
+                return;
+
+            foreach (var kv in nextAllowedDays)
+                if (!string.IsNullOrEmpty(kv.Key) && kv.Value > GameState.day)
+                    quartermasterWaterRefillNextAllowedDay[kv.Key] = kv.Value;
+        }
+
+        public Dictionary<string, int> GetQuartermasterWaterRefillSnapshot()
+        {
+            PruneQuartermasterWaterRefillCooldowns();
+            return new Dictionary<string, int>(
+                quartermasterWaterRefillNextAllowedDay ?? new Dictionary<string, int>());
+        }
+
+        private void PruneQuartermasterWaterRefillCooldowns()
+        {
+            if (quartermasterWaterRefillNextAllowedDay == null || quartermasterWaterRefillNextAllowedDay.Count == 0)
+                return;
+
+            foreach (string key in quartermasterWaterRefillNextAllowedDay
+                .Where(kv => kv.Value <= GameState.day)
+                .Select(kv => kv.Key)
+                .ToList())
+                quartermasterWaterRefillNextAllowedDay.Remove(key);
         }
 
         public void RecordCargoPurchase(ShipItem item, int price, int currency)

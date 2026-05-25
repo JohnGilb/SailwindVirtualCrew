@@ -51,6 +51,7 @@ namespace SailwindVirtualCrew
 
         private bool overrideTimeWindows = false;
         private GUIStyle _leftLabel;
+        private bool _leftLabelDarkMode;
 
         private bool EffectiveOverride    => DeveloperMode.IsEnabled && overrideTimeWindows;
         private bool CanUseQuadrant      => hasQuadrant      && (EffectiveOverride || (InQuadrantWindow       && !IsOnCooldown(NavigationMethod.Quadrant)));
@@ -169,8 +170,11 @@ namespace SailwindVirtualCrew
 
             // ── Equipment status ────────────────────────────────────────────
             GUILayout.Space(4);
-            if (_leftLabel == null)
+            if (_leftLabel == null || SailwindGuiStyle.HasThemeChanged(_leftLabelDarkMode))
+            {
                 _leftLabel = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleLeft };
+                _leftLabelDarkMode = SailwindGuiStyle.IsDarkMode;
+            }
             GUILayout.Label($"Weather: {currentWeather}", _leftLabel);
             GUILayout.Label("Equipment:", _leftLabel);
             GUILayout.Label($"{Check(hasChronocompass)} Chronocompass", _leftLabel);

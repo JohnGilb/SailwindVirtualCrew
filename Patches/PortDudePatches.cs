@@ -10,7 +10,10 @@ namespace SailwindVirtualCrew
         static void Postfix(PortDude __instance, Collider other)
         {
             if (!other.CompareTag("Player")) return;
-            VirtualCrewManager.Instance.SetCurrentPort(__instance.GetPort());
+            var manager = VirtualCrewManager.Instance;
+            var port = __instance.GetPort();
+            manager.SetCurrentPort(port);
+            manager.TryQuartermasterRefillWaterAtPort(port);
         }
     }
 

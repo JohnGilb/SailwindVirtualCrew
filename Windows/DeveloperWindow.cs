@@ -6,9 +6,13 @@ namespace SailwindVirtualCrew
     {
         private bool showWindow = false;
         private Rect windowRect = new Rect(20, 20, 300, 80);
+        private bool showLegendaryWindow = false;
+        private Rect legendaryWindowRect = new Rect(340, 20, 360, 260);
         private static readonly int windowId = "VirtualCrewDeveloperWindow".GetHashCode();
+        private static readonly int legendaryWindowId = "VirtualCrewLegendaryDeveloperWindow".GetHashCode();
 
         private WindowResizer _resizer;
+        private WindowResizer _legendaryResizer;
         private WorkstationCustomizerWindow _workstationCustomizerWindow;
 
         public string WindowKey => "DeveloperWindow";
@@ -29,10 +33,21 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 30f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 30f * 5; // add basic crew + refresh ports + stamina buttons + workstation customizer
+                height += 30f * 6; // add basic crew + refresh ports + legendary + stamina buttons + workstation customizer
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Developer Tools");
+
+            if (DeveloperMode.IsEnabled && showLegendaryWindow)
+            {
+                float legendaryHeight = 68f + VirtualCrewManager.Instance.LegendaryCrewDefinitions.Count * 48f;
+                legendaryWindowRect.height = _legendaryResizer.UserHeight > 0f ? _legendaryResizer.UserHeight : legendaryHeight;
+                legendaryWindowRect = WindowLayoutUtility.DrawClampedWindow(
+                    legendaryWindowId,
+                    legendaryWindowRect,
+                    DrawLegendaryWindow,
+                    "Reticulate Splines");
+            }
         }
 
         private void DrawWindow(int id)
@@ -49,6 +64,8 @@ namespace SailwindVirtualCrew
             {
                 if (GUILayout.Button("Add Basic Crew"))
                     AddBasicCrew();
+                if (GUILayout.Button("Reticulate Splines"))
+                    showLegendaryWindow = !showLegendaryWindow;
                 if (GUILayout.Button("Refresh Crew at Ports"))
                     VirtualCrewManager.Instance.RefreshPortCrewPools();
                 if (GUILayout.Button("Drain 60 Stamina (All Crew)"))
@@ -65,6 +82,35 @@ namespace SailwindVirtualCrew
             }
 
             _resizer.HandleInWindow(ref windowRect);
+            GUI.DragWindow();
+        }
+
+        private void DrawLegendaryWindow(int id)
+        {
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Tab)
+                Event.current.Use();
+            GUILayout.Space(4);
+
+            var mgr = VirtualCrewManager.Instance;
+            foreach (var legendary in mgr.LegendaryCrewDefinitions)
+            {
+                GUILayout.Label(legendary.Name + " - " + legendary.Role.DisplayName() + " at " + legendary.HomePort);
+
+                string reason;
+                bool canAdd = mgr.CanAddLegendaryCrewToRoster(legendary, out reason);
+                GUI.enabled = canAdd;
+                if (GUILayout.Button("Add " + legendary.Name))
+                    mgr.AddLegendaryCrewToRoster(legendary.Id, out reason);
+                GUI.enabled = true;
+
+                if (!canAdd)
+                    GUILayout.Label(reason);
+            }
+
+            if (GUILayout.Button("Close"))
+                showLegendaryWindow = false;
+
+            _legendaryResizer.HandleInWindow(ref legendaryWindowRect);
             GUI.DragWindow();
         }
 

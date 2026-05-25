@@ -93,6 +93,7 @@
     <Compile Include="AccessoryCrewLogic\Piloting\PilotController.cs" />
     <Compile Include="Core\DeveloperMode.cs" />
     <Compile Include="Core\FavoriteAction.cs" />
+    <Compile Include="Core\LegendaryCrewCatalog.cs" />
     <Compile Include="Core\ModIntegrations.cs" />
     <Compile Include="Core\ShipRole.cs" />
     <Compile Include="Core\SupercargoTradeService.cs" />

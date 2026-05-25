@@ -65,6 +65,7 @@ namespace SailwindVirtualCrew
                 lookoutIdentifiedNames = mgr.GetLookoutIdentifiedNamesSnapshot(),
                 lookoutIgnoredUntil = mgr.GetLookoutIgnoredUntilSnapshot(),
                 visitedPorts = mgr.GetVisitedPortsSnapshot(),
+                quartermasterWaterRefillNextAllowedDay = mgr.GetQuartermasterWaterRefillSnapshot(),
                 navigatorToolScan = navigatorWindow != null ? navigatorWindow.GetToolScanSaveData() : null
             };
             ModSave.Save(Plugin.Instance.Info, container);
@@ -87,6 +88,7 @@ namespace SailwindVirtualCrew
             VirtualCrewManager.Instance.StoreLookoutIdentifiedNames(data.lookoutIdentifiedNames);
             VirtualCrewManager.Instance.StoreLookoutIgnoredUntil(data.lookoutIgnoredUntil);
             VirtualCrewManager.Instance.StoreVisitedPorts(data.visitedPorts);
+            VirtualCrewManager.Instance.StoreQuartermasterWaterRefills(data.quartermasterWaterRefillNextAllowedDay);
             var navigatorWindow = Plugin.Instance.GetComponent<NavigatorWindow>();
             if (navigatorWindow != null)
                 navigatorWindow.RestoreToolScanSaveData(data.navigatorToolScan);

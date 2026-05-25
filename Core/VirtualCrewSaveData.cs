@@ -105,6 +105,7 @@ namespace SailwindVirtualCrew
         public Dictionary<string, string> lookoutIdentifiedNames;
         public Dictionary<string, float> lookoutIgnoredUntil;
         public Dictionary<string, bool> visitedPorts;
+        public Dictionary<string, int> quartermasterWaterRefillNextAllowedDay;
         public NavigatorToolScanSaveData navigatorToolScan;
     }
 }
