@@ -88,12 +88,25 @@ Tools:
 - Helps move supplies around the boat.
   - Having one activates/enables the CargoController mod, if you have it installed
 	- Additionally, the hotkey Z will grab the next "Port" cargo and place it directly in your hands.
+- Will automatically fill up some water barrels for you at port when you visit the trader, based on Charisma.
+  - Basically, how much water can they grab from the well/spring before the citizens start giving them the side-eye.
 
 #### Supercargo
 
 - Pays attention to the market and prices.
   - (Having one activates/enables the ProfitPercent mod, if you have it installed)
 - Grants access to the "Sell" command for cargo on the boat if you are moored near a Port trader (X by default); deckhands will unload and sell cargo for you. 
+
+#### First Officer
+
+- Meant to take some of your own command burden. In a way, they help automate the mod itself.
+- Can only have 1.
+- Can set up a Day and Night shift for your crew.
+  - Crew off-shift try to sleep if they are at least 80% tired, so they are fresh for their main shift.
+  - If you have Lookouts/Pilots in both shifts, they will seamlessly transition and pass information to their successor.
+- They instruct the Navigator (if available/awake) to take their measurements at the proper times.
+- Can be configured to periodically call for the sails to be trimmed.
+- Their Charisma acts as a buff (or detriment) to the statistics of other crew members.
 
 ---
 
@@ -116,19 +129,6 @@ Tools:
 
 - Should only show Apparent Wind Angle if you have a wind compass
 
-#### Chief Officer
-
-- New role.
-- Meant to take some of your own command burden.
-- Can only have 1.
-- Can be configured to:
-  - Periodically call for the sails to be trimmed.
-  - Instruct the Navigator to take their measurements at the proper times.
-  - Rotate out station roles as they become tired (e.g. pilots, lookouts).
-- Checks hull status and issues repairs at sea.
-- Their Charisma acts as a buff (or detriment) to the statistics of other crew members.
-- 
-
 #### Lookout
 
 - Can collaborate with the Navigator to get the island name if you have a recent lat/lon and you've visited the goods trader on that island or have a chart with that island.
@@ -145,11 +145,6 @@ Tools:
 #### Quartermaster
 
 - Manages repairs
-- Can fill up a few barrels of water at larger ports from wells for free (not unlimited; at some point people don't let you hog all the water)
-
-#### Supercargo
-
-- None currently planned
 
 ### UI / UX
 
@@ -160,7 +155,6 @@ Tools:
 ## Known Issues
 
 - The following roles can still be hired but currently serve no function:
-  - Chief Officer
   - Chef
 - Window sizes are wrong and initial placement is poor.
 - Can see Water % even without Quartermaster
