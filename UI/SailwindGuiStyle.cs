@@ -6,11 +6,13 @@ namespace SailwindVirtualCrew
     {
         private const float NightStartHour = 18f;
         private const float NightEndHour   = 6f;
+        private const float NightWindowAlpha = 0.74f;
 
         private static bool _initialized;
         private static Font _immortalFont;
         private static Font _architectsFont;
-        private static Texture2D _dayWindow;
+        private static Texture2D _defaultWindowBackground;
+        private static Texture2D _defaultWindowOnBackground;
         private static Texture2D _dayButton;
         private static Texture2D _dayButtonHover;
         private static Texture2D _dayButtonActive;
@@ -36,7 +38,7 @@ namespace SailwindVirtualCrew
 
             GUI.skin.window.font            = _architectsFont;
             GUI.skin.window.normal.background = palette.WindowBackground;
-            GUI.skin.window.onNormal.background = palette.WindowBackground;
+            GUI.skin.window.onNormal.background = palette.WindowOnBackground;
             GUI.skin.window.normal.textColor = palette.Text;
             GUI.skin.window.onNormal.textColor = palette.Text;
 
@@ -111,6 +113,8 @@ namespace SailwindVirtualCrew
         private static void Initialize()
         {
             _initialized = true;
+            _defaultWindowBackground = GUI.skin.window.normal.background;
+            _defaultWindowOnBackground = GUI.skin.window.onNormal.background ?? _defaultWindowBackground;
 
             foreach (Font font in Resources.FindObjectsOfTypeAll<Font>())
             {
@@ -118,7 +122,6 @@ namespace SailwindVirtualCrew
                 else if (font.name == "ArchitectsDaughter") _architectsFont = font;
             }
 
-            _dayWindow       = MakeTexture(new Color(144f / 255f, 120f / 255f,  97f / 255f));
             _dayButton       = MakeTexture(new Color(230f / 255f, 187f / 255f, 156f / 255f));
             _dayButtonHover  = MakeTexture(new Color(244f / 255f, 204f / 255f, 173f / 255f));
             _dayButtonActive = MakeTexture(new Color(196f / 255f, 150f / 255f, 118f / 255f));
@@ -126,7 +129,7 @@ namespace SailwindVirtualCrew
             _dayField        = MakeTexture(new Color(242f / 255f, 218f / 255f, 190f / 255f));
             _dayBox          = MakeTexture(new Color(116f / 255f,  92f / 255f,  73f / 255f));
 
-            _nightWindow       = MakeTexture(new Color(38f / 255f, 32f / 255f, 27f / 255f));
+            _nightWindow       = MakeTexture(new Color(38f / 255f, 32f / 255f, 27f / 255f, NightWindowAlpha));
             _nightButton       = MakeTexture(new Color(78f / 255f, 60f / 255f, 47f / 255f));
             _nightButtonHover  = MakeTexture(new Color(98f / 255f, 76f / 255f, 59f / 255f));
             _nightButtonActive = MakeTexture(new Color(116f / 255f, 86f / 255f, 62f / 255f));
@@ -166,7 +169,8 @@ namespace SailwindVirtualCrew
             internal static Palette Day => new Palette
             {
                 Text = Color.black,
-                WindowBackground = _dayWindow,
+                WindowBackground = _defaultWindowBackground,
+                WindowOnBackground = _defaultWindowOnBackground,
                 ButtonBackground = _dayButton,
                 ButtonHoverBackground = _dayButtonHover,
                 ButtonActiveBackground = _dayButtonActive,
@@ -179,6 +183,7 @@ namespace SailwindVirtualCrew
             {
                 Text = new Color(0.82f, 0.75f, 0.65f),
                 WindowBackground = _nightWindow,
+                WindowOnBackground = _nightWindow,
                 ButtonBackground = _nightButton,
                 ButtonHoverBackground = _nightButtonHover,
                 ButtonActiveBackground = _nightButtonActive,
@@ -189,6 +194,7 @@ namespace SailwindVirtualCrew
 
             internal Color Text;
             internal Texture2D WindowBackground;
+            internal Texture2D WindowOnBackground;
             internal Texture2D ButtonBackground;
             internal Texture2D ButtonHoverBackground;
             internal Texture2D ButtonActiveBackground;
