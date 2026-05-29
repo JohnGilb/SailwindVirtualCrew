@@ -192,7 +192,7 @@ namespace SailwindVirtualCrew
                 }
             }
 
-            scan.SideMap = BuildSideMap(anchors);
+            scan.SideMap = BuildSideMap(context, anchors);
 
             foreach (var anchor in anchors)
             {
@@ -233,7 +233,7 @@ namespace SailwindVirtualCrew
             return scan;
         }
 
-        private static SideMap BuildSideMap(List<RopeAnchor> anchors)
+        private static SideMap BuildSideMap(CrewBoatContext context, List<RopeAnchor> anchors)
         {
             BeamAxis axis = BeamAxis.LocalX;
             bool portPositive = false;
@@ -261,7 +261,17 @@ namespace SailwindVirtualCrew
             else
                 portPositive = axis == BeamAxis.LocalZ;
 
+            if (IsCog(context))
+                portPositive = !portPositive;
+
             return new SideMap(axis, portPositive);
+        }
+
+        private static bool IsCog(CrewBoatContext context)
+        {
+            string topName = context != null && context.TopBoat ? context.TopBoat.name.ToLowerInvariant() : "";
+            string worldName = context != null && context.WorldBoat ? context.WorldBoat.name.ToLowerInvariant() : "";
+            return topName.Contains("medi small") || worldName.Contains("medi small") || topName.Contains("cog") || worldName.Contains("cog");
         }
 
         private static Vector3 GetRopeAnchorWorld(PickupableBoatMooringRope rope)

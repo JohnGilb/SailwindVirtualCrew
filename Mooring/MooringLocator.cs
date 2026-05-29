@@ -114,7 +114,7 @@ namespace SailwindVirtualCrew
             };
 
             var ropeInfos = BuildRopeInfos(context, mooringRopes);
-            scan.SideMap = BuildSideMap(ropeInfos);
+            scan.SideMap = BuildSideMap(context, ropeInfos);
 
             foreach (var rope in ropeInfos)
             {
@@ -341,7 +341,7 @@ namespace SailwindVirtualCrew
                 || (context.WorldBoat && dockTransform.IsChildOf(context.WorldBoat));
         }
 
-        private static MooringSideMap BuildSideMap(List<MooringRopeInfo> ropes)
+        private static MooringSideMap BuildSideMap(CrewBoatContext context, List<MooringRopeInfo> ropes)
         {
             MooringBeamAxis axis = MooringBeamAxis.LocalX;
             bool portPositive = false;
@@ -367,7 +367,17 @@ namespace SailwindVirtualCrew
             else
                 portPositive = axis == MooringBeamAxis.LocalZ;
 
+            if (IsCog(context))
+                portPositive = !portPositive;
+
             return new MooringSideMap(axis, portPositive);
+        }
+
+        private static bool IsCog(CrewBoatContext context)
+        {
+            string topName = context != null && context.TopBoat ? context.TopBoat.name.ToLowerInvariant() : "";
+            string worldName = context != null && context.WorldBoat ? context.WorldBoat.name.ToLowerInvariant() : "";
+            return topName.Contains("medi small") || worldName.Contains("medi small") || topName.Contains("cog") || worldName.Contains("cog");
         }
 
         private static float AxisValue(MooringBeamAxis axis, Vector3 local)
