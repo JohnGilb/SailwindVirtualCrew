@@ -2441,6 +2441,8 @@ namespace SailwindVirtualCrew
         // deckhands and marks completed tasks as done.
         public void Tick()
         {
+            CrewLanternService.Tick(Crew);
+
             // Drain stamina at 1 unit per in-game minute. Optional config restores the old
             // behavior where actively working crew drain twice as fast.
             // Sleeping crew are exempt from drain — their stamina is handled by SleepRequest.Tick().
