@@ -47,23 +47,48 @@ namespace SailwindVirtualCrew
             if (controlsText == null)
                 return;
 
+            controlsText.text = RemoveSupercargoPrompts(controlsText.text);
+
+            if (canSell)
+                AppendControlLine(controlsText, GetSellKeyName()
+                    + (SupercargoTradeService.IsMarkedForHaulSell(item) ? " cancel port sale" : " sell at port"));
+
+            if (canKeep)
+                AppendControlLine(controlsText, GetKeepKeyName()
+                    + (SupercargoTradeService.IsMarkedKeep(item) ? " unmark keep" : " mark keep"));
+        }
+
+        private static void AppendControlLine(TextMesh controlsText, string line)
+        {
             if (!string.IsNullOrEmpty(controlsText.text) && !controlsText.text.EndsWith("\n"))
                 controlsText.text += "\n";
 
-            if (canSell)
+            controlsText.text += line;
+        }
+
+        private static string RemoveSupercargoPrompts(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            var lines = text.Split('\n');
+            var keptLines = new System.Collections.Generic.List<string>();
+            foreach (string line in lines)
             {
-                controlsText.text += GetSellKeyName()
-                    + (SupercargoTradeService.IsMarkedForHaulSell(item) ? " cancel port sale" : " sell at port");
+                if (!IsSupercargoPromptLine(line))
+                    keptLines.Add(line);
             }
 
-            if (canKeep)
-            {
-                if (!controlsText.text.EndsWith("\n"))
-                    controlsText.text += "\n";
+            return string.Join("\n", keptLines.ToArray()).TrimEnd('\n');
+        }
 
-                controlsText.text += GetKeepKeyName()
-                    + (SupercargoTradeService.IsMarkedKeep(item) ? " unmark keep" : " mark keep");
-            }
+        private static bool IsSupercargoPromptLine(string line)
+        {
+            string trimmed = line.Trim();
+            return trimmed.EndsWith(" sell at port", System.StringComparison.Ordinal)
+                || trimmed.EndsWith(" cancel port sale", System.StringComparison.Ordinal)
+                || trimmed.EndsWith(" mark keep", System.StringComparison.Ordinal)
+                || trimmed.EndsWith(" unmark keep", System.StringComparison.Ordinal);
         }
 
         private static string GetSellKeyName()
