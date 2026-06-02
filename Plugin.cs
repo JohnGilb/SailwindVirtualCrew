@@ -67,6 +67,7 @@ namespace SailwindVirtualCrew
             ScanItems = Config.Bind("CrewHotkeys", "ScanItems", new KeyboardShortcut(KeyCode.P));
 
             gameObject.AddComponent<CrewSoundPlayer>();
+            gameObject.AddComponent<WindowLauncherWindow>();
             gameObject.AddComponent<DeveloperWindow>();
             gameObject.AddComponent<VirtualCrewDebugWindow>();
             gameObject.AddComponent<CrewWindow>();

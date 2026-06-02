@@ -15,6 +15,8 @@ namespace SailwindVirtualCrew
         // Draw as an absolute overlay so overflowing controls cannot obscure it.
         internal void HandleInWindow(ref Rect windowRect)
         {
+            WindowLayoutUtility.EndScrollableContentForResizeHandle();
+
             GUILayout.FlexibleSpace();
             GUILayout.Space(HandleHeight);
 

@@ -128,6 +128,7 @@
     <Compile Include="Requests\PilotTask.cs" />
     <Compile Include="Requests\SleepRequest.cs" />
     <Compile Include="UI\IWindowPosition.cs" />
+    <Compile Include="UI\WindowVisibilityUtility.cs" />
     <Compile Include="UI\WindowLayoutUtility.cs" />
     <Compile Include="UI\SailwindGuiStyle.cs" />
     <Compile Include="UI\WindowResizer.cs" />
@@ -135,6 +136,7 @@
     <Compile Include="Utilities\LocatorUtils.cs" />
     <Compile Include="Utilities\WeatherUtils.cs" />
     <Compile Include="Windows\VirtualCrewDebugWindow.cs" />
+    <Compile Include="Windows\WindowLauncherWindow.cs" />
     <Compile Include="Windows\CrewRosterWindow.cs" />
     <Compile Include="Windows\LookoutWindow.cs" />
     <Compile Include="Windows\DeveloperWindow.cs" />

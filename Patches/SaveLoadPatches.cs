@@ -41,6 +41,10 @@ namespace SailwindVirtualCrew
             var windowPositions = new Dictionary<string, float[]>();
             foreach (var w in Plugin.Instance.GetComponents<IWindowPosition>())
                 windowPositions[w.WindowKey] = w.GetPosition();
+            var windowVisibility = new Dictionary<string, bool>();
+            foreach (var w in Plugin.Instance.GetComponents<IWindowPosition>())
+                if (w is UnityEngine.Component component && WindowVisibilityUtility.TryGetVisible(component, out var visible))
+                    windowVisibility[w.WindowKey] = visible;
             var navigatorWindow = Plugin.Instance.GetComponent<NavigatorWindow>();
 
             var container = new VirtualCrewSaveData
@@ -53,6 +57,7 @@ namespace SailwindVirtualCrew
                     kv => kv.Key,
                     kv => kv.Value.Select(c => c.ToSaveData()).ToList()),
                 windowPositions = windowPositions,
+                windowVisibility = windowVisibility,
                 totalSalaryPay = mgr.TotalSalaryPay,
                 totalSharePayByCurrency = mgr.TotalSharePayByCurrency != null
                     ? mgr.TotalSharePayByCurrency.ToArray()
@@ -96,6 +101,10 @@ namespace SailwindVirtualCrew
                 foreach (var w in Plugin.Instance.GetComponents<IWindowPosition>())
                     if (data.windowPositions.TryGetValue(w.WindowKey, out var pos) && pos.Length >= 2)
                         w.SetPosition(pos[0], pos[1], pos.Length >= 3 ? pos[2] : 0f);
+            if (data.windowVisibility != null)
+                foreach (var w in Plugin.Instance.GetComponents<IWindowPosition>())
+                    if (data.windowVisibility.TryGetValue(w.WindowKey, out var visible) && w is UnityEngine.Component component)
+                        WindowVisibilityUtility.TrySetVisible(component, visible);
         }
     }
 }

@@ -97,6 +97,7 @@ namespace SailwindVirtualCrew
         public List<CrewmanSaveData> shipCrew;
         public Dictionary<string, List<CrewmanSaveData>> portCrewPools;
         public Dictionary<string, float[]> windowPositions;
+        public Dictionary<string, bool> windowVisibility;
         public int totalSalaryPay;
         public int[] totalSharePayByCurrency;
         public Dictionary<int, CargoPaySaveData> cargoPayRecords;
