@@ -211,6 +211,12 @@ namespace SailwindVirtualCrew
 
         public void SetCurrentVessel(string key)
         {
+            if (string.IsNullOrEmpty(key))
+                return;
+
+            if (CurrentVesselKey != null && CurrentVesselKey != key)
+                StoreCurrentSailGroups();
+
             CurrentVesselKey = key;
             if (!AllVesselsData.ContainsKey(key))
                 AllVesselsData[key] = new VesselSaveData();
@@ -459,6 +465,47 @@ namespace SailwindVirtualCrew
             }
         }
 
+        public void BeginVesselMapScan(string key)
+        {
+            SetCurrentVessel(key);
+            simpleSails = new List<SimpleSail>();
+            dualSheetSails = new List<DualSheetSail>();
+            squareSails = new List<DualSheetSail>();
+            allSails = new List<ICommonSailActions>();
+            winchInstructions = new Dictionary<GPButtonRopeWinch, float>();
+            AnchorWinches = new List<GPButtonRopeWinch>();
+            RebuildAllSailsGroup();
+        }
+
+        public bool HasAnyRestLocationOnCurrentVessel()
+        {
+            if (CurrentVesselKey == null)
+                return false;
+
+            return AllVesselsData.TryGetValue(CurrentVesselKey, out var vesselData)
+                && vesselData.crewRestLocations != null
+                && vesselData.crewRestLocations.Count > 0;
+        }
+
+        private void StoreCurrentSailGroups()
+        {
+            if (CurrentVesselKey == null)
+                return;
+
+            if (!AllVesselsData.ContainsKey(CurrentVesselKey))
+                AllVesselsData[CurrentVesselKey] = new VesselSaveData();
+
+            AllVesselsData[CurrentVesselKey].sailGroups = SailGroups
+                .Where(g => !g.IsAllSails)
+                .Select(g => new SailGroupSaveData
+                {
+                    id = g.Id,
+                    name = g.Name,
+                    memberIdentifiers = g.MemberIdentifiers.ToList()
+                })
+                .ToList();
+        }
+
         public void RemoveFavoriteActionsForGroup(string groupId)
         {
             if (string.IsNullOrEmpty(groupId)) return;
@@ -639,6 +686,11 @@ namespace SailwindVirtualCrew
             _lastShiftLocalTime = -1f;
             _pilotShiftHandoffTask = null;
 
+            RebuildAllSailsGroup();
+        }
+
+        private void RebuildAllSailsGroup()
+        {
             // Rebuild the AllSails group; keep user-created groups intact.
             AllSailsGroup = new SailGroup("All Sails", isAllSails: true);
             if (SailGroups.Count > 0 && SailGroups[0].IsAllSails)
@@ -1698,6 +1750,9 @@ namespace SailwindVirtualCrew
 
         public bool HasPendingRequestForWinch(GPButtonRopeWinch winch)
         {
+            if (!winch || winch.rope == null)
+                return false;
+
             return WorkRequests.Any(r => r.Status != WorkRequestStatus.Complete
                                      && r.Targets.Any(t => t.Winch.rope == winch.rope))
                 || TrimRequests.Any(r => r.Status != WorkRequestStatus.Complete
@@ -1708,6 +1763,18 @@ namespace SailwindVirtualCrew
                 || SquareTrimRequests.Any(r => r.Status != WorkRequestStatus.Complete
                                      && (r.Sail.getPortSheetWinch().rope == winch.rope
                                       || r.Sail.getStarboardSheetWinch().rope == winch.rope));
+        }
+
+        public bool HasPendingRequestForAnyWinch(IEnumerable<GPButtonRopeWinch> winches)
+        {
+            if (winches == null)
+                return false;
+
+            foreach (var winch in winches)
+                if (HasPendingRequestForWinch(winch))
+                    return true;
+
+            return false;
         }
 
         public void AddWorkRequest(WorkRequest request)

@@ -61,6 +61,22 @@ namespace SailwindVirtualCrew
             EnsureRuntimeReady();
         }
 
+        internal void RefreshActorsForCurrentVessel()
+        {
+            var mgr = VirtualCrewManager.Instance;
+            if (!mgr.HasAnyRestLocationOnCurrentVessel())
+            {
+                foreach (var actor in _actorsByCrew.Values.ToList())
+                    actor.Destroy();
+
+                _actorsByCrew.Clear();
+                _actorsByOwner.Clear();
+                return;
+            }
+
+            EnsureRestActors();
+        }
+
         internal void ApplyCustomWorkstationLocation(CrewStation station, Vector3 localPosition, Quaternion localRotation)
         {
             if (station == null || string.IsNullOrEmpty(station.StableKey))

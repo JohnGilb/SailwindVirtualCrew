@@ -34,6 +34,8 @@ namespace SailwindVirtualCrew
 
         private float tickTimer = 0f;
         private const float tickInterval = 1f;
+        private string _lastScannedVesselKey;
+        private bool _vesselScanRequested;
 
         private ConfigEntry<KeyboardShortcut> BuildShipMap;
         private ConfigEntry<KeyboardShortcut> ScanItems;
@@ -108,10 +110,12 @@ namespace SailwindVirtualCrew
             if (ResetWindowPositions.Value.IsDown())
                 ResetAllWindowPositions();
 
-            if (BuildShipMap.Value.IsDown())
+            bool requestedVesselScan = _vesselScanRequested;
+            if (BuildShipMap.Value.IsDown() || requestedVesselScan)
             {
+                _vesselScanRequested = false;
 	            Console.WriteLine("====================");
-	            Console.WriteLine("Building ship map!");
+	            Console.WriteLine(requestedVesselScan ? "Embark-triggered ship map scan!" : "Building ship map!");
 	            Console.WriteLine("====================");
                 var context = CrewBoatContextResolver.ResolveAndLog();
                 if (context == null)
@@ -124,8 +128,7 @@ namespace SailwindVirtualCrew
 	            // Ok, now to learn about iteration. Grab each mast, get all sails on mast, give them a name, spray output.
 	            string vesselKey = worldBoat.name.Replace("(Clone)", "").Trim();
                 Console.WriteLine($"Vessel detected: {worldBoat.name} (Key: {vesselKey})");
-	            VirtualCrewManager.Instance.SetCurrentVessel(vesselKey);
-	            VirtualCrewManager.Instance.Reset();
+	            VirtualCrewManager.Instance.BeginVesselMapScan(vesselKey);
 
                 // Find the true boat root (the parent with BoatRefs) to find all sibling hardware
                 BoatRefs rootRefs = context.TopBoat.GetComponent<BoatRefs>() ?? worldBoat.GetComponentInParent<BoatRefs>();
@@ -361,6 +364,8 @@ namespace SailwindVirtualCrew
 	            }
 
 	            CrewNavigationCoordinator.Instance.RebuildWorkstations();
+	            CrewNavigationCoordinator.Instance.RefreshActorsForCurrentVessel();
+                _lastScannedVesselKey = vesselKey;
             }
 
             if (ScanItems.Value.IsDown())
@@ -379,6 +384,17 @@ namespace SailwindVirtualCrew
 
                 window.SetPosition(position[0], position[1], position.Length >= 3 ? position[2] : 0f);
             }
+        }
+
+        internal void RequestEmbarkedVesselScan()
+        {
+            var context = CrewBoatContextResolver.Resolve();
+            if (context == null || !context.PlayerEmbarked || !context.WorldBoat)
+                return;
+
+            string vesselKey = context.WorldBoat.name.Replace("(Clone)", "").Trim();
+            if (!string.IsNullOrEmpty(vesselKey) && vesselKey != _lastScannedVesselKey)
+                _vesselScanRequested = true;
         }
 
         private static Sail FindPrimarySquare(Sail topsail)

@@ -109,6 +109,11 @@ namespace SailwindVirtualCrew
             return queued;
         }
 
+        internal static int CountKeptCargoOnCurrentVessel()
+        {
+            return FindCurrentVesselCargo().Count(IsMarkedKeep);
+        }
+
         internal static void RefreshPersistentKeepMarker(ShipItem item)
         {
             if (!item)
@@ -294,7 +299,7 @@ namespace SailwindVirtualCrew
             if (!manager.Crew.Any(c => c.Role == ShipRole.Deckhand))
                 return false;
 
-            if (!MooringLocator.IsCurrentBoatMoored())
+            if (!MooringLocator.IsCurrentBoatMooredFast())
                 return false;
 
             if (!TryFindNearestPortDude(out portDude))

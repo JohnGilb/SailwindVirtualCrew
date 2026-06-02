@@ -148,6 +148,7 @@
     <Compile Include="Windows\NavigatorWindow.cs" />
     <Compile Include="Patches\CrewPayPatches.cs" />
     <Compile Include="Patches\LookoutVisitPatches.cs" />
+    <Compile Include="Patches\PlayerEmbarkPatches.cs" />
     <Compile Include="Patches\PortDudePatches.cs" />
     <Compile Include="Patches\SleepPatches.cs" />
     <Compile Include="Patches\SupercargoTradePatches.cs" />

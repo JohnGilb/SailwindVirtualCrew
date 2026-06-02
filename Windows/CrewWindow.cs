@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SailwindVirtualCrew
@@ -20,6 +21,7 @@ namespace SailwindVirtualCrew
         private string vesselRenameBuffer = "";
         private bool   _renamingSail   = false;
         private bool   _renamingVessel = false;
+        private readonly Dictionary<GPButtonRopeWinch, bool> _pendingWinchCache = new Dictionary<GPButtonRopeWinch, bool>();
 
         private const float ButtonHeight      = 28f;
         private const float BaseContentHeight = 600f;
@@ -37,6 +39,7 @@ namespace SailwindVirtualCrew
 
             var manager = VirtualCrewManager.Instance;
             var sails   = manager.AllSails;
+            _pendingWinchCache.Clear();
 
             if (selectedSail != null && !sails.Contains(selectedSail))
             {
@@ -109,7 +112,7 @@ namespace SailwindVirtualCrew
             if (anchors.Count > 0)
             {
                 GUILayout.BeginHorizontal();
-                bool anchorBusy = anchors.Any(w => manager.HasPendingRequestForWinch(w));
+                bool anchorBusy = manager.HasPendingRequestForAnyWinch(anchors);
                 GUI.enabled = !anchorBusy;
                 if (GUILayout.Button("Drop Anchor"))
                     manager.AddWorkRequest(new WorkRequest(null, "Drop Anchor",
@@ -258,7 +261,7 @@ namespace SailwindVirtualCrew
                                        ICommonSailActions sail, float target)
         {
             var winch = sail.getHalyardWinch();
-            GUI.enabled = !manager.HasPendingRequestForWinch(winch);
+            GUI.enabled = !IsWinchPending(manager, winch);
             if (GUILayout.Button(label))
                 manager.AddWorkRequest(new WorkRequest(sail, "Halyard " + label, new WinchTarget(winch, target)));
             GUI.enabled = true;
@@ -268,7 +271,7 @@ namespace SailwindVirtualCrew
                                            SimpleSail sail, float target)
         {
             var winch = sail.getSheetWinch();
-            GUI.enabled = !manager.HasPendingRequestForWinch(winch);
+            GUI.enabled = !IsWinchPending(manager, winch);
             if (GUILayout.Button(label))
                 manager.AddWorkRequest(new WorkRequest(sail, "Sheet " + label, new WinchTarget(winch, target)));
             GUI.enabled = true;
@@ -278,7 +281,7 @@ namespace SailwindVirtualCrew
                                              SimpleSail sail, float delta)
         {
             var winch = sail.getSheetWinch();
-            GUI.enabled = !manager.HasPendingRequestForWinch(winch);
+            GUI.enabled = !IsWinchPending(manager, winch);
             if (GUILayout.Button(label))
             {
                 float target = Mathf.Clamp01(winch.rope.currentLength + delta);
@@ -291,7 +294,7 @@ namespace SailwindVirtualCrew
         {
             var port = sail.getPortSheetWinch();
             var star = sail.getStarboardSheetWinch();
-            GUI.enabled = !manager.HasPendingRequestForWinch(port) && !manager.HasPendingRequestForWinch(star);
+            GUI.enabled = !IsWinchPending(manager, port) && !IsWinchPending(manager, star);
             if (GUILayout.Button(label))
                 manager.AddSquareTrimRequest(new SquareTrimRequest(sail));
             GUI.enabled = true;
@@ -301,7 +304,7 @@ namespace SailwindVirtualCrew
         {
             var port = sail.getPortSheetWinch();
             var star = sail.getStarboardSheetWinch();
-            GUI.enabled = !manager.HasPendingRequestForWinch(port) && !manager.HasPendingRequestForWinch(star);
+            GUI.enabled = !IsWinchPending(manager, port) && !IsWinchPending(manager, star);
             if (GUILayout.Button(label))
                 manager.AddJibTrimRequest(new JibTrimRequest(sail));
             GUI.enabled = true;
@@ -310,7 +313,7 @@ namespace SailwindVirtualCrew
         private void DrawTrimButton(VirtualCrewManager manager, string label, SimpleSail sail)
         {
             var winch = sail.getSheetWinch();
-            GUI.enabled = !manager.HasPendingRequestForWinch(winch);
+            GUI.enabled = !IsWinchPending(manager, winch);
             if (GUILayout.Button(label))
                 manager.AddTrimRequest(new TrimRequest(sail));
             GUI.enabled = true;
@@ -329,7 +332,7 @@ namespace SailwindVirtualCrew
         {
             var port = sail.getPortSheetWinch();
             var star = sail.getStarboardSheetWinch();
-            GUI.enabled = !manager.HasPendingRequestForWinch(port) && !manager.HasPendingRequestForWinch(star);
+            GUI.enabled = !IsWinchPending(manager, port) && !IsWinchPending(manager, star);
             if (GUILayout.Button(label))
             {
                 manager.AddWorkRequest(new WorkRequest(sail, "Port Sheet " + label,
@@ -338,6 +341,20 @@ namespace SailwindVirtualCrew
                     new WinchTarget(star, starboardTarget)));
             }
             GUI.enabled = true;
+        }
+
+        private bool IsWinchPending(VirtualCrewManager manager, GPButtonRopeWinch winch)
+        {
+            if (!winch)
+                return false;
+
+            bool pending;
+            if (_pendingWinchCache.TryGetValue(winch, out pending))
+                return pending;
+
+            pending = manager.HasPendingRequestForWinch(winch);
+            _pendingWinchCache[winch] = pending;
+            return pending;
         }
     }
 }

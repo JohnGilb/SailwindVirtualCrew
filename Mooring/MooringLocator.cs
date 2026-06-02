@@ -242,6 +242,24 @@ namespace SailwindVirtualCrew
             return scan.Ropes.Any(r => r.IsMoored && r.Rope != null);
         }
 
+        internal static bool IsCurrentBoatMooredFast()
+        {
+            var context = CrewBoatContextResolver.Resolve();
+            if (context == null)
+                return false;
+
+            var mooringRopes = context.TopBoat.GetComponent<BoatMooringRopes>()
+                ?? context.WorldBoat.GetComponentInParent<BoatMooringRopes>();
+            if (mooringRopes == null || mooringRopes.ropes == null)
+                return false;
+
+            foreach (var rope in mooringRopes.ropes)
+                if (rope && rope.IsMoored())
+                    return true;
+
+            return false;
+        }
+
         internal static bool TryFindActiveRoute(Vector3 fromWorld, out ActiveMooringRoute route)
         {
             route = null;
