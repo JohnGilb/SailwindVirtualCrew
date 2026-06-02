@@ -10,7 +10,7 @@ if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 New-Item -ItemType Directory -Path "$staging\SailwindVirtualCrew\Sounds" | Out-Null
 
 Copy-Item $TargetPath "$staging\SailwindVirtualCrew\"
-Copy-Item "$ProjectDir\audio\shipbell.wav" "$staging\SailwindVirtualCrew\Sounds\ShipBell.wav"
+Copy-Item "$ProjectDir\audio\shipbell.wav" "$staging\SailwindVirtualCrew\Sounds\shipbell.wav"
 
 $zipPath = "$ProjectDir\bin\Release\SailwindVirtualCrew.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
