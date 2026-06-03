@@ -10,6 +10,7 @@ namespace SailwindVirtualCrew
         public Crewman           Navigator  { get; private set; }
         public WorkRequestStatus Status     { get; set; }
         public NavigationMethod  Method     { get; }
+        public bool RequireTimeWindow { get; }
         public bool CanEstimateLatitude  => Method != NavigationMethod.Chronometer;
         public bool CanEstimateLongitude => Method == NavigationMethod.Chronometer || Method == NavigationMethod.Chronocompass;
         public Action<NavigationResult> OnComplete { get; }
@@ -19,11 +20,12 @@ namespace SailwindVirtualCrew
 
         public float DurationTotal => duration;
 
-        public NavigateRequest(NavigationMethod method, Action<NavigationResult> onComplete)
+        public NavigateRequest(NavigationMethod method, Action<NavigationResult> onComplete, bool requireTimeWindow = true)
         {
-            Method     = method;
-            OnComplete = onComplete;
-            Status     = WorkRequestStatus.Open;
+            Method            = method;
+            RequireTimeWindow = requireTimeWindow;
+            OnComplete        = onComplete;
+            Status            = WorkRequestStatus.Open;
         }
 
         public void Begin(Crewman navigator)

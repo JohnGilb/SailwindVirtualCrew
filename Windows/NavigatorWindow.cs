@@ -38,26 +38,26 @@ namespace SailwindVirtualCrew
         private const float BaseContentHeight = 300f;
 
         // Time windows for each method
-        private static float LocalTime  => Sun.sun.localTime;
-        private static float GlobalTime => Sun.sun.globalTime;
         // Quadrant: local 20:00–04:00 (wraps midnight)
-        private static bool InQuadrantWindow     => LocalTime  >= 18f || LocalTime  < 6f;
         // Sun Compass: local 11:00–13:00
-        private static bool InSunCompassWindow   => LocalTime  >= 11f && LocalTime  < 13f;
         // Chronometer: global 11:00–13:00
-        private static bool InChronometerWindow  => GlobalTime >= 11f && GlobalTime < 13f;
         // Chronocompass: local 08:00–16:00
-        private static bool InChronocompassWindow => LocalTime >= 8f && LocalTime < 16f;
 
         private bool overrideTimeWindows = false;
         private GUIStyle _leftLabel;
         private bool _leftLabelDarkMode;
 
         private bool EffectiveOverride    => DeveloperMode.IsEnabled && overrideTimeWindows;
-        private bool CanUseQuadrant      => hasQuadrant      && (EffectiveOverride || (InQuadrantWindow       && !IsOnCooldown(NavigationMethod.Quadrant)));
-        private bool CanUseSunCompass    => hasSunCompass    && (EffectiveOverride || (InSunCompassWindow     && !IsOnCooldown(NavigationMethod.SunCompass)));
-        private bool CanUseChronometer   => hasChronometer   && (EffectiveOverride || (InChronometerWindow    && !IsOnCooldown(NavigationMethod.Chronometer)));
-        private bool CanUseChronocompass => hasChronocompass && (EffectiveOverride || (InChronocompassWindow  && !IsOnCooldown(NavigationMethod.Chronocompass)));
+        private bool CanUseQuadrant      => CanUseMethod(hasQuadrant,      NavigationMethod.Quadrant);
+        private bool CanUseSunCompass    => CanUseMethod(hasSunCompass,    NavigationMethod.SunCompass);
+        private bool CanUseChronometer   => CanUseMethod(hasChronometer,   NavigationMethod.Chronometer);
+        private bool CanUseChronocompass => CanUseMethod(hasChronocompass, NavigationMethod.Chronocompass);
+
+        private bool CanUseMethod(bool hasTool, NavigationMethod method)
+        {
+            return hasTool
+                && (EffectiveOverride || (VirtualCrewManager.Instance.IsNavigationMethodInTimeWindow(method) && !IsOnCooldown(method)));
+        }
 
         private bool IsOnCooldown(NavigationMethod m) =>
             VirtualCrewManager.Instance.IsNavigationToolOnCooldown(m);
@@ -306,7 +306,7 @@ namespace SailwindVirtualCrew
 
         private void QueueNavigation(VirtualCrewManager manager, NavigationMethod method)
         {
-            if (!manager.TryAddNavigateRequest(method, out string reason))
+            if (!manager.TryAddNavigateRequest(method, out string reason, requireTimeWindow: !EffectiveOverride))
                 manager.AddNavigationMessage(reason);
         }
 

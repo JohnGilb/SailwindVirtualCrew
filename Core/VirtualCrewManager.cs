@@ -1846,7 +1846,7 @@ namespace SailwindVirtualCrew
             NavigateRequests.Add(request);
         }
 
-        public bool TryAddNavigateRequest(NavigationMethod method, out string reason, bool requireTool = true, bool allowQueue = false)
+        public bool TryAddNavigateRequest(NavigationMethod method, out string reason, bool requireTool = true, bool allowQueue = false, bool requireTimeWindow = true)
         {
             reason = null;
             if (!allowQueue && NavigateRequests.Any(r => r.Status != WorkRequestStatus.Complete))
@@ -1862,6 +1862,12 @@ namespace SailwindVirtualCrew
                 return false;
             }
 
+            if (requireTimeWindow && !IsNavigationMethodInTimeWindow(method))
+            {
+                reason = GetNavigationToolLabel(method) + " can't be used at this time.";
+                return false;
+            }
+
             if (IsNavigationToolOnCooldown(method))
             {
                 reason = GetNavigationToolLabel(method) + " exhausted for now.";
@@ -1874,8 +1880,43 @@ namespace SailwindVirtualCrew
                 return false;
             }
 
-            AddNavigateRequest(new NavigateRequest(method, RecordNavigationResult));
+            AddNavigateRequest(new NavigateRequest(method, RecordNavigationResult, requireTimeWindow));
             return true;
+        }
+
+        public bool IsNavigationMethodInTimeWindow(NavigationMethod method)
+        {
+            if (Sun.sun == null)
+                return false;
+
+            switch (method)
+            {
+                case NavigationMethod.Quadrant:
+                    return IsHourInWindow(Sun.sun.localTime, 18f, 6f);
+                case NavigationMethod.SunCompass:
+                    return IsHourInWindow(Sun.sun.localTime, 11f, 13f);
+                case NavigationMethod.Chronometer:
+                    return IsHourInWindow(Sun.sun.globalTime, 11f, 13f);
+                case NavigationMethod.Chronocompass:
+                    return IsHourInWindow(Sun.sun.localTime, 8f, 16f);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsHourInWindow(float hour, float start, float end)
+        {
+            hour = NormalizeHour(hour);
+            start = NormalizeHour(start);
+            end = NormalizeHour(end);
+
+            if (Mathf.Approximately(start, end))
+                return true;
+
+            if (start < end)
+                return hour >= start && hour < end;
+
+            return hour >= start || hour < end;
         }
 
         public bool HasNavigationTool(NavigationMethod method)
@@ -2699,7 +2740,17 @@ namespace SailwindVirtualCrew
                 {
                     var crewman = Navigator;
                     if (crewman != null && !crewman.IsOccupied)
-                        nav.Begin(crewman);
+                    {
+                        if (!nav.RequireTimeWindow || IsNavigationMethodInTimeWindow(nav.Method))
+                        {
+                            nav.Begin(crewman);
+                        }
+                        else
+                        {
+                            nav.Status = WorkRequestStatus.Complete;
+                            AddNavigationMessage(GetNavigationToolLabel(nav.Method) + " missed its time window.");
+                        }
+                    }
                 }
                 else if (nav.Status == WorkRequestStatus.InProgress && nav.IsComplete())
                 {
