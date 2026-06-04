@@ -39,7 +39,7 @@ namespace SailwindVirtualCrew
         private static readonly Dictionary<string, float> LastWarningRealTimeByIsland =
             new Dictionary<string, float>();
 
-        private static float _nextSampleRealTime;
+        private static float _nextSampleGameTime;
         private static bool _debugVisualsEnabled;
         private static GameObject _originMarker;
         private static GameObject _hitMarker;
@@ -51,11 +51,11 @@ namespace SailwindVirtualCrew
 
         internal static void Tick(LookoutTask task)
         {
-            float now = Time.realtimeSinceStartup;
-            if (now < _nextSampleRealTime)
+            float gameNow = Time.time;
+            if (gameNow < _nextSampleGameTime)
                 return;
 
-            _nextSampleRealTime = now + SampleIntervalSeconds;
+            _nextSampleGameTime = gameNow + SampleIntervalSeconds;
 
             if (task == null || task.AssignedCrewman == null)
             {
@@ -68,12 +68,12 @@ namespace SailwindVirtualCrew
                 return;
             }
 
-            Sample(now, ringBell: true, recordCooldown: true);
+            Sample(Time.realtimeSinceStartup, ringBell: true, recordCooldown: true);
         }
 
         internal static void ForceSample()
         {
-            _nextSampleRealTime = 0f;
+            _nextSampleGameTime = 0f;
             Sample(Time.realtimeSinceStartup, ringBell: false, recordCooldown: false);
         }
 
@@ -109,7 +109,7 @@ namespace SailwindVirtualCrew
 
         internal static void ResetRuntimeState()
         {
-            _nextSampleRealTime = 0f;
+            _nextSampleGameTime = 0f;
             LastWarningRealTimeByIsland.Clear();
             LastResult = new LookoutGroundingRiskResult();
             DestroyDebugObjects();
