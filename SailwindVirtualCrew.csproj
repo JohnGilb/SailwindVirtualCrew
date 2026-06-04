@@ -88,6 +88,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AccessoryCrewLogic\Lookout\LookoutGroundingRisk.cs" />
     <Compile Include="AccessoryCrewLogic\Lookout\LookoutIslandKnowledge.cs" />
     <Compile Include="AccessoryCrewLogic\Lookout\LookoutVisibility.cs" />
     <Compile Include="AccessoryCrewLogic\Piloting\PilotController.cs" />
@@ -182,6 +183,7 @@
   <PropertyGroup>
     <PostBuildEvent>xcopy "$(TargetDir)$(TargetName).dll" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins\SailwindVirtualCrew\" /Y
 xcopy "$(ProjectDir)audio\shipbell.wav" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins\SailwindVirtualCrew\Sounds\" /Y
+xcopy "$(ProjectDir)audio\fourbells.wav" "D:\Program Files (x86)\Steam\steamapps\common\Sailwind\BepInEx\plugins\SailwindVirtualCrew\Sounds\" /Y
 </PostBuildEvent>
   </PropertyGroup>
 </Project>

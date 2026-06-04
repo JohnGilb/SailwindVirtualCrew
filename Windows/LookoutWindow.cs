@@ -187,6 +187,7 @@ namespace SailwindVirtualCrew
             GUILayout.Label($"Camera Y: {cameraY:F1}  Islands tracked: {tracker.islands.Count}");
             GUILayout.Label($"Threshold: {threshold:F2} deg  Effective: {LookoutVisibility.GetEffectiveVisibilityThreshold(lookout, spyglassZoom):F2} deg  Zoom: {spyglassZoom:F1}x");
             GUILayout.Label($"Wave LOS: first {LookoutVisibility.MaxWaveOcclusionDistance:F0}m  step ~{LookoutVisibility.WaveSampleSpacing:F1}m  clearance {LookoutVisibility.WaveOcclusionClearance:F1}m");
+            DrawGroundingRiskDebug();
             GUILayout.Space(4);
 
             scrollPos = GUILayout.BeginScrollView(scrollPos, GUILayout.Height(280));
@@ -202,6 +203,32 @@ namespace SailwindVirtualCrew
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        private void DrawGroundingRiskDebug()
+        {
+            var risk = LookoutGroundingRisk.LastResult;
+            string hitTag = risk.HasHit
+                ? $"hit {risk.HitColliderName} @ {risk.HitDistance:F0}m"
+                : risk.Reason;
+            string cooldownTag = risk.CooldownRemainingSeconds > 0f
+                ? $" cooldown {risk.CooldownRemainingSeconds / 60f:F1}m"
+                : "";
+            GUILayout.Label($"Grounding: {risk.Speed:F1}m/s  {risk.ProjectedDistance:F0}m/60s  {hitTag}{cooldownTag}");
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Sample Grounding"))
+                LookoutGroundingRisk.ForceSample();
+            if (GUILayout.Button("Dump Grounding"))
+                LookoutGroundingRisk.DumpLatest();
+            if (GUILayout.Button(LookoutGroundingRisk.DebugVisualsEnabled ? "Hide Grounding Ray" : "Show Grounding Ray"))
+            {
+                if (LookoutGroundingRisk.DebugVisualsEnabled)
+                    LookoutGroundingRisk.ClearDebugVisuals();
+                else
+                    LookoutGroundingRisk.ShowDebugVisuals();
+            }
+            GUILayout.EndHorizontal();
         }
 
         private void DrawIgnoreControls(VirtualCrewManager manager, IslandHorizon reportedIsland)

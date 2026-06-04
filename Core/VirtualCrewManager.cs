@@ -689,6 +689,7 @@ namespace SailwindVirtualCrew
             _lastFirstOfficerTrimGameHours = -1f;
             _lastShiftLocalTime = -1f;
             _pilotShiftHandoffTask = null;
+            LookoutGroundingRisk.ResetRuntimeState();
 
             RebuildAllSailsGroup();
         }
@@ -2600,6 +2601,7 @@ namespace SailwindVirtualCrew
             TickShiftSchedule();
             TickFirstOfficer();
             TickLookoutPassiveCertaintyDecay();
+            LookoutGroundingRisk.Tick(ActiveLookoutTask);
 
             EvaluateOffShiftSleepNeeds();
             QueuePendingShiftSleepRequests();

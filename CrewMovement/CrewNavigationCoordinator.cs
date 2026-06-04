@@ -144,6 +144,13 @@ namespace SailwindVirtualCrew
                 Sleep.instance.WakeUp();
         }
 
+        internal void RingLookoutGroundingBell()
+        {
+            CrewSoundPlayer.Instance?.Play("fourbells");
+            if (GameState.sleeping && Sleep.instance != null)
+                Sleep.instance.WakeUp();
+        }
+
         internal void Tick()
         {
             EnsureRestActors();

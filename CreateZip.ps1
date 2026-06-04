@@ -11,6 +11,7 @@ New-Item -ItemType Directory -Path "$staging\SailwindVirtualCrew\Sounds" | Out-N
 
 Copy-Item $TargetPath "$staging\SailwindVirtualCrew\"
 Copy-Item "$ProjectDir\audio\shipbell.wav" "$staging\SailwindVirtualCrew\Sounds\shipbell.wav"
+Copy-Item "$ProjectDir\audio\fourbells.wav" "$staging\SailwindVirtualCrew\Sounds\fourbells.wav"
 
 $zipPath = "$ProjectDir\bin\Release\SailwindVirtualCrew.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
