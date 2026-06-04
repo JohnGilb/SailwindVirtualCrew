@@ -114,10 +114,10 @@ namespace SailwindVirtualCrew
                 }
                 GUILayout.BeginHorizontal();
                 GUI.enabled = mgr.CanSetCrewShift(CrewShift.Day);
-                if (GUILayout.Button("Day"))
+                if (GUILayout.Button("D"))
                     mgr.SetCrewShift(selectedShipCrew, CrewShift.Day);
                 GUI.enabled = mgr.CanSetCrewShift(CrewShift.Night);
-                if (GUILayout.Button("Night"))
+                if (GUILayout.Button("N"))
                     mgr.SetCrewShift(selectedShipCrew, CrewShift.Night);
                 GUI.enabled = true;
                 if (GUILayout.Button("Ad-Hoc"))

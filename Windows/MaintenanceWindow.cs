@@ -16,6 +16,7 @@ namespace SailwindVirtualCrew
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private float waterLevel   = 0f;
+        private float dirtyLevel   = 0f;
         private float pollTimer    = 0f;
         private int   bucketCount  = 0;
         private const float PollInterval  = 10f;
@@ -38,6 +39,7 @@ namespace SailwindVirtualCrew
             {
                 var bd = GetBoatDamage();
                 if (bd != null) waterLevel = bd.waterLevel;
+                dirtyLevel = SwabDecksRequest.GetDirtiness(SwabDecksRequest.GetCurrentShipCleanable());
             }
             else
             {
@@ -46,6 +48,7 @@ namespace SailwindVirtualCrew
                 {
                     var bd = GetBoatDamage();
                     if (bd != null) waterLevel = bd.waterLevel;
+                    dirtyLevel = SwabDecksRequest.GetDirtiness(SwabDecksRequest.GetCurrentShipCleanable());
                     pollTimer = PollInterval;
                 }
             }
@@ -58,7 +61,9 @@ namespace SailwindVirtualCrew
 
             float contentHeight = ButtonHeight  // water label
                                 + ButtonHeight  // bucket status
-                                + ButtonHeight; // bail button
+                                + ButtonHeight  // dirty label
+                                + ButtonHeight  // bail button
+                                + ButtonHeight; // swab button
 
             if (DeveloperMode.IsEnabled)
                 contentHeight += 4f + ButtonHeight; // dev button
@@ -75,6 +80,7 @@ namespace SailwindVirtualCrew
 
             var manager = VirtualCrewManager.Instance;
             var bd      = GetBoatDamage();
+            var cleanable = SwabDecksRequest.GetCurrentShipCleanable();
 
             // ── Water level ─────────────────────────────────────────────────
             string waterStr = DeveloperMode.IsEnabled
@@ -83,6 +89,10 @@ namespace SailwindVirtualCrew
             GUILayout.Label($"Water: {waterStr}");
             string bucketLabel = bucketCount > 0 ? $"[{bucketCount}] Bucket" : "[ ] Bucket";
             GUILayout.Label($"  {bucketLabel}");
+            string dirtyStr = DeveloperMode.IsEnabled
+                ? $"{dirtyLevel * 100f:F2}%"
+                : $"{dirtyLevel * 100f:F0}%";
+            GUILayout.Label($"Dirty: {dirtyStr}");
 
             // ── Bail button ──────────────────────────────────────────────────
             GUI.enabled = bd != null && waterLevel > 0.05f;
@@ -94,6 +104,16 @@ namespace SailwindVirtualCrew
                     if (b.UnitsPerScoop >= BucketUnits) bucketUsersQueued++;
                 float units = bucketUsersQueued < bucketCount ? BucketUnits : MugUnits;
                 manager.AddBailRequest(new BailRequest(bd, units));
+            }
+            GUI.enabled = true;
+
+            int swabQueued = manager.ActiveSwabDecksRequestCount;
+            int swabCapacity = manager.SwabDecksRequestCapacity;
+            GUI.enabled = cleanable != null && dirtyLevel >= 0.01f && swabQueued < swabCapacity;
+            if (GUILayout.Button($"Swab Decks ({swabQueued}/{swabCapacity})"))
+            {
+                manager.AddSwabDecksRequest(new SwabDecksRequest(cleanable));
+                dirtyLevel = SwabDecksRequest.GetDirtiness(cleanable);
             }
             GUI.enabled = true;
 

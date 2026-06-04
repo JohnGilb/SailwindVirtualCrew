@@ -22,9 +22,12 @@ namespace SailwindVirtualCrew
         public List<SquareTrimRequest> SquareTrimRequests { get; private set; }
         public List<NavigateRequest> NavigateRequests { get; private set; }
         public List<BailRequest>     BailRequests     { get; private set; }
+        public List<SwabDecksRequest> SwabDecksRequests { get; private set; }
         public List<MooringRequest>  MooringRequests  { get; private set; }
         public List<HaulSellRequest> HaulSellRequests { get; private set; }
         public List<SleepRequest>    SleepRequests    { get; private set; }
+        public int ActiveSwabDecksRequestCount => SwabDecksRequests.Count(r => r.Status != WorkRequestStatus.Complete);
+        public int SwabDecksRequestCapacity => Crew.Count(c => c.Role == ShipRole.Deckhand);
         public Dictionary<GPButtonRopeWinch, WinchTarget> crewWinchInstructions;
 
         private readonly System.Random rng = new System.Random();
@@ -674,6 +677,7 @@ namespace SailwindVirtualCrew
             SquareTrimRequests = new List<SquareTrimRequest>();
             NavigateRequests = new List<NavigateRequest>();
             BailRequests     = new List<BailRequest>();
+            SwabDecksRequests = new List<SwabDecksRequest>();
             MooringRequests  = new List<MooringRequest>();
             HaulSellRequests = new List<HaulSellRequest>();
             SleepRequests    = new List<SleepRequest>();
@@ -1149,6 +1153,8 @@ namespace SailwindVirtualCrew
             if (_assignedNavigator == c) _assignedNavigator = null;
             var sleepReq = SleepRequests.FirstOrDefault(r => r.AssignedCrewman == c);
             if (sleepReq != null) CancelSleepRequest(sleepReq);
+            var swabReq = SwabDecksRequests.FirstOrDefault(r => r.AssignedCrewman == c);
+            if (swabReq != null) CancelSwabDecksRequest(swabReq);
             c.CurrentTask = null;
             Crew.Remove(c);
             if (IsLegendaryCrew(c) && LegendaryCrewCatalog.TryGet(c.Id, out var legendary))
@@ -2012,6 +2018,16 @@ namespace SailwindVirtualCrew
             BailRequests.Add(request);
         }
 
+        public void AddSwabDecksRequest(SwabDecksRequest request)
+        {
+            if (request == null
+                || request.IsDone()
+                || ActiveSwabDecksRequestCount >= SwabDecksRequestCapacity)
+                return;
+
+            SwabDecksRequests.Add(request);
+        }
+
         public void AddHaulSellRequest(HaulSellRequest request)
         {
             if (request == null || HasPendingHaulSellRequest(request.Item))
@@ -2080,6 +2096,15 @@ namespace SailwindVirtualCrew
             if (request.AssignedCrewman != null)
                 request.AssignedCrewman.CurrentTask = null;
             BailRequests.Remove(request);
+        }
+
+        public void CancelSwabDecksRequest(SwabDecksRequest request)
+        {
+            if (request == null)
+                return;
+
+            request.Cancel();
+            SwabDecksRequests.Remove(request);
         }
 
         public void CancelHaulSellRequest(HaulSellRequest request)
@@ -2836,6 +2861,25 @@ namespace SailwindVirtualCrew
                 var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
                 if (crewman == null) break;
                 bail.Begin(crewman);
+            }
+
+            // Swab Decks requests: roam the deck in five second cycles, cleaning a little each cycle.
+            foreach (var swab in SwabDecksRequests)
+            {
+                if (swab.Status == WorkRequestStatus.Open && swab.IsDone())
+                    swab.Status = WorkRequestStatus.Complete;
+                else if (swab.Status == WorkRequestStatus.InProgress)
+                    swab.Tick();
+            }
+
+            SwabDecksRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+
+            foreach (var swab in SwabDecksRequests)
+            {
+                if (swab.Status != WorkRequestStatus.Open) continue;
+                var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
+                if (crewman == null) break;
+                swab.Begin(crewman);
             }
 
             // Sleep requests: tick active ones, advance positioning completions, assign beds to waiting ones.

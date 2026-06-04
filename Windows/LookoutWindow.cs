@@ -302,7 +302,10 @@ namespace SailwindVirtualCrew
             if (hasStation)
             {
                 Vector3 local = ToVector3(station.localPosition);
-                GUILayout.Label("Station: " + (station.isCrowsNest ? "Crow's Nest" : "Deck") + "  " + Format(local));
+                string stationLabel = "Station: " + (station.isCrowsNest ? "Crow's Nest" : "Deck");
+                if (DeveloperMode.IsEnabled)
+                    stationLabel += "  " + Format(local);
+                GUILayout.Label(stationLabel);
             }
             else
             {

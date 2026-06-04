@@ -98,9 +98,7 @@ namespace SailwindVirtualCrew
             float contentHeight = ButtonHeight * 2                               // name + stats
                                 + (showGlobalTime ? ButtonHeight : 0f)           // chronometer global time
                                 + ButtonHeight                                   // Search for Tools button
-                                + 4f + ButtonHeight                              // space + "Equipment:"
-                                + 6 * ButtonHeight                               // 6 tool status labels
-                                + ButtonHeight                                   // weather label
+                                + 4f + ButtonHeight                              // space + weather label
                                 + 4f                                             // space
                                 + (DeveloperMode.IsEnabled ? ButtonHeight : 0f) // override toggle
                                 + 4 * ButtonHeight;                              // 4 instrument buttons
@@ -176,13 +174,6 @@ namespace SailwindVirtualCrew
                 _leftLabelDarkMode = SailwindGuiStyle.IsDarkMode;
             }
             GUILayout.Label($"Weather: {currentWeather}", _leftLabel);
-            GUILayout.Label("Equipment:", _leftLabel);
-            GUILayout.Label($"{Check(hasChronocompass)} Chronocompass", _leftLabel);
-            GUILayout.Label($"{Check(hasChronometer)} Chronometer", _leftLabel);
-            GUILayout.Label($"{Check(hasCompass)} Compass", _leftLabel);
-            GUILayout.Label($"{Check(hasQuadrant)} Quadrant", _leftLabel);
-            GUILayout.Label($"{Check(hasSunCompass)} Sun Compass", _leftLabel);
-            GUILayout.Label($"{Check(hasChipLog)} Chip Log", _leftLabel);
             
 
             // ── Instrument buttons ──────────────────────────────────────────
@@ -193,22 +184,22 @@ namespace SailwindVirtualCrew
 
             // Quadrant — latitude, local 20:00–04:00
             GUI.enabled = navFree && CanUseQuadrant;
-            if (GUILayout.Button("Quadrant"))
+            if (GUILayout.Button(ToolButtonLabel(hasQuadrant, "Quadrant")))
                 QueueNavigation(manager, NavigationMethod.Quadrant);
 
             // Sun Compass — latitude, local 11:00–13:00
             GUI.enabled = navFree && CanUseSunCompass;
-            if (GUILayout.Button("Sun Compass"))
+            if (GUILayout.Button(ToolButtonLabel(hasSunCompass, "Sun Compass")))
                 QueueNavigation(manager, NavigationMethod.SunCompass);
 
             // Chronometer — longitude, global 11:00–13:00
             GUI.enabled = navFree && CanUseChronometer;
-            if (GUILayout.Button("Chronometer"))
+            if (GUILayout.Button(ToolButtonLabel(hasChronometer, "Chronometer")))
                 QueueNavigation(manager, NavigationMethod.Chronometer);
 
             // Chronocompass — latitude + longitude, local 08:00–16:00
             GUI.enabled = navFree && CanUseChronocompass;
-            if (GUILayout.Button("Chronocompass"))
+            if (GUILayout.Button(ToolButtonLabel(hasChronocompass, "Chronocompass")))
                 QueueNavigation(manager, NavigationMethod.Chronocompass);
 
             GUI.enabled = true;
@@ -253,7 +244,10 @@ namespace SailwindVirtualCrew
             GUI.DragWindow();
         }
 
-        private static string Check(bool value) => value ? "[x]" : "[ ]";
+        private static string ToolButtonLabel(bool hasTool, string label)
+        {
+            return (hasTool ? "[x] " : "[ ] ") + label;
+        }
 
         private bool ShouldShowGlobalTime(VirtualCrewManager manager, Crewman navigator)
         {

@@ -35,8 +35,8 @@ namespace SailwindVirtualCrew
         {
             switch (shift)
             {
-                case CrewShift.Day:   return " [Day]";
-                case CrewShift.Night: return " [Night]";
+                case CrewShift.Day:   return " [D]";
+                case CrewShift.Night: return " [N]";
                 default:              return string.Empty;
             }
         }

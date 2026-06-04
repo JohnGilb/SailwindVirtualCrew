@@ -359,6 +359,28 @@ namespace SailwindVirtualCrew
             return true;
         }
 
+        internal bool TryBeginRandomDeckMovement(object owner, Crewman crewman, string label)
+        {
+            if (owner == null || crewman == null)
+                return false;
+
+            if (!EnsureRuntimeReady())
+                return false;
+
+            var actor = GetOrCreateActor(crewman);
+            if (actor == null || (actor.ActiveOwner != null && actor.ActiveOwner != owner))
+            {
+                CrewDebugLog.Warn(Phase, "Could not start random deck movement crew='" + crewman.Name + "' label='" + label + "'");
+                return false;
+            }
+
+            if (!actor.BeginRandomDeckRole(owner, _random, label))
+                return false;
+
+            _actorsByOwner[owner] = actor;
+            return true;
+        }
+
         internal bool TryRetargetRolePositioning(object owner, Vector3 destinationLocal, Quaternion arrivalRotation, string label)
         {
             if (owner == null || !_actorsByOwner.TryGetValue(owner, out var actor))
@@ -966,6 +988,14 @@ namespace SailwindVirtualCrew
                 return true;
             }
 
+            internal bool BeginRandomDeckRole(object owner, System.Random random, string label)
+            {
+                if (!TryGetRandomDeckLocal(random, _logicAgent.CurrentLocalPosition, out var randomLocal))
+                    return false;
+
+                return BeginRole(owner, randomLocal, _logicAgent.CurrentLocalRotation, label);
+            }
+
             internal void Tick()
             {
                 int dex = Crew.Dexterity;
@@ -1124,7 +1154,7 @@ namespace SailwindVirtualCrew
                     return;
                 }
 
-                if (TryGetRandomDeckLocal(out var randomLocal))
+                if (TryGetRandomDeckLocal(_lookoutRandom, _lookoutStartLocal, out var randomLocal))
                 {
                     _workingLogged = false;
                     if (BeginRole(ActiveOwner, randomLocal, _logicAgent.CurrentLocalRotation, "lookout patrol"))
@@ -1428,16 +1458,19 @@ namespace SailwindVirtualCrew
                 return Quaternion.LookRotation(direction.normalized, Vector3.up);
             }
 
-            private bool TryGetRandomDeckLocal(out Vector3 localPosition)
+            private bool TryGetRandomDeckLocal(System.Random random, Vector3 fallbackLocal, out Vector3 localPosition)
             {
-                localPosition = _lookoutStartLocal;
+                localPosition = fallbackLocal;
+                if (random == null)
+                    return false;
+
                 Bounds bounds = _navMeshProvider.Proxy.Bounds;
                 Transform proxyRoot = _navMeshProvider.Proxy.Root.transform;
 
                 for (int i = 0; i < 12; i++)
                 {
-                    float x = Mathf.Lerp(bounds.min.x, bounds.max.x, (float)_lookoutRandom.NextDouble());
-                    float z = Mathf.Lerp(bounds.min.z, bounds.max.z, (float)_lookoutRandom.NextDouble());
+                    float x = Mathf.Lerp(bounds.min.x, bounds.max.x, (float)random.NextDouble());
+                    float z = Mathf.Lerp(bounds.min.z, bounds.max.z, (float)random.NextDouble());
                     Vector3 world = new Vector3(x, bounds.center.y, z);
                     Vector3 candidateLocal = proxyRoot.InverseTransformPoint(world);
 

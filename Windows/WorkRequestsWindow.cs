@@ -44,13 +44,14 @@ namespace SailwindVirtualCrew
             var mooringRequests    = manager.MooringRequests;
             var haulSellRequests   = manager.HaulSellRequests;
             var bailRequests       = manager.BailRequests;
+            var swabDecksRequests  = manager.SwabDecksRequests;
             var sleepRequests      = manager.SleepRequests;
             var pilotTask          = manager.ActivePilotTask;
             var lookoutTask        = manager.ActiveLookoutTask;
 
             int totalTasks = requests.Count + trimRequests.Count
                            + jibTrimRequests.Count + squareTrimRequests.Count
-                           + navigateRequests.Count + mooringRequests.Count + haulSellRequests.Count + bailRequests.Count + sleepRequests.Count
+                           + navigateRequests.Count + mooringRequests.Count + haulSellRequests.Count + bailRequests.Count + swabDecksRequests.Count + sleepRequests.Count
                            + (pilotTask   != null ? 1 : 0)
                            + (lookoutTask != null ? 1 : 0);
 
@@ -88,6 +89,9 @@ namespace SailwindVirtualCrew
                 foreach (var r in bailRequests)
                     taskListHeight += r.Status == WorkRequestStatus.InProgress
                         ? InProgressTaskHeight : OpenTaskHeight;
+                foreach (var r in swabDecksRequests)
+                    taskListHeight += r.Status == WorkRequestStatus.InProgress
+                        ? InProgressTaskHeight : OpenTaskHeight;
                 foreach (var r in sleepRequests)
                     taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
                         ? InProgressTaskHeight : OpenTaskHeight;
@@ -114,6 +118,7 @@ namespace SailwindVirtualCrew
             var mooringRequests    = manager.MooringRequests;
             var haulSellRequests   = manager.HaulSellRequests;
             var bailRequests       = manager.BailRequests;
+            var swabDecksRequests  = manager.SwabDecksRequests;
             var sleepRequests      = manager.SleepRequests;
             var pilotTask          = manager.ActivePilotTask;
             var lookoutTask        = manager.ActiveLookoutTask;
@@ -122,7 +127,7 @@ namespace SailwindVirtualCrew
 
             if (requests.Count == 0 && trimRequests.Count == 0
              && jibTrimRequests.Count == 0 && squareTrimRequests.Count == 0
-             && navigateRequests.Count == 0 && mooringRequests.Count == 0 && haulSellRequests.Count == 0 && bailRequests.Count == 0 && sleepRequests.Count == 0
+             && navigateRequests.Count == 0 && mooringRequests.Count == 0 && haulSellRequests.Count == 0 && bailRequests.Count == 0 && swabDecksRequests.Count == 0 && sleepRequests.Count == 0
              && pilotTask == null && lookoutTask == null)
             {
                 GUILayout.Label("No tasks queued.");
@@ -350,6 +355,27 @@ namespace SailwindVirtualCrew
                 }
             }
             if (bailToCancel != null) manager.CancelBailRequest(bailToCancel);
+
+            SwabDecksRequest swabToCancel = null;
+            foreach (var swab in swabDecksRequests)
+            {
+                if (swab.Status == WorkRequestStatus.Open)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[Waiting] Swab Decks");
+                    if (GUILayout.Button("X", GUILayout.Width(28))) swabToCancel = swab;
+                    GUILayout.EndHorizontal();
+                }
+                else if (swab.Status == WorkRequestStatus.InProgress)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + swab.AssignedCrewman.Name + "] Swabbing Decks");
+                    if (GUILayout.Button("X", GUILayout.Width(28))) swabToCancel = swab;
+                    GUILayout.EndHorizontal();
+                    DrawProgressBar(swab.GetProgress());
+                }
+            }
+            if (swabToCancel != null) manager.CancelSwabDecksRequest(swabToCancel);
 
             SleepRequest sleepToCancel = null;
             foreach (var sleep in sleepRequests)

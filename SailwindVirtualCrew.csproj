@@ -127,6 +127,7 @@
     <Compile Include="Requests\MooringRequest.cs" />
     <Compile Include="Requests\PilotTask.cs" />
     <Compile Include="Requests\SleepRequest.cs" />
+    <Compile Include="Requests\SwabDecksRequest.cs" />
     <Compile Include="UI\IWindowPosition.cs" />
     <Compile Include="UI\WindowVisibilityUtility.cs" />
     <Compile Include="UI\WindowLayoutUtility.cs" />
