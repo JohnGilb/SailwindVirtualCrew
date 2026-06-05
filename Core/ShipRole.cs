@@ -16,7 +16,8 @@ namespace SailwindVirtualCrew
         Chef,
         Quartermaster,
         Supercargo,
-        Lookout
+        Lookout,
+        Steward
     }
 
     public static class CrewShiftExtensions

@@ -132,6 +132,9 @@ namespace SailwindVirtualCrew
     {
         public int firstOfficerSettingsVersion;
         public bool firstOfficerAutoTrimEnabled = true;
+        public int stewardSettingsVersion;
+        public float stewardThirstLimitPercent = 50f;
+        public float stewardHungerLimitPercent = 50f;
         public Dictionary<string, VesselSaveData> vessels = new Dictionary<string, VesselSaveData>();
         public List<CrewmanSaveData> shipCrew;
         public Dictionary<string, List<CrewmanSaveData>> portCrewPools;

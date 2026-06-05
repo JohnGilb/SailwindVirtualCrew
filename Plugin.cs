@@ -81,6 +81,7 @@ namespace SailwindVirtualCrew
             gameObject.AddComponent<NavigatorShipLogWindow>();
             gameObject.AddComponent<MaintenanceWindow>();
             gameObject.AddComponent<SupercargoWindow>();
+            gameObject.AddComponent<StewardWindow>();
             gameObject.AddComponent<FirstOfficerWindow>();
             gameObject.AddComponent<PilotingWindow>();
             gameObject.AddComponent<CrewRosterWindow>();
@@ -108,6 +109,7 @@ namespace SailwindVirtualCrew
             CrewDebugObjects.Tick();
             CrewNavigationCoordinator.Instance.Tick();
             CargoControllerPortCargoHotkey.Tick();
+            PlayerWaitingState.Tick();
 
             if (ResetWindowPositions.Value.IsDown())
                 ResetAllWindowPositions();

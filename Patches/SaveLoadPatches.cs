@@ -52,6 +52,9 @@ namespace SailwindVirtualCrew
             {
                 firstOfficerSettingsVersion = 1,
                 firstOfficerAutoTrimEnabled = mgr.FirstOfficerAutoTrimEnabled,
+                stewardSettingsVersion = 1,
+                stewardThirstLimitPercent = mgr.StewardThirstLimitPercent,
+                stewardHungerLimitPercent = mgr.StewardHungerLimitPercent,
                 vessels      = new Dictionary<string, VesselSaveData>(mgr.AllVesselsData),
                 shipCrew     = mgr.Crew.Select(c => c.ToSaveData()).ToList(),
                 portCrewPools = mgr.PortCrewPools.ToDictionary(
@@ -92,6 +95,7 @@ namespace SailwindVirtualCrew
             VirtualCrewManager.Instance.RestorePortCrewRefreshDay(data.lastPortCrewRefreshDay);
             VirtualCrewManager.Instance.RestorePayData(data.totalSalaryPay, data.totalSharePayByCurrency, data.cargoPayRecords);
             VirtualCrewManager.Instance.RestoreFirstOfficerSettings(data.firstOfficerSettingsVersion, data.firstOfficerAutoTrimEnabled);
+            VirtualCrewManager.Instance.RestoreStewardSettings(data.stewardSettingsVersion, data.stewardThirstLimitPercent, data.stewardHungerLimitPercent);
             VirtualCrewManager.Instance.StoreLookoutCertainties(data.lookoutCertainties);
             VirtualCrewManager.Instance.StoreLookoutIdentifiedNames(data.lookoutIdentifiedNames);
             VirtualCrewManager.Instance.StoreLookoutIgnoredUntil(data.lookoutIgnoredUntil);

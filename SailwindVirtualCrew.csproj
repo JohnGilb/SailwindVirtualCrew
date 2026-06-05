@@ -98,6 +98,7 @@
     <Compile Include="Core\ModIntegrations.cs" />
     <Compile Include="Core\ShipRole.cs" />
     <Compile Include="Core\SupercargoTradeService.cs" />
+    <Compile Include="Core\PlayerWaitingState.cs" />
     <Compile Include="Core\VirtualCrewManager.cs" />
     <Compile Include="Core\VirtualCrewSaveData.cs" />
     <Compile Include="Crew\CrewAgent.cs" />
@@ -128,6 +129,10 @@
     <Compile Include="Requests\MooringRequest.cs" />
     <Compile Include="Requests\PilotTask.cs" />
     <Compile Include="Requests\SleepRequest.cs" />
+    <Compile Include="Requests\StewardFoodRequest.cs" />
+    <Compile Include="Requests\StewardPhilosophyRequest.cs" />
+    <Compile Include="Requests\StewardRequestNavigation.cs" />
+    <Compile Include="Requests\StewardWaterRequest.cs" />
     <Compile Include="Requests\SwabDecksRequest.cs" />
     <Compile Include="UI\IWindowPosition.cs" />
     <Compile Include="UI\WindowVisibilityUtility.cs" />
@@ -146,6 +151,7 @@
     <Compile Include="Requests\NavigationResult.cs" />
     <Compile Include="Windows\MaintenanceWindow.cs" />
     <Compile Include="Windows\SupercargoWindow.cs" />
+    <Compile Include="Windows\StewardWindow.cs" />
     <Compile Include="Windows\FirstOfficerWindow.cs" />
     <Compile Include="Windows\NavigatorWindow.cs" />
     <Compile Include="Windows\NavigatorMapWindow.cs" />

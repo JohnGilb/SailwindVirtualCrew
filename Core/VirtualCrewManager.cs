@@ -26,6 +26,9 @@ namespace SailwindVirtualCrew
         public List<MooringRequest>  MooringRequests  { get; private set; }
         public List<HaulSellRequest> HaulSellRequests { get; private set; }
         public List<SleepRequest>    SleepRequests    { get; private set; }
+        public List<StewardWaterRequest> StewardWaterRequests { get; private set; }
+        public List<StewardFoodRequest> StewardFoodRequests { get; private set; }
+        public StewardPhilosophyRequest ActiveStewardPhilosophyRequest { get; private set; }
         public int ActiveSwabDecksRequestCount => SwabDecksRequests.Count(r => r.Status != WorkRequestStatus.Complete);
         public int SwabDecksRequestCapacity => Crew.Count(c => c.Role == ShipRole.Deckhand);
         public Dictionary<GPButtonRopeWinch, WinchTarget> crewWinchInstructions;
@@ -58,6 +61,8 @@ namespace SailwindVirtualCrew
         public float LookoutSpyglassZoom { get; private set; } = 1f;
         public bool LookoutSpyglassScanned { get; private set; }
         public bool FirstOfficerAutoTrimEnabled { get; private set; } = true;
+        public float StewardThirstLimitPercent { get; private set; } = 50f;
+        public float StewardHungerLimitPercent { get; private set; } = 50f;
 
         public List<SailGroup> SailGroups { get; private set; }
         public SailGroup AllSailsGroup { get; private set; }
@@ -687,6 +692,9 @@ namespace SailwindVirtualCrew
             MooringRequests  = new List<MooringRequest>();
             HaulSellRequests = new List<HaulSellRequest>();
             SleepRequests    = new List<SleepRequest>();
+            StewardWaterRequests = new List<StewardWaterRequest>();
+            StewardFoodRequests = new List<StewardFoodRequest>();
+            ActiveStewardPhilosophyRequest = null;
             crewWinchInstructions = new Dictionary<GPButtonRopeWinch, WinchTarget>();
             AnchorWinches = new List<GPButtonRopeWinch>();
             _lastGlobalTime = -1f;
@@ -696,6 +704,8 @@ namespace SailwindVirtualCrew
             _lastShiftLocalTime = -1f;
             _pilotShiftHandoffTask = null;
             LookoutGroundingRisk.ResetRuntimeState();
+            if (PlayerWaitingState.IsActive)
+                PlayerWaitingState.Interrupt("crew reset");
 
             RebuildAllSailsGroup();
         }
@@ -717,6 +727,7 @@ namespace SailwindVirtualCrew
         public Crewman Pilot     => ActivePilotTask?.AssignedCrewman;
         public Crewman Navigator => _assignedNavigator ?? Crew.FirstOrDefault(c => c.Role == ShipRole.Navigator);
         public Crewman Lookout   => ActiveLookoutTask?.AssignedCrewman;
+        public Crewman Steward   => Crew.FirstOrDefault(c => c.Role == ShipRole.Steward);
         public Crewman FirstOfficer => Crew.FirstOrDefault(c => c.Role == ShipRole.ChiefOfficer);
         public bool HasFirstOfficer => Crew.Any(c => c.Role == ShipRole.ChiefOfficer);
         public IReadOnlyList<string> RecentNavigationResults => recentNavigationResults.AsReadOnly();
@@ -979,13 +990,13 @@ namespace SailwindVirtualCrew
 
 
         // Weights × 2 so 2.5 % entries become integers; total = 200.
-        private static readonly int[] SimpleWeights = { 150, 10, 10, 5, 5, 5, 5, 10 };
-        private static readonly int[] HubWeights    = { 110, 20, 20, 10, 10, 10, 10, 10 };
+        private static readonly int[] SimpleWeights = { 145, 10, 10, 5, 5, 5, 5, 10, 5 };
+        private static readonly int[] HubWeights    = { 100, 20, 20, 10, 10, 10, 10, 10, 10 };
         private static readonly ShipRole[] WeightedRoles =
         {
             ShipRole.Deckhand, ShipRole.Navigator, ShipRole.Pilot,
             ShipRole.ChiefOfficer, ShipRole.Chef, ShipRole.Quartermaster, ShipRole.Supercargo,
-            ShipRole.Lookout
+            ShipRole.Lookout, ShipRole.Steward
         };
 
         private Crewman GenerateRandomCrewman(bool hub)
@@ -1165,11 +1176,16 @@ namespace SailwindVirtualCrew
             if (navReq != null) CancelNavigateRequest(navReq);
             if (ActivePilotTask?.AssignedCrewman == c)   StopPilot();
             if (ActiveLookoutTask?.AssignedCrewman == c) StopLookout();
+            if (ActiveStewardPhilosophyRequest?.AssignedCrewman == c) CancelStewardPhilosophy();
             if (_assignedNavigator == c) _assignedNavigator = null;
             var sleepReq = SleepRequests.FirstOrDefault(r => r.AssignedCrewman == c);
             if (sleepReq != null) CancelSleepRequest(sleepReq);
             var swabReq = SwabDecksRequests.FirstOrDefault(r => r.AssignedCrewman == c);
             if (swabReq != null) CancelSwabDecksRequest(swabReq);
+            foreach (var request in StewardFoodRequests.Where(r => r.AssignedCrewman == c).ToList())
+                CancelStewardFoodRequest(request);
+            foreach (var request in StewardWaterRequests.Where(r => r.AssignedCrewman == c).ToList())
+                CancelStewardWaterRequest(request);
             c.CurrentTask = null;
             Crew.Remove(c);
             if (IsLegendaryCrew(c) && LegendaryCrewCatalog.TryGet(c.Id, out var legendary))
@@ -1241,6 +1257,22 @@ namespace SailwindVirtualCrew
         public void RestoreFirstOfficerSettings(int settingsVersion, bool autoTrimEnabled)
         {
             FirstOfficerAutoTrimEnabled = settingsVersion <= 0 || autoTrimEnabled;
+        }
+
+        public void SetStewardThirstLimit(float percent)
+        {
+            StewardThirstLimitPercent = Mathf.Clamp(percent, 0f, 100f);
+        }
+
+        public void SetStewardHungerLimit(float percent)
+        {
+            StewardHungerLimitPercent = Mathf.Clamp(percent, 0f, 100f);
+        }
+
+        public void RestoreStewardSettings(int settingsVersion, float thirstLimitPercent, float hungerLimitPercent)
+        {
+            StewardThirstLimitPercent = settingsVersion <= 0 ? 50f : Mathf.Clamp(thirstLimitPercent, 0f, 100f);
+            StewardHungerLimitPercent = settingsVersion <= 0 ? 50f : Mathf.Clamp(hungerLimitPercent, 0f, 100f);
         }
 
         public void RestorePayData(int totalSalaryPay, int[] totalSharePayByCurrency, Dictionary<int, CargoPaySaveData> cargoPayRecords)
@@ -2226,6 +2258,25 @@ namespace SailwindVirtualCrew
             HaulSellRequests.Add(request);
         }
 
+        public bool CanStartStewardPhilosophy()
+        {
+            return ActiveStewardPhilosophyRequest == null
+                && FreshestCrewman(ShipRole.Steward) != null
+                && !PlayerWaitingState.IsActive;
+        }
+
+        public void StartStewardPhilosophy()
+        {
+            if (!CanStartStewardPhilosophy())
+                return;
+
+            var steward = FreshestCrewman(ShipRole.Steward);
+            ActiveStewardPhilosophyRequest = new StewardPhilosophyRequest();
+            ActiveStewardPhilosophyRequest.Begin(steward);
+            if (ActiveStewardPhilosophyRequest.Status == WorkRequestStatus.Complete)
+                ActiveStewardPhilosophyRequest = null;
+        }
+
         public bool HasPendingHaulSellRequest(ShipItem item)
         {
             return item
@@ -2307,15 +2358,254 @@ namespace SailwindVirtualCrew
                 HaulSellRequests.Remove(request);
         }
 
-        public void SettleHaulSellRequestsForSave()
+        public void CancelStewardWaterRequest(StewardWaterRequest request)
         {
-            if (HaulSellRequests == null || HaulSellRequests.Count == 0)
+            if (request == null)
                 return;
 
-            foreach (var request in HaulSellRequests.ToList())
-                request.ForceCompleteForSave();
+            request.Cancel();
+            if (request.Status == WorkRequestStatus.Complete)
+                StewardWaterRequests.Remove(request);
+        }
 
-            HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+        public void CancelStewardFoodRequest(StewardFoodRequest request)
+        {
+            if (request == null)
+                return;
+
+            request.Cancel();
+            if (request.Status == WorkRequestStatus.Complete)
+                StewardFoodRequests.Remove(request);
+        }
+
+        public void CancelStewardPhilosophy()
+        {
+            ActiveStewardPhilosophyRequest?.Cancel();
+            ActiveStewardPhilosophyRequest = null;
+        }
+
+        public void SettleHaulSellRequestsForSave()
+        {
+            if (HaulSellRequests != null && HaulSellRequests.Count > 0)
+            {
+                foreach (var request in HaulSellRequests.ToList())
+                    request.ForceCompleteForSave();
+
+                HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            if (StewardFoodRequests != null)
+            {
+                foreach (var request in StewardFoodRequests.ToList())
+                    CancelStewardFoodRequest(request);
+                StewardFoodRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            if (StewardWaterRequests != null)
+            {
+                foreach (var request in StewardWaterRequests.ToList())
+                    CancelStewardWaterRequest(request);
+                StewardWaterRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            CancelStewardPhilosophy();
+        }
+
+        private void TickSteward()
+        {
+            if (StewardWaterRequests != null)
+            {
+                foreach (var request in StewardWaterRequests)
+                    request.Tick();
+                StewardWaterRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            if (StewardFoodRequests != null)
+            {
+                foreach (var request in StewardFoodRequests)
+                    request.Tick();
+                StewardFoodRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            if (ActiveStewardPhilosophyRequest != null)
+            {
+                ActiveStewardPhilosophyRequest.Tick();
+                if (ActiveStewardPhilosophyRequest.Status == WorkRequestStatus.Complete)
+                    ActiveStewardPhilosophyRequest = null;
+            }
+
+            if (PlayerNeeds.instance == null)
+                return;
+
+            if (PlayerNeeds.water < StewardThirstLimitPercent
+                && !StewardWaterRequests.Any(r => r.Status != WorkRequestStatus.Complete)
+                && TryFindStewardWaterSource(out var waterBarrel))
+            {
+                var steward = FreshestCrewman(ShipRole.Steward);
+                if (steward != null)
+                {
+                    var request = new StewardWaterRequest(waterBarrel);
+                    StewardWaterRequests.Add(request);
+                    request.Begin(steward);
+                }
+            }
+
+            if (PlayerNeeds.food < StewardHungerLimitPercent
+                && !StewardFoodRequests.Any(r => r.Status != WorkRequestStatus.Complete)
+                && TryFindStewardFoodSource(out var food))
+            {
+                var steward = FreshestCrewman(ShipRole.Steward);
+                if (steward != null)
+                {
+                    var request = new StewardFoodRequest(food);
+                    StewardFoodRequests.Add(request);
+                    request.Begin(steward);
+                }
+            }
+        }
+
+        private static bool TryFindStewardWaterSource(out ShipItemBottle barrel)
+        {
+            barrel = GameObject.FindObjectsOfType<ShipItemBottle>()
+                .Where(IsStewardWaterSource)
+                .OrderBy(b => b.health)
+                .FirstOrDefault();
+            return barrel != null;
+        }
+
+        private static bool IsStewardWaterSource(ShipItemBottle bottle)
+        {
+            if (bottle == null || !bottle.sold || bottle.GetCapacity() < BarrelCapacityThreshold || bottle.health < 1f)
+                return false;
+
+            if (Mathf.RoundToInt(bottle.amount) != Mathf.RoundToInt(WaterLiquidIndex))
+                return false;
+
+            var good = bottle.GetComponent<Good>();
+            if (good != null && good.GetMissionIndex() > -1)
+                return false;
+
+            return IsItemOnActiveVessel(bottle);
+        }
+
+        private bool TryFindStewardFoodSource(out ShipItemFood food)
+        {
+            food = GameObject.FindObjectsOfType<ShipItemFood>()
+                .Where(IsStewardFoodSource)
+                .Where(f => !StewardFoodRequests.Any(r => r.Food == f && r.Status != WorkRequestStatus.Complete))
+                .OrderByDescending(f => f.GetEnergyPerBite())
+                .FirstOrDefault();
+            return food != null;
+        }
+
+        private static bool IsStewardFoodSource(ShipItemFood food)
+        {
+            if (food == null || !food.sold || food.held != null || food.health <= 0f)
+                return false;
+
+            var good = food.GetComponent<Good>();
+            if (good != null && good.GetMissionIndex() > -1)
+                return false;
+
+            if (IsFoodInCrate(food))
+                return TryGetUnsealedFoodCrate(food, out _);
+
+            return IsItemOnActiveVessel(food);
+        }
+
+        public void ScanStewardFoodSources(
+            out int looseFoodCount,
+            out int unsealedCrateFoodCount,
+            out List<string> looseFoodLines,
+            out List<string> unsealedCrateFoodLines)
+        {
+            looseFoodCount = 0;
+            unsealedCrateFoodCount = 0;
+            var looseCounts = new Dictionary<string, int>();
+            var crateCounts = new Dictionary<string, int>();
+
+            foreach (var food in GameObject.FindObjectsOfType<ShipItemFood>())
+            {
+                if (!IsStewardFoodSource(food))
+                    continue;
+
+                string name = GetFoodDisplayName(food);
+                if (IsFoodInCrate(food))
+                {
+                    unsealedCrateFoodCount++;
+                    IncrementCount(crateCounts, name);
+                }
+                else
+                {
+                    looseFoodCount++;
+                    IncrementCount(looseCounts, name);
+                }
+            }
+
+            looseFoodLines = FormatFoodScanLines(looseCounts);
+            unsealedCrateFoodLines = FormatFoodScanLines(crateCounts);
+        }
+
+        private static string GetFoodDisplayName(ShipItemFood food)
+        {
+            if (food == null)
+                return "food";
+
+            string name = food.name ?? "food";
+            name = name.Replace("(Clone)", "").Trim();
+            return string.IsNullOrEmpty(name) ? "food" : name;
+        }
+
+        private static void IncrementCount(Dictionary<string, int> counts, string name)
+        {
+            if (counts.ContainsKey(name))
+                counts[name]++;
+            else
+                counts[name] = 1;
+        }
+
+        private static List<string> FormatFoodScanLines(Dictionary<string, int> counts)
+        {
+            return counts
+                .OrderBy(kv => kv.Key)
+                .Select(kv => kv.Value + " x " + kv.Key)
+                .ToList();
+        }
+
+        internal static bool TryGetUnsealedFoodCrate(ShipItemFood food, out CrateInventory crate)
+        {
+            crate = null;
+            if (food == null)
+                return false;
+
+            var saveable = food.GetComponent<SaveablePrefab>();
+            if (saveable == null || saveable.currentCrateId <= 0)
+                return false;
+
+            crate = GameObject.FindObjectsOfType<CrateInventory>()
+                .FirstOrDefault(c => IsUnsealedFoodCrate(c, saveable.currentCrateId, food));
+            return crate != null;
+        }
+
+        private static bool IsUnsealedFoodCrate(CrateInventory crate, int crateId, ShipItemFood food)
+        {
+            if (crate == null || food == null || !crate.containedItems.Contains(food))
+                return false;
+
+            var crateSaveable = crate.GetComponent<SaveablePrefab>();
+            if (crateSaveable == null || crateSaveable.instanceId != crateId)
+                return false;
+
+            var shipCrate = crate.GetComponent<ShipItemCrate>();
+            return shipCrate != null
+                && shipCrate.amount <= 0f
+                && IsItemOnActiveVessel(shipCrate);
+        }
+
+        private static bool IsFoodInCrate(ShipItemFood food)
+        {
+            var saveable = food != null ? food.GetComponent<SaveablePrefab>() : null;
+            return saveable != null && saveable.currentCrateId > 0;
         }
 
         private void TickQuartermasterBailing()
@@ -2808,6 +3098,7 @@ namespace SailwindVirtualCrew
             }
 
             TickQuartermasterBailing();
+            TickSteward();
 
             foreach (var req in WorkRequests)
             {
@@ -3275,6 +3566,11 @@ namespace SailwindVirtualCrew
                 if (haul.Status == WorkRequestStatus.InProgress)
                     haul.UpdateFrame();
             }
+
+            foreach (var food in StewardFoodRequests)
+                food.UpdateFrame();
+
+            ActiveStewardPhilosophyRequest?.UpdateFrame();
         }
 
         public void deployAllSails()

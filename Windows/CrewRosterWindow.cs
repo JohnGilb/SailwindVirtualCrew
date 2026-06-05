@@ -5,14 +5,17 @@ namespace SailwindVirtualCrew
     public class CrewRosterWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(840, 20, 380, 400);
+        private Rect windowRect = new Rect(760, 20, 500, 400);
         private static readonly int windowId = "VirtualCrewRosterWindow".GetHashCode();
 
         private WindowResizer _resizer;
+        private GUIStyle _leftButtonStyle;
+        private GUIStyle _wrappedLabelStyle;
+        private bool _stylesDarkMode;
 
         public string WindowKey => "CrewRosterWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
-        public float[] GetDefaultPosition() => new[] { 840f, 20f, 0f };
+        public float[] GetDefaultPosition() => new[] { 760f, 20f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
         private Crewman selectedShipCrew  = null;
@@ -35,9 +38,12 @@ namespace SailwindVirtualCrew
         {
             if (!showWindow) return;
             SailwindGuiStyle.Apply();
+            EnsureStyles();
             var mgr = VirtualCrewManager.Instance;
 
-            float h = RowHeight * 3f                     // pay totals + "On Ship:" label
+            windowRect.width = Mathf.Max(windowRect.width, 500f);
+
+            float h = RowHeight * 4f                     // pay totals + "On Ship:" label
                     + mgr.Crew.Count * RowHeight
                     + (selectedShipCrew  != null ? StatHeight + RowHeight : 0f)
                     + 8f + RowHeight;                    // space + "Available at Port:" label
@@ -71,8 +77,8 @@ namespace SailwindVirtualCrew
                 bedCount = LocatorUtils.CountBeds();
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
-            GUILayout.Label($"Pay - salary: {mgr.TotalSalaryPay} Al'Ankh Lions");
-            GUILayout.Label($"Pay - shares: {mgr.GetSharePaySummary()}");
+            GUILayout.Label($"Pay - salary: {mgr.TotalSalaryPay} Al'Ankh Lions", _wrappedLabelStyle);
+            GUILayout.Label($"Pay - shares: {mgr.GetSharePaySummary()}", _wrappedLabelStyle);
             GUILayout.Space(4);
 
             // ── On Ship ─────────────────────────────────────────────────────
@@ -84,7 +90,7 @@ namespace SailwindVirtualCrew
                 string roleName = c.Role.DisplayName();
                 string shiftTag = c.Shift.DisplayTag();
                 string label = sel ? $"► {c.Name}  ({roleName}){shiftTag}{fatigue}" : $"  {c.Name}  ({roleName}){shiftTag}{fatigue}";
-                if (GUILayout.Button(label))
+                if (GUILayout.Button(label, _leftButtonStyle))
                 {
                     if (sel) { selectedShipCrew = null; crewRenameBuffer = ""; _renamingShipCrew = false; }
                     else     { selectedShipCrew = c;    crewRenameBuffer = c.Name; selectedAvailable = null; _renamingShipCrew = false; }
@@ -104,8 +110,8 @@ namespace SailwindVirtualCrew
                 else
                 {
                     GUILayout.BeginHorizontal();
-                    crewRenameBuffer = GUILayout.TextField(crewRenameBuffer);
-                    if (GUILayout.Button("Set", GUILayout.Width(46)) && crewRenameBuffer.Trim().Length > 0)
+                    crewRenameBuffer = GUILayout.TextField(crewRenameBuffer, GUILayout.MinWidth(120));
+                    if (GUILayout.Button("Set", GUILayout.Width(64)) && crewRenameBuffer.Trim().Length > 0)
                     {
                         selectedShipCrew.Rename(crewRenameBuffer.Trim());
                         _renamingShipCrew = false;
@@ -179,7 +185,7 @@ namespace SailwindVirtualCrew
                     bool sel = c == selectedAvailable;
                     string roleName = c.Role.DisplayName();
                     string label = sel ? $"► {c.Name}  ({roleName})" : $"  {c.Name}  ({roleName})";
-                    if (GUILayout.Button(label))
+                    if (GUILayout.Button(label, _leftButtonStyle))
                     {
                         selectedAvailable = sel ? null : c;
                         selectedShipCrew  = null;
@@ -205,6 +211,25 @@ namespace SailwindVirtualCrew
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        private void EnsureStyles()
+        {
+            if (_leftButtonStyle != null && !SailwindGuiStyle.HasThemeChanged(_stylesDarkMode))
+                return;
+
+            _stylesDarkMode = SailwindGuiStyle.IsDarkMode;
+            _leftButtonStyle = new GUIStyle(GUI.skin.button)
+            {
+                alignment = TextAnchor.MiddleLeft,
+                clipping = TextClipping.Clip
+            };
+            _wrappedLabelStyle = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = true,
+                clipping = TextClipping.Clip
+            };
         }
 
         private static string StatLine(Crewman c)

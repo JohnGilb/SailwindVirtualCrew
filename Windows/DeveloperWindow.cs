@@ -33,7 +33,7 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 30f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 30f * 6; // add basic crew + refresh ports + legendary + stamina buttons + workstation customizer
+                height += 30f * 7; // add basic crew/steward + refresh ports + legendary + stamina buttons + workstation customizer
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Developer Tools");
@@ -64,6 +64,8 @@ namespace SailwindVirtualCrew
             {
                 if (GUILayout.Button("Add Basic Crew"))
                     AddBasicCrew();
+                if (GUILayout.Button("Add Steward"))
+                    VirtualCrewManager.Instance.Crew.Add(VirtualCrewManager.Instance.CreateRandomCrewman(ShipRole.Steward));
                 if (GUILayout.Button("Reticulate Splines"))
                     showLegendaryWindow = !showLegendaryWindow;
                 if (GUILayout.Button("Refresh Crew at Ports"))
@@ -127,6 +129,7 @@ namespace SailwindVirtualCrew
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Lookout));
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Quartermaster));
             mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Supercargo));
+            mgr.Crew.Add(mgr.CreateRandomCrewman(ShipRole.Steward));
         }
 
         private WorkstationCustomizerWindow GetWorkstationCustomizerWindow()

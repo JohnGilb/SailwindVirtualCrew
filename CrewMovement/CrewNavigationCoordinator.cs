@@ -140,15 +140,13 @@ namespace SailwindVirtualCrew
         {
             _lastBellRealTime = UnityEngine.Time.realtimeSinceStartup;
             CrewSoundPlayer.Instance?.Play("shipbell");
-            if (GameState.sleeping && Sleep.instance != null)
-                Sleep.instance.WakeUp();
+            PlayerWaitingState.Interrupt("lookout bell");
         }
 
         internal void RingLookoutGroundingBell()
         {
             CrewSoundPlayer.Instance?.Play("fourbells");
-            if (GameState.sleeping && Sleep.instance != null)
-                Sleep.instance.WakeUp();
+            PlayerWaitingState.Interrupt("lookout grounding bell");
         }
 
         internal void Tick()
