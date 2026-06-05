@@ -46,6 +46,7 @@ namespace SailwindVirtualCrew
                 if (w is UnityEngine.Component component && WindowVisibilityUtility.TryGetVisible(component, out var visible))
                     windowVisibility[w.WindowKey] = visible;
             var navigatorWindow = Plugin.Instance.GetComponent<NavigatorWindow>();
+            var pilotingWindow = Plugin.Instance.GetComponent<PilotingWindow>();
 
             var container = new VirtualCrewSaveData
             {
@@ -71,7 +72,9 @@ namespace SailwindVirtualCrew
                 lookoutIgnoredUntil = mgr.GetLookoutIgnoredUntilSnapshot(),
                 visitedPorts = mgr.GetVisitedPortsSnapshot(),
                 quartermasterWaterRefillNextAllowedDay = mgr.GetQuartermasterWaterRefillSnapshot(),
-                navigatorToolScan = navigatorWindow != null ? navigatorWindow.GetToolScanSaveData() : null
+                navigatorToolScan = navigatorWindow != null ? navigatorWindow.GetToolScanSaveData() : null,
+                navigatorIslandMap = mgr.GetNavigatorIslandMapSnapshot(),
+                piloting = pilotingWindow != null ? pilotingWindow.GetPilotingSaveData() : null
             };
             ModSave.Save(Plugin.Instance.Info, container);
         }
@@ -94,9 +97,13 @@ namespace SailwindVirtualCrew
             VirtualCrewManager.Instance.StoreLookoutIgnoredUntil(data.lookoutIgnoredUntil);
             VirtualCrewManager.Instance.StoreVisitedPorts(data.visitedPorts);
             VirtualCrewManager.Instance.StoreQuartermasterWaterRefills(data.quartermasterWaterRefillNextAllowedDay);
+            VirtualCrewManager.Instance.StoreNavigatorIslandMap(data.navigatorIslandMap);
             var navigatorWindow = Plugin.Instance.GetComponent<NavigatorWindow>();
             if (navigatorWindow != null)
                 navigatorWindow.RestoreToolScanSaveData(data.navigatorToolScan);
+            var pilotingWindow = Plugin.Instance.GetComponent<PilotingWindow>();
+            if (pilotingWindow != null)
+                pilotingWindow.RestorePilotingSaveData(data.piloting);
             if (data.windowPositions != null)
                 foreach (var w in Plugin.Instance.GetComponents<IWindowPosition>())
                     if (data.windowPositions.TryGetValue(w.WindowKey, out var pos) && pos.Length >= 2)

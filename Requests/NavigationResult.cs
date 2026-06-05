@@ -5,8 +5,12 @@ namespace SailwindVirtualCrew
     public class NavigationResult
     {
         public NavigationMethod Method  { get; }
+        public int Day { get; }
+        public float LocalTime { get; }
         public bool HasLatitude   { get; }
         public bool HasLongitude  { get; }
+        public float Latitude { get; }
+        public float Longitude { get; }
         public string LatitudeText  { get; }
         public string LongitudeText { get; }
         public string Header        { get; }
@@ -23,8 +27,12 @@ namespace SailwindVirtualCrew
             bool hasLat, float lat, bool hasLon, float lon, bool hasPreciseTime)
         {
             Method        = method;
+            Day           = day;
+            LocalTime     = localTime;
             HasLatitude   = hasLat;
             HasLongitude  = hasLon;
+            Latitude      = lat;
+            Longitude     = lon;
             LatitudeText  = hasLat ? FormatLat(lat) : null;
             LongitudeText = hasLon ? FormatLon(lon) : null;
             Header = FormatHeader(method, day, localTime, hasPreciseTime);

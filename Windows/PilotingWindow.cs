@@ -16,6 +16,41 @@ namespace SailwindVirtualCrew
         public float[] GetDefaultPosition() => new[] { 440f, 20f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
+        public PilotingSaveData GetPilotingSaveData()
+        {
+            return new PilotingSaveData
+            {
+                autopilotEngaged = autopilotEngaged,
+                hasPlayerSelection = hasPlayerSelection,
+                holdWindAngle = holdWindAngle,
+                playerSelectedHeading = playerSelectedHeading,
+                playerSelectedWindAngle = playerSelectedWindAngle
+            };
+        }
+
+        public void RestorePilotingSaveData(PilotingSaveData data)
+        {
+            if (data == null || !data.hasPlayerSelection)
+            {
+                ResetPilotingOrder();
+                return;
+            }
+
+            playerSelectedHeading = PilotController.Normalize(data.playerSelectedHeading);
+            playerSelectedWindAngle = Mathf.Clamp(data.playerSelectedWindAngle, -179f, 179f);
+            hasPlayerSelection = true;
+            holdWindAngle = data.holdWindAngle;
+            autopilotEngaged = data.autopilotEngaged;
+            restoredOrderPending = true;
+            restoredAutopilotPending = autopilotEngaged;
+            pilotHeadingError = ComputePilotError();
+
+            if (holdWindAngle)
+                UpdateWindAngleTarget(updateOnly: false);
+            else
+                controller.SetTarget(playerSelectedHeading + pilotHeadingError);
+        }
+
         private readonly PilotController controller = new PilotController();
 
         // Helm components
@@ -31,6 +66,8 @@ namespace SailwindVirtualCrew
         private float pilotHeadingError;
         private bool  hasPlayerSelection = false;
         private bool  holdWindAngle = false;
+        private bool  restoredOrderPending = false;
+        private bool  restoredAutopilotPending = false;
         private Transform headingBoat;
         private bool hasFilteredHeading = false;
         private float filteredHeading = 0f;
@@ -77,7 +114,21 @@ namespace SailwindVirtualCrew
 
             if (!autopilotEngaged) return;
 
-            if (steeringWheel == null || !controller.TargetHeading.HasValue)
+            if (steeringWheel == null)
+            {
+                if (restoredAutopilotPending)
+                    return;
+
+                autopilotEngaged = false;
+                return;
+            }
+
+            restoredAutopilotPending = false;
+
+            if (holdWindAngle)
+                UpdateWindAngleTarget(updateOnly: true);
+
+            if (!controller.TargetHeading.HasValue)
             {
                 autopilotEngaged = false;
                 return;
@@ -89,11 +140,6 @@ namespace SailwindVirtualCrew
                 ReleaseWheel();
                 autopilotEngaged = false;
                 return;
-            }
-
-            if (holdWindAngle)
-            {
-                UpdateWindAngleTarget(updateOnly: true);
             }
 
             float output  = controller.Tick(GetCurrentHeading(), Time.deltaTime);
@@ -139,6 +185,9 @@ namespace SailwindVirtualCrew
             bool preserveOrder = manager.ShouldPreservePilotOrderForShiftHandoff(activePilotTask)
                 && autopilotEngaged
                 && hasPlayerSelection;
+            if (!preserveOrder && restoredOrderPending && hasPlayerSelection && activePilotTask != null)
+                preserveOrder = true;
+            restoredOrderPending = false;
             manager.ClearPilotShiftHandoff(activePilotTask);
 
             if (preserveOrder)
@@ -164,6 +213,8 @@ namespace SailwindVirtualCrew
             controller.ClearTarget();
             hasPlayerSelection = false;
             holdWindAngle = false;
+            restoredOrderPending = false;
+            restoredAutopilotPending = false;
             pilotHeadingError = 0f;
 
             if (autopilotEngaged)

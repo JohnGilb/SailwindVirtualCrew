@@ -37,6 +37,8 @@ namespace SailwindVirtualCrew
         private const float DayShiftStartHour = 6f;
         private const float NightShiftStartHour = 18f;
         private const float ShiftSleepDelayHours = 5f / 60f;
+        private const float NavigatorMapNoonWindowHours = 1f;
+        private const float NavigatorMapIslandRangeMeters = 500f;
         private const int MaxNavigationResults = 3;
         private float _lastFirstOfficerLocalTime = -1f;
         private float _lastFirstOfficerTrimGameHours = -1f;
@@ -52,6 +54,7 @@ namespace SailwindVirtualCrew
         public Dictionary<string, string> LookoutIdentifiedNames { get; private set; }
         public Dictionary<string, float> LookoutIgnoredUntil { get; private set; }
         public Dictionary<string, bool> VisitedPorts { get; private set; }
+        public Dictionary<string, NavigatorIslandMapEntrySaveData> NavigatorIslandMap { get; private set; }
         public float LookoutSpyglassZoom { get; private set; } = 1f;
         public bool LookoutSpyglassScanned { get; private set; }
         public bool FirstOfficerAutoTrimEnabled { get; private set; } = true;
@@ -109,6 +112,7 @@ namespace SailwindVirtualCrew
             LookoutIdentifiedNames = new Dictionary<string, string>();
             LookoutIgnoredUntil = new Dictionary<string, float>();
             VisitedPorts = new Dictionary<string, bool>();
+            NavigatorIslandMap = new Dictionary<string, NavigatorIslandMapEntrySaveData>();
             SailGroups = new List<SailGroup>();
             Crew = new List<Crewman>();
             TotalSharePayByCurrency = new int[4];
@@ -632,6 +636,8 @@ namespace SailwindVirtualCrew
                 vesselData.favoriteActions = new List<FavoriteAction>();
             if (vesselData.keptCargoInstanceIds == null)
                 vesselData.keptCargoInstanceIds = new List<int>();
+            if (vesselData.navigatorShipLog == null)
+                vesselData.navigatorShipLog = new List<NavigatorShipLogEntrySaveData>();
             return vesselData;
         }
 
@@ -714,6 +720,14 @@ namespace SailwindVirtualCrew
         public Crewman FirstOfficer => Crew.FirstOrDefault(c => c.Role == ShipRole.ChiefOfficer);
         public bool HasFirstOfficer => Crew.Any(c => c.Role == ShipRole.ChiefOfficer);
         public IReadOnlyList<string> RecentNavigationResults => recentNavigationResults.AsReadOnly();
+        public IReadOnlyList<NavigatorShipLogEntrySaveData> NavigatorShipLog
+        {
+            get
+            {
+                var vesselData = GetCurrentVesselData();
+                return vesselData?.navigatorShipLog ?? new List<NavigatorShipLogEntrySaveData>();
+            }
+        }
 
         // Returns the crew member of the given role with the highest stamina ratio.
         public Crewman FreshestCrewman(ShipRole role) =>
@@ -1502,6 +1516,30 @@ namespace SailwindVirtualCrew
             return new Dictionary<string, bool>(VisitedPorts ?? new Dictionary<string, bool>());
         }
 
+        public void StoreNavigatorIslandMap(Dictionary<string, NavigatorIslandMapEntrySaveData> saved)
+        {
+            NavigatorIslandMap = new Dictionary<string, NavigatorIslandMapEntrySaveData>();
+            if (saved == null)
+                return;
+
+            foreach (var kv in saved)
+            {
+                var entry = kv.Value;
+                if (entry == null || string.IsNullOrEmpty(kv.Key))
+                    continue;
+
+                entry.key = string.IsNullOrEmpty(entry.key) ? kv.Key : entry.key;
+                if (entry.latitudeCount > 0 || entry.longitudeCount > 0)
+                    NavigatorIslandMap[kv.Key] = entry;
+            }
+        }
+
+        public Dictionary<string, NavigatorIslandMapEntrySaveData> GetNavigatorIslandMapSnapshot()
+        {
+            return new Dictionary<string, NavigatorIslandMapEntrySaveData>(
+                NavigatorIslandMap ?? new Dictionary<string, NavigatorIslandMapEntrySaveData>());
+        }
+
         public void RegisterVisitedPort(Port port)
         {
             if (port == null)
@@ -1962,6 +2000,157 @@ namespace SailwindVirtualCrew
             if (result.HasLatitude && result.HasLongitude) coords += "  ";
             if (result.HasLongitude) coords += result.LongitudeText;
             AddNavigationResult(result.Header + "\n" + coords);
+            RecordNavigatorMapMeasurement(result);
+        }
+
+        private void RecordNavigatorMapMeasurement(NavigationResult result)
+        {
+            if (result == null || result.IsFailure || (!result.HasLatitude && !result.HasLongitude))
+                return;
+
+            bool nearLocalNoon = IsWithinLocalNoonWindow(result.LocalTime);
+            bool mooredOrAnchored = IsCurrentBoatMooredOrAnchored();
+
+            if (!mooredOrAnchored)
+            {
+                if (nearLocalNoon)
+                    AddShipMapMeasurement(result.Day, result);
+                return;
+            }
+
+            IslandHorizon island;
+            if (!TryFindNearbyIsland(out island))
+                return;
+
+            if (nearLocalNoon)
+                AddShipMapMeasurement(result.Day, result);
+
+            AddIslandMapMeasurement(island, result);
+        }
+
+        private static bool IsWithinLocalNoonWindow(float localHour)
+        {
+            float delta = Mathf.Abs(NormalizeHour(localHour) - 12f);
+            delta = Mathf.Min(delta, 24f - delta);
+            return delta <= NavigatorMapNoonWindowHours;
+        }
+
+        private void AddShipMapMeasurement(int localDay, NavigationResult result)
+        {
+            var vesselData = GetCurrentVesselData();
+            if (vesselData == null)
+                return;
+
+            if (vesselData.navigatorShipLog == null)
+                vesselData.navigatorShipLog = new List<NavigatorShipLogEntrySaveData>();
+
+            var entry = vesselData.navigatorShipLog.FirstOrDefault(e => e.localDay == localDay);
+            if (entry == null)
+            {
+                entry = new NavigatorShipLogEntrySaveData { localDay = localDay };
+                vesselData.navigatorShipLog.Add(entry);
+            }
+
+            AddMapMeasurement(entry, result);
+        }
+
+        private void AddIslandMapMeasurement(IslandHorizon island, NavigationResult result)
+        {
+            if (island == null)
+                return;
+
+            if (NavigatorIslandMap == null)
+                NavigatorIslandMap = new Dictionary<string, NavigatorIslandMapEntrySaveData>();
+
+            string key = LookoutVisibility.GetIslandKey(island);
+            if (string.IsNullOrEmpty(key))
+                return;
+
+            NavigatorIslandMapEntrySaveData entry;
+            if (!NavigatorIslandMap.TryGetValue(key, out entry) || entry == null)
+            {
+                entry = new NavigatorIslandMapEntrySaveData { key = key };
+                NavigatorIslandMap[key] = entry;
+            }
+
+            entry.name = GetNavigatorMapIslandName(island);
+            AddMapMeasurement(entry, result);
+        }
+
+        private static void AddMapMeasurement(NavigatorMapCoordinateAverageSaveData entry, NavigationResult result)
+        {
+            if (entry == null || result == null)
+                return;
+
+            if (result.HasLatitude)
+            {
+                entry.latitudeSum += result.Latitude;
+                entry.latitudeCount++;
+            }
+
+            if (result.HasLongitude)
+            {
+                entry.longitudeSum += result.Longitude;
+                entry.longitudeCount++;
+            }
+        }
+
+        private static string GetNavigatorMapIslandName(IslandHorizon island)
+        {
+            if (LookoutIslandKnowledge.TryGetPortName(island, out string portName))
+                return portName;
+
+            string goName = island != null && island.gameObject != null ? island.gameObject.name : null;
+            if (!string.IsNullOrEmpty(goName) && goName != "Island")
+                return goName;
+
+            return island != null && island.islandIndex >= 0
+                ? "Island #" + island.islandIndex
+                : "Unknown Island";
+        }
+
+        private static bool TryFindNearbyIsland(out IslandHorizon nearest)
+        {
+            nearest = null;
+            var tracker = IslandDistanceTracker.instance;
+            if (tracker == null || tracker.islands == null || tracker.islands.Count == 0)
+                return false;
+
+            var boat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (!boat)
+                return false;
+
+            float closestDistance = NavigatorMapIslandRangeMeters;
+            foreach (var island in tracker.islands)
+            {
+                if (island == null)
+                    continue;
+
+                float distance = Vector3.Distance(island.GetPosition(), boat.position);
+                if (distance <= closestDistance)
+                {
+                    closestDistance = distance;
+                    nearest = island;
+                }
+            }
+
+            return nearest != null;
+        }
+
+        private static bool IsCurrentBoatMooredOrAnchored()
+        {
+            var context = CrewBoatContextResolver.Resolve();
+            if (context == null)
+                return false;
+
+            var mooringRopes = context.TopBoat
+                ? context.TopBoat.GetComponent<BoatMooringRopes>()
+                : null;
+
+            if (mooringRopes == null && context.WorldBoat)
+                mooringRopes = context.WorldBoat.GetComponentInParent<BoatMooringRopes>();
+
+            return mooringRopes != null && mooringRopes.AnyRopeMoored();
         }
 
         public void AddNavigationMessage(string text)

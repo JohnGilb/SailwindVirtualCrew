@@ -19,6 +19,7 @@ namespace SailwindVirtualCrew
             new LauncherEntry("SailGroupsWindow", "Sail Groups", "SG"),
             new LauncherEntry("WorkRequestsWindow", "Work Requests", "WR"),
             new LauncherEntry("NavigatorWindow", "Navigator", "NV"),
+            new LauncherEntry("NavigatorMapWindow", "Navigator Map", "MP"),
             new LauncherEntry("MaintenanceWindow", "Maintenance", "MT"),
             new LauncherEntry("SupercargoWindow", "Supercargo", "SC"),
             new LauncherEntry("FirstOfficerWindow", "First Officer", "FO"),

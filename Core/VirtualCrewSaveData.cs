@@ -76,6 +76,44 @@ namespace SailwindVirtualCrew
     }
 
     [Serializable]
+    public class NavigatorMapCoordinateAverageSaveData
+    {
+        public float latitudeSum;
+        public int latitudeCount;
+        public float longitudeSum;
+        public int longitudeCount;
+
+        internal bool HasLatitude => latitudeCount > 0;
+        internal bool HasLongitude => longitudeCount > 0;
+        internal bool HasPosition => HasLatitude && HasLongitude;
+        internal float Latitude => HasLatitude ? latitudeSum / latitudeCount : 0f;
+        internal float Longitude => HasLongitude ? longitudeSum / longitudeCount : 0f;
+    }
+
+    [Serializable]
+    public class NavigatorShipLogEntrySaveData : NavigatorMapCoordinateAverageSaveData
+    {
+        public int localDay;
+    }
+
+    [Serializable]
+    public class NavigatorIslandMapEntrySaveData : NavigatorMapCoordinateAverageSaveData
+    {
+        public string key;
+        public string name;
+    }
+
+    [Serializable]
+    public class PilotingSaveData
+    {
+        public bool autopilotEngaged;
+        public bool hasPlayerSelection;
+        public bool holdWindAngle;
+        public float playerSelectedHeading;
+        public float playerSelectedWindAngle;
+    }
+
+    [Serializable]
     public class VesselSaveData
     {
         public string friendlyName;
@@ -86,6 +124,7 @@ namespace SailwindVirtualCrew
         public LookoutStationSaveData lookoutStation;
         public List<FavoriteAction> favoriteActions = new List<FavoriteAction>();
         public List<int> keptCargoInstanceIds = new List<int>();
+        public List<NavigatorShipLogEntrySaveData> navigatorShipLog = new List<NavigatorShipLogEntrySaveData>();
     }
 
     [Serializable]
@@ -108,5 +147,7 @@ namespace SailwindVirtualCrew
         public Dictionary<string, bool> visitedPorts;
         public Dictionary<string, int> quartermasterWaterRefillNextAllowedDay;
         public NavigatorToolScanSaveData navigatorToolScan;
+        public Dictionary<string, NavigatorIslandMapEntrySaveData> navigatorIslandMap;
+        public PilotingSaveData piloting;
     }
 }

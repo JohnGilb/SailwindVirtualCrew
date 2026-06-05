@@ -148,6 +148,8 @@
     <Compile Include="Windows\SupercargoWindow.cs" />
     <Compile Include="Windows\FirstOfficerWindow.cs" />
     <Compile Include="Windows\NavigatorWindow.cs" />
+    <Compile Include="Windows\NavigatorMapWindow.cs" />
+    <Compile Include="Windows\NavigatorShipLogWindow.cs" />
     <Compile Include="Patches\CrewPayPatches.cs" />
     <Compile Include="Patches\LookoutVisitPatches.cs" />
     <Compile Include="Patches\PlayerEmbarkPatches.cs" />
