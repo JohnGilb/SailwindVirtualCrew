@@ -21,7 +21,9 @@ namespace SailwindVirtualCrew
         private string vesselRenameBuffer = "";
         private bool   _renamingSail   = false;
         private bool   _renamingVessel = false;
-        private readonly Dictionary<GPButtonRopeWinch, bool> _pendingWinchCache = new Dictionary<GPButtonRopeWinch, bool>();
+        private readonly HashSet<object> _pendingRopes = new HashSet<object>();
+        private readonly Dictionary<ICommonSailActions, GUIContent> _sailButtonContent = new Dictionary<ICommonSailActions, GUIContent>();
+        private int _pendingRopeCacheFrame = -1;
 
         private const float ButtonHeight      = 28f;
         private const float BaseContentHeight = 600f;
@@ -39,7 +41,7 @@ namespace SailwindVirtualCrew
 
             var manager = VirtualCrewManager.Instance;
             var sails   = manager.AllSails;
-            _pendingWinchCache.Clear();
+            EnsurePendingRopeCache(manager);
 
             if (selectedSail != null && !sails.Contains(selectedSail))
             {
@@ -47,6 +49,8 @@ namespace SailwindVirtualCrew
                 renameBuffer  = "";
                 _renamingSail = false;
             }
+
+            PruneSailContentCache(sails);
 
             float sailListHeight = sails.Count > 0 ? sails.Count * ButtonHeight : 40f;
 
@@ -79,6 +83,7 @@ namespace SailwindVirtualCrew
 
             var manager = VirtualCrewManager.Instance;
             var sails   = manager.AllSails;
+            EnsurePendingRopeCache(manager);
 
             // ── Vessel ──────────────────────────────────────────────────────
             string vesselKey     = manager.CurrentVesselKey;
@@ -112,7 +117,7 @@ namespace SailwindVirtualCrew
             if (anchors.Count > 0)
             {
                 GUILayout.BeginHorizontal();
-                bool anchorBusy = manager.HasPendingRequestForAnyWinch(anchors);
+                bool anchorBusy = AreAnyWinchesPending(manager, anchors);
                 GUI.enabled = !anchorBusy;
                 if (GUILayout.Button("Drop Anchor"))
                     manager.AddWorkRequest(new WorkRequest(null, "Drop Anchor",
@@ -140,7 +145,8 @@ namespace SailwindVirtualCrew
                 foreach (var sail in sails)
                 {
                     GUI.color = (sail == selectedSail) ? Color.cyan : Color.white;
-                    if (GUILayout.Button(sail.getSailName()))
+                    Rect row = GUILayoutUtility.GetRect(0f, ButtonHeight, GUILayout.ExpandWidth(true));
+                    if (GUI.Button(row, GetSailButtonContent(sail)))
                     {
                         if (sail == selectedSail) { selectedSail = null; renameBuffer = ""; _renamingSail = false; }
                         else                      { selectedSail = sail; renameBuffer = sail.FriendlyName ?? ""; _renamingSail = false; }
@@ -345,16 +351,97 @@ namespace SailwindVirtualCrew
 
         private bool IsWinchPending(VirtualCrewManager manager, GPButtonRopeWinch winch)
         {
-            if (!winch)
+            if (!winch || winch.rope == null)
                 return false;
 
-            bool pending;
-            if (_pendingWinchCache.TryGetValue(winch, out pending))
-                return pending;
+            EnsurePendingRopeCache(manager);
+            return _pendingRopes.Contains(winch.rope);
+        }
 
-            pending = manager.HasPendingRequestForWinch(winch);
-            _pendingWinchCache[winch] = pending;
-            return pending;
+        private bool AreAnyWinchesPending(VirtualCrewManager manager, IEnumerable<GPButtonRopeWinch> winches)
+        {
+            EnsurePendingRopeCache(manager);
+            foreach (var winch in winches)
+                if (winch && winch.rope != null && _pendingRopes.Contains(winch.rope))
+                    return true;
+
+            return false;
+        }
+
+        private void EnsurePendingRopeCache(VirtualCrewManager manager)
+        {
+            if (_pendingRopeCacheFrame == Time.frameCount)
+                return;
+
+            _pendingRopeCacheFrame = Time.frameCount;
+            _pendingRopes.Clear();
+
+            foreach (var request in manager.WorkRequests)
+            {
+                if (request.Status == WorkRequestStatus.Complete || request.Targets == null)
+                    continue;
+
+                foreach (var target in request.Targets)
+                    AddPendingRope(target.Winch);
+            }
+
+            foreach (var request in manager.TrimRequests)
+            {
+                if (request.Status != WorkRequestStatus.Complete)
+                    AddPendingRope(request.Sail.getSheetWinch());
+            }
+
+            foreach (var request in manager.JibTrimRequests)
+            {
+                if (request.Status == WorkRequestStatus.Complete)
+                    continue;
+
+                AddPendingRope(request.Sail.getPortSheetWinch());
+                AddPendingRope(request.Sail.getStarboardSheetWinch());
+            }
+
+            foreach (var request in manager.SquareTrimRequests)
+            {
+                if (request.Status == WorkRequestStatus.Complete)
+                    continue;
+
+                AddPendingRope(request.Sail.getPortSheetWinch());
+                AddPendingRope(request.Sail.getStarboardSheetWinch());
+            }
+        }
+
+        private void AddPendingRope(GPButtonRopeWinch winch)
+        {
+            if (winch && winch.rope != null)
+                _pendingRopes.Add(winch.rope);
+        }
+
+        private GUIContent GetSailButtonContent(ICommonSailActions sail)
+        {
+            GUIContent content;
+            string text = sail.getSailName();
+            if (!_sailButtonContent.TryGetValue(sail, out content))
+            {
+                content = new GUIContent(text);
+                _sailButtonContent[sail] = content;
+            }
+            else if (content.text != text)
+            {
+                content.text = text;
+            }
+
+            return content;
+        }
+
+        private void PruneSailContentCache(IReadOnlyList<ICommonSailActions> sails)
+        {
+            if (_sailButtonContent.Count <= sails.Count)
+                return;
+
+            var live = new HashSet<ICommonSailActions>(sails);
+            var stale = _sailButtonContent.Keys.Where(s => !live.Contains(s)).ToList();
+            foreach (var sail in stale)
+                _sailButtonContent.Remove(sail);
         }
     }
 }

@@ -111,7 +111,7 @@ namespace SailwindVirtualCrew
 
         public List<GPButtonRopeWinch> AnchorWinches { get; private set; }
 
-        public IReadOnlyList<ICommonSailActions> AllSails => allSails.AsReadOnly();
+        public IReadOnlyList<ICommonSailActions> AllSails => allSails;
 
         private VirtualCrewManager()
         {

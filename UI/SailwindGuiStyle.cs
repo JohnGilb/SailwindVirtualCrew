@@ -32,77 +32,80 @@ namespace SailwindVirtualCrew
 
         internal static void Apply()
         {
-            if (!_initialized) Initialize();
+            using (PerformanceInstrumentation.MeasureGui("UI.Style.Apply"))
+            {
+                if (!_initialized) Initialize();
 
-            var palette = IsDarkMode ? Palette.Night : Palette.Day;
+                var palette = IsDarkMode ? Palette.Night : Palette.Day;
 
-            GUI.skin.window.font            = _architectsFont;
-            GUI.skin.window.normal.background = palette.WindowBackground;
-            GUI.skin.window.onNormal.background = palette.WindowOnBackground;
-            GUI.skin.window.normal.textColor = palette.Text;
-            GUI.skin.window.onNormal.textColor = palette.Text;
+                GUI.skin.window.font            = _architectsFont;
+                GUI.skin.window.normal.background = palette.WindowBackground;
+                GUI.skin.window.onNormal.background = palette.WindowOnBackground;
+                GUI.skin.window.normal.textColor = palette.Text;
+                GUI.skin.window.onNormal.textColor = palette.Text;
 
-            GUI.skin.label.font             = _immortalFont;
-            GUI.skin.label.fontSize         = 18;
-            GUI.skin.label.alignment        = TextAnchor.MiddleCenter;
-            ApplyState(GUI.skin.label.normal, palette.LabelBackground, palette.Text);
-            ApplyState(GUI.skin.label.hover, palette.LabelBackground, palette.Text);
-            ApplyState(GUI.skin.label.active, palette.LabelBackground, palette.Text);
-            ApplyState(GUI.skin.label.focused, palette.LabelBackground, palette.Text);
+                GUI.skin.label.font             = _immortalFont;
+                GUI.skin.label.fontSize         = 18;
+                GUI.skin.label.alignment        = TextAnchor.MiddleCenter;
+                ApplyState(GUI.skin.label.normal, palette.LabelBackground, palette.Text);
+                ApplyState(GUI.skin.label.hover, palette.LabelBackground, palette.Text);
+                ApplyState(GUI.skin.label.active, palette.LabelBackground, palette.Text);
+                ApplyState(GUI.skin.label.focused, palette.LabelBackground, palette.Text);
 
-            GUI.skin.button.font            = _architectsFont;
-            GUI.skin.button.fontSize        = 14;
-            GUI.skin.button.alignment       = TextAnchor.MiddleCenter;
-            ApplyState(GUI.skin.button.normal, palette.ButtonBackground, palette.Text);
-            ApplyState(GUI.skin.button.hover, palette.ButtonHoverBackground, palette.Text);
-            ApplyState(GUI.skin.button.active, palette.ButtonActiveBackground, palette.Text);
-            ApplyState(GUI.skin.button.focused, palette.ButtonHoverBackground, palette.Text);
-            ApplyState(GUI.skin.button.onNormal, palette.ButtonActiveBackground, palette.Text);
-            ApplyState(GUI.skin.button.onHover, palette.ButtonHoverBackground, palette.Text);
-            ApplyState(GUI.skin.button.onActive, palette.ButtonActiveBackground, palette.Text);
-            ApplyState(GUI.skin.button.onFocused, palette.ButtonHoverBackground, palette.Text);
+                GUI.skin.button.font            = _architectsFont;
+                GUI.skin.button.fontSize        = 14;
+                GUI.skin.button.alignment       = TextAnchor.MiddleCenter;
+                ApplyState(GUI.skin.button.normal, palette.ButtonBackground, palette.Text);
+                ApplyState(GUI.skin.button.hover, palette.ButtonHoverBackground, palette.Text);
+                ApplyState(GUI.skin.button.active, palette.ButtonActiveBackground, palette.Text);
+                ApplyState(GUI.skin.button.focused, palette.ButtonHoverBackground, palette.Text);
+                ApplyState(GUI.skin.button.onNormal, palette.ButtonActiveBackground, palette.Text);
+                ApplyState(GUI.skin.button.onHover, palette.ButtonHoverBackground, palette.Text);
+                ApplyState(GUI.skin.button.onActive, palette.ButtonActiveBackground, palette.Text);
+                ApplyState(GUI.skin.button.onFocused, palette.ButtonHoverBackground, palette.Text);
 
-            GUI.skin.textField.font         = _architectsFont;
-            GUI.skin.textField.fontSize     = 14;
-            ApplyState(GUI.skin.textField.normal, palette.FieldBackground, palette.Text);
-            ApplyState(GUI.skin.textField.hover, palette.FieldBackground, palette.Text);
-            ApplyState(GUI.skin.textField.active, palette.FieldBackground, palette.Text);
-            ApplyState(GUI.skin.textField.focused, palette.FieldBackground, palette.Text);
+                GUI.skin.textField.font         = _architectsFont;
+                GUI.skin.textField.fontSize     = 14;
+                ApplyState(GUI.skin.textField.normal, palette.FieldBackground, palette.Text);
+                ApplyState(GUI.skin.textField.hover, palette.FieldBackground, palette.Text);
+                ApplyState(GUI.skin.textField.active, palette.FieldBackground, palette.Text);
+                ApplyState(GUI.skin.textField.focused, palette.FieldBackground, palette.Text);
 
-            GUI.skin.toggle.font            = _architectsFont;
-            GUI.skin.toggle.fontSize        = 14;
-            SetTextColor(GUI.skin.toggle.normal, palette.Text);
-            SetTextColor(GUI.skin.toggle.hover, palette.Text);
-            SetTextColor(GUI.skin.toggle.active, palette.Text);
-            SetTextColor(GUI.skin.toggle.focused, palette.Text);
-            SetTextColor(GUI.skin.toggle.onNormal, palette.Text);
-            SetTextColor(GUI.skin.toggle.onHover, palette.Text);
-            SetTextColor(GUI.skin.toggle.onActive, palette.Text);
-            SetTextColor(GUI.skin.toggle.onFocused, palette.Text);
+                GUI.skin.toggle.font            = _architectsFont;
+                GUI.skin.toggle.fontSize        = 14;
+                SetTextColor(GUI.skin.toggle.normal, palette.Text);
+                SetTextColor(GUI.skin.toggle.hover, palette.Text);
+                SetTextColor(GUI.skin.toggle.active, palette.Text);
+                SetTextColor(GUI.skin.toggle.focused, palette.Text);
+                SetTextColor(GUI.skin.toggle.onNormal, palette.Text);
+                SetTextColor(GUI.skin.toggle.onHover, palette.Text);
+                SetTextColor(GUI.skin.toggle.onActive, palette.Text);
+                SetTextColor(GUI.skin.toggle.onFocused, palette.Text);
 
-            ApplyState(GUI.skin.box.normal, palette.BoxBackground, palette.Text);
-            ApplyState(GUI.skin.box.hover, palette.BoxBackground, palette.Text);
-            ApplyState(GUI.skin.box.active, palette.BoxBackground, palette.Text);
-            ApplyState(GUI.skin.box.focused, palette.BoxBackground, palette.Text);
+                ApplyState(GUI.skin.box.normal, palette.BoxBackground, palette.Text);
+                ApplyState(GUI.skin.box.hover, palette.BoxBackground, palette.Text);
+                ApplyState(GUI.skin.box.active, palette.BoxBackground, palette.Text);
+                ApplyState(GUI.skin.box.focused, palette.BoxBackground, palette.Text);
 
-            ApplyState(GUI.skin.horizontalScrollbar.normal, palette.BoxBackground, palette.Text);
-            ApplyState(GUI.skin.horizontalScrollbarThumb.normal, palette.ButtonBackground, palette.Text);
-            ApplyState(GUI.skin.horizontalScrollbarThumb.hover, palette.ButtonHoverBackground, palette.Text);
-            ApplyState(GUI.skin.horizontalScrollbarThumb.active, palette.ButtonActiveBackground, palette.Text);
-            ApplyState(GUI.skin.horizontalScrollbarLeftButton.normal, palette.ButtonBackground, palette.Text);
-            ApplyState(GUI.skin.horizontalScrollbarRightButton.normal, palette.ButtonBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalScrollbar.normal, palette.BoxBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalScrollbarThumb.normal, palette.ButtonBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalScrollbarThumb.hover, palette.ButtonHoverBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalScrollbarThumb.active, palette.ButtonActiveBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalScrollbarLeftButton.normal, palette.ButtonBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalScrollbarRightButton.normal, palette.ButtonBackground, palette.Text);
 
-            ApplyState(GUI.skin.verticalScrollbar.normal, palette.BoxBackground, palette.Text);
-            ApplyState(GUI.skin.verticalScrollbarThumb.normal, palette.ButtonBackground, palette.Text);
-            ApplyState(GUI.skin.verticalScrollbarThumb.hover, palette.ButtonHoverBackground, palette.Text);
-            ApplyState(GUI.skin.verticalScrollbarThumb.active, palette.ButtonActiveBackground, palette.Text);
-            ApplyState(GUI.skin.verticalScrollbarUpButton.normal, palette.ButtonBackground, palette.Text);
-            ApplyState(GUI.skin.verticalScrollbarDownButton.normal, palette.ButtonBackground, palette.Text);
+                ApplyState(GUI.skin.verticalScrollbar.normal, palette.BoxBackground, palette.Text);
+                ApplyState(GUI.skin.verticalScrollbarThumb.normal, palette.ButtonBackground, palette.Text);
+                ApplyState(GUI.skin.verticalScrollbarThumb.hover, palette.ButtonHoverBackground, palette.Text);
+                ApplyState(GUI.skin.verticalScrollbarThumb.active, palette.ButtonActiveBackground, palette.Text);
+                ApplyState(GUI.skin.verticalScrollbarUpButton.normal, palette.ButtonBackground, palette.Text);
+                ApplyState(GUI.skin.verticalScrollbarDownButton.normal, palette.ButtonBackground, palette.Text);
 
-            ApplyState(GUI.skin.horizontalSlider.normal, palette.BoxBackground, palette.Text);
-            ApplyState(GUI.skin.horizontalSliderThumb.normal, palette.ButtonBackground, palette.Text);
-            ApplyState(GUI.skin.horizontalSliderThumb.hover, palette.ButtonHoverBackground, palette.Text);
-            ApplyState(GUI.skin.horizontalSliderThumb.active, palette.ButtonActiveBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalSlider.normal, palette.BoxBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalSliderThumb.normal, palette.ButtonBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalSliderThumb.hover, palette.ButtonHoverBackground, palette.Text);
+                ApplyState(GUI.skin.horizontalSliderThumb.active, palette.ButtonActiveBackground, palette.Text);
+            }
         }
 
         internal static bool HasThemeChanged(bool previousDarkMode)

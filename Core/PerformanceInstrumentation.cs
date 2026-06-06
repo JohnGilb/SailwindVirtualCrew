@@ -30,6 +30,8 @@ namespace SailwindVirtualCrew
         internal static string OutputDirectory { get; private set; }
         internal static string RawTsvPath { get; private set; }
         internal static string FoldedStackPath { get; private set; }
+        internal static string PluginUpdateFoldedStackPath { get; private set; }
+        internal static string OnGuiFoldedStackPath { get; private set; }
         internal static long EventCount => eventCount;
 
         internal static bool IsCollectionAllowed =>
@@ -50,6 +52,15 @@ namespace SailwindVirtualCrew
             var span = new ActiveSpan(function, parent, activeSpans.Count);
             activeSpans.Push(span);
             return new Measurement(span);
+        }
+
+        internal static Measurement MeasureGui(string function)
+        {
+            if (!IsRunning || !IsCollectionAllowed || writer == null)
+                return default(Measurement);
+
+            string eventName = GetGuiEventName();
+            return Measure("Unity.OnGUI." + eventName + "." + function);
         }
 
         internal static bool StartSession()
@@ -75,6 +86,8 @@ namespace SailwindVirtualCrew
                     sessionId = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
                     RawTsvPath = Path.Combine(OutputDirectory, "VirtualCrew_Profile_" + sessionId + ".tsv");
                     FoldedStackPath = Path.Combine(OutputDirectory, "VirtualCrew_Profile_" + sessionId + ".folded");
+                    PluginUpdateFoldedStackPath = Path.Combine(OutputDirectory, "VirtualCrew_Profile_" + sessionId + ".plugin-update.folded");
+                    OnGuiFoldedStackPath = Path.Combine(OutputDirectory, "VirtualCrew_Profile_" + sessionId + ".ongui.folded");
 
                     writer = new StreamWriter(RawTsvPath, false, Encoding.UTF8, 65536);
                     writer.WriteLine("SessionId\tFrameNumber\tRealtimeSeconds\tFunction\tDurationMicroseconds\tExclusiveMicroseconds\tDepth\tParentFunction\tThreadId");
@@ -232,19 +245,37 @@ namespace SailwindVirtualCrew
 
         private static void WriteFoldedStacksLocked()
         {
-            if (string.IsNullOrEmpty(FoldedStackPath))
+            WriteFoldedStackFile(FoldedStackPath, null);
+            WriteFoldedStackFile(PluginUpdateFoldedStackPath, "Plugin.Update");
+            WriteFoldedStackFile(OnGuiFoldedStackPath, "Unity.OnGUI.");
+        }
+
+        private static void WriteFoldedStackFile(string path, string rootPrefix)
+        {
+            if (string.IsNullOrEmpty(path))
                 return;
 
-            using (var folded = new StreamWriter(FoldedStackPath, false, Encoding.UTF8, 65536))
+            using (var folded = new StreamWriter(path, false, Encoding.UTF8, 65536))
             {
                 foreach (var kv in FoldedExclusiveTicks)
                 {
+                    if (!ShouldWriteFoldedStack(kv.Key, rootPrefix))
+                        continue;
+
                     long microseconds = Math.Max(1L, (long)Math.Round(TicksToMicroseconds(kv.Value)));
                     folded.Write(kv.Key);
                     folded.Write(' ');
                     folded.WriteLine(microseconds.ToString(CultureInfo.InvariantCulture));
                 }
             }
+        }
+
+        private static bool ShouldWriteFoldedStack(string stack, string rootPrefix)
+        {
+            if (string.IsNullOrEmpty(rootPrefix))
+                return true;
+
+            return stack == rootPrefix || stack.StartsWith(rootPrefix + ";", StringComparison.Ordinal) || stack.StartsWith(rootPrefix, StringComparison.Ordinal);
         }
 
         private static void CloseWriter()
@@ -259,6 +290,16 @@ namespace SailwindVirtualCrew
         private static double TicksToMicroseconds(long ticks)
         {
             return ticks * 1000000.0 / Stopwatch.Frequency;
+        }
+
+        private static string GetGuiEventName()
+        {
+            Event current = Event.current;
+            if (current == null)
+                return "NoEvent";
+
+            EventType type = current.type == EventType.Used ? current.rawType : current.type;
+            return type.ToString();
         }
 
         private static string SanitizeTsv(string value)

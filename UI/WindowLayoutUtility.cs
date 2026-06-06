@@ -62,9 +62,18 @@ namespace SailwindVirtualCrew
                 windowFunction = id => DrawScrollableWindow(windowId, capturedWindowRect, id, drawWindow);
             }
 
-            Rect updated = GUI.Window(windowId, windowRect, windowFunction, title);
-            ClampToScreen(ref updated);
-            return updated;
+            GUI.WindowFunction measuredWindowFunction = id =>
+            {
+                using (PerformanceInstrumentation.MeasureGui("UI.Window.Draw." + title))
+                    windowFunction(id);
+            };
+
+            using (PerformanceInstrumentation.MeasureGui("UI.Window." + title))
+            {
+                Rect updated = GUI.Window(windowId, windowRect, measuredWindowFunction, title);
+                ClampToScreen(ref updated);
+                return updated;
+            }
         }
 
         private static void DrawScrollableWindow(int windowId, Rect windowRect, int id, GUI.WindowFunction drawWindow)
