@@ -3214,349 +3214,404 @@ namespace SailwindVirtualCrew
             // Drain stamina at 1 unit per in-game minute. Optional config restores the old
             // behavior where actively working crew drain twice as fast.
             // Sleeping crew are exempt from drain — their stamina is handled by SleepRequest.Tick().
-            float currentTime = Sun.sun.globalTime;
             float deltaMinutes = 0f;
-            if (_lastGlobalTime >= 0f)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.StaminaDrain"))
             {
-                float deltaHours = currentTime - _lastGlobalTime;
-                if (deltaHours < 0f) deltaHours += 24f; // midnight rollover
-                deltaMinutes = deltaHours * 60f;
-                foreach (var c in Crew)
+                float currentTime = Sun.sun.globalTime;
+                if (_lastGlobalTime >= 0f)
                 {
-                    if (c.CurrentTask is SleepRequest) continue;
-                    float drain = deltaMinutes;
-                    if (Plugin.ExtraWorkingStaminaDrain != null
-                        && Plugin.ExtraWorkingStaminaDrain.Value
-                        && c.IsOccupied)
-                        drain *= 2f;
-                    c.DrainStamina(drain);
+                    float deltaHours = currentTime - _lastGlobalTime;
+                    if (deltaHours < 0f) deltaHours += 24f; // midnight rollover
+                    deltaMinutes = deltaHours * 60f;
+                    foreach (var c in Crew)
+                    {
+                        if (c.CurrentTask is SleepRequest) continue;
+                        float drain = deltaMinutes;
+                        if (Plugin.ExtraWorkingStaminaDrain != null
+                            && Plugin.ExtraWorkingStaminaDrain.Value
+                            && c.IsOccupied)
+                            drain *= 2f;
+                        c.DrainStamina(drain);
+                    }
                 }
+                _lastGlobalTime = currentTime;
             }
-            _lastGlobalTime = currentTime;
 
-            TickShiftSchedule();
-            TickFirstOfficer();
-            TickLookoutPassiveCertaintyDecay();
-            LookoutGroundingRisk.Tick(ActiveLookoutTask);
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.ShiftSchedule"))
+                TickShiftSchedule();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.FirstOfficer"))
+                TickFirstOfficer();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.LookoutPassiveCertaintyDecay"))
+                TickLookoutPassiveCertaintyDecay();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.LookoutGroundingRisk"))
+                LookoutGroundingRisk.Tick(ActiveLookoutTask);
 
-            EvaluateOffShiftSleepNeeds();
-            QueuePendingShiftSleepRequests();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.OffShiftSleepEvaluation"))
+            {
+                EvaluateOffShiftSleepNeeds();
+                QueuePendingShiftSleepRequests();
+            }
 
             // Auto-trigger sleep for exhausted, unoccupied crew, but only up to the number of
             // available beds. Crew with no bed to claim stay unoccupied so the player can still
             // use them. Both Open and InProgress requests count as claimed beds.
-            int? autoTriggerBedCount = null;
-            foreach (var c in Crew)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.AutoSleepRequests"))
             {
-                if (!c.IsExhausted || c.IsOccupied) continue;
-                if (autoTriggerBedCount == null) autoTriggerBedCount = LocatorUtils.CountBeds();
-                if (SleepRequests.Count >= autoTriggerBedCount.Value) break;
-                AddSleepRequest(c);
+                int? autoTriggerBedCount = null;
+                foreach (var c in Crew)
+                {
+                    if (!c.IsExhausted || c.IsOccupied) continue;
+                    if (autoTriggerBedCount == null) autoTriggerBedCount = LocatorUtils.CountBeds();
+                    if (SleepRequests.Count >= autoTriggerBedCount.Value) break;
+                    AddSleepRequest(c);
+                }
             }
 
-            TickQuartermasterBailing();
-            TickSteward();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.QuartermasterBailing"))
+                TickQuartermasterBailing();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.Steward"))
+                TickSteward();
 
-            foreach (var req in WorkRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.WorkRequests"))
             {
-                if (req.Status == WorkRequestStatus.InProgress && req.IsComplete())
+                foreach (var req in WorkRequests)
                 {
-                    req.Status = WorkRequestStatus.Complete;
-                    if (req.AssignedCrewman != null)
-                        req.AssignedCrewman.CurrentTask = null;
-                    foreach (var t in req.Targets)
-                        crewWinchInstructions.Remove(t.Winch);
-                }
-                else if (req.Status == WorkRequestStatus.Positioning)
-                {
-                    if (req.IsPositioningComplete())
+                    if (req.Status == WorkRequestStatus.InProgress && req.IsComplete())
                     {
+                        req.Status = WorkRequestStatus.Complete;
+                        if (req.AssignedCrewman != null)
+                            req.AssignedCrewman.CurrentTask = null;
                         foreach (var t in req.Targets)
+                            crewWinchInstructions.Remove(t.Winch);
+                    }
+                    else if (req.Status == WorkRequestStatus.Positioning)
+                    {
+                        if (req.IsPositioningComplete())
                         {
-                            t.MaxPower = req.AssignedCrewman.Strength * 5f;
-                            crewWinchInstructions[t.Winch] = t;
+                            foreach (var t in req.Targets)
+                            {
+                                t.MaxPower = req.AssignedCrewman.Strength * 5f;
+                                crewWinchInstructions[t.Winch] = t;
+                            }
+                            req.Begin();
                         }
-                        req.Begin();
                     }
                 }
-            }
 
-            WorkRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                WorkRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
 
             var navCoord = CrewNavigationCoordinator.Instance;
 
-            foreach (var trim in TrimRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.TrimRequests"))
             {
-                if (trim.Status == WorkRequestStatus.InProgress && trim.IsComplete())
+                foreach (var trim in TrimRequests)
                 {
-                    trim.Status = WorkRequestStatus.Complete;
-                    if (trim.AssignedCrewman != null)
-                        trim.AssignedCrewman.CurrentTask = null;
-                    crewWinchInstructions.Remove(trim.Sail.getSheetWinch());
-                }
-                else if (trim.Status == WorkRequestStatus.Positioning &&
-                         (navCoord.IsPositioningComplete(trim) || trim.IsPositioningComplete()))
-                {
-                    navCoord.Complete(trim);
-                    trim.Begin(trim.AssignedCrewman);
-                }
-            }
-
-            TrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
-
-            AssignOpenDeckhandTasksByDistance();
-
-            foreach (var trim in TrimRequests)
-            {
-                if (trim.Status != WorkRequestStatus.Open) continue;
-                var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
-                if (crewman == null) break;
-                crewman.CurrentTask = trim;
-                trim.AssignedCrewman = crewman;
-                trim.BeginPositioning(crewman);
-                navCoord.TryBeginWinchPositioning(trim, crewman, trim.Sail.getSheetWinch());
-            }
-
-            foreach (var jtrim in JibTrimRequests)
-            {
-                if (jtrim.Status == WorkRequestStatus.InProgress && jtrim.IsComplete())
-                {
-                    jtrim.Status = WorkRequestStatus.Complete;
-                    if (jtrim.AssignedCrewman != null)
-                        jtrim.AssignedCrewman.CurrentTask = null;
-                    crewWinchInstructions.Remove(jtrim.Sail.getPortSheetWinch());
-                    crewWinchInstructions.Remove(jtrim.Sail.getStarboardSheetWinch());
-                }
-                else if (jtrim.Status == WorkRequestStatus.InProgress && jtrim.IsRepositioning && jtrim.SecondWinch != null)
-                {
-                    navCoord.TryBeginWinchPositioning((jtrim, 1), jtrim.AssignedCrewman, jtrim.SecondWinch);
-                    if (navCoord.IsPositioningComplete((jtrim, 1)))
+                    if (trim.Status == WorkRequestStatus.InProgress && trim.IsComplete())
                     {
-                        navCoord.Complete((jtrim, 1));
-                        jtrim.BeginSecondWinch();
+                        trim.Status = WorkRequestStatus.Complete;
+                        if (trim.AssignedCrewman != null)
+                            trim.AssignedCrewman.CurrentTask = null;
+                        crewWinchInstructions.Remove(trim.Sail.getSheetWinch());
+                    }
+                    else if (trim.Status == WorkRequestStatus.Positioning &&
+                             (navCoord.IsPositioningComplete(trim) || trim.IsPositioningComplete()))
+                    {
+                        navCoord.Complete(trim);
+                        trim.Begin(trim.AssignedCrewman);
                     }
                 }
-                else if (jtrim.Status == WorkRequestStatus.Positioning &&
-                         (navCoord.IsPositioningComplete(jtrim) || jtrim.IsPositioningComplete()))
+
+                TrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.AssignOpenDeckhandTasksByDistance"))
+                AssignOpenDeckhandTasksByDistance();
+
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.TrimRequestAssignment"))
+            {
+                foreach (var trim in TrimRequests)
                 {
-                    navCoord.Complete(jtrim);
-                    jtrim.Begin(jtrim.AssignedCrewman);
+                    if (trim.Status != WorkRequestStatus.Open) continue;
+                    var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
+                    if (crewman == null) break;
+                    crewman.CurrentTask = trim;
+                    trim.AssignedCrewman = crewman;
+                    trim.BeginPositioning(crewman);
+                    navCoord.TryBeginWinchPositioning(trim, crewman, trim.Sail.getSheetWinch());
                 }
             }
 
-            JibTrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
-
-            foreach (var jtrim in JibTrimRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.JibTrimRequests"))
             {
-                if (jtrim.Status != WorkRequestStatus.Open) continue;
-                var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
-                if (crewman == null) break;
-                crewman.CurrentTask = jtrim;
-                jtrim.AssignedCrewman = crewman;
-                jtrim.BeginPositioning(crewman);
-                navCoord.TryBeginWinchPositioning(jtrim, crewman, jtrim.Sail.getPortSheetWinch());
-            }
-
-            foreach (var strim in SquareTrimRequests)
-            {
-                if (strim.Status == WorkRequestStatus.InProgress && strim.IsComplete())
+                foreach (var jtrim in JibTrimRequests)
                 {
-                    strim.Status = WorkRequestStatus.Complete;
-                    if (strim.AssignedCrewman  != null) strim.AssignedCrewman.CurrentTask  = null;
-                    if (strim.AssignedCrewman2 != null) strim.AssignedCrewman2.CurrentTask = null;
-                    crewWinchInstructions.Remove(strim.Sail.getPortSheetWinch());
-                    crewWinchInstructions.Remove(strim.Sail.getStarboardSheetWinch());
-                }
-                else if (strim.Status == WorkRequestStatus.Positioning)
-                {
-                    bool c1 = navCoord.IsPositioningComplete((strim, 0)) || strim.IsPositioningComplete();
-                    bool c2 = navCoord.IsPositioningComplete((strim, 1)) || strim.IsPositioningComplete();
-                    if (c1 && c2)
+                    if (jtrim.Status == WorkRequestStatus.InProgress && jtrim.IsComplete())
                     {
-                        navCoord.Complete((strim, 0));
-                        navCoord.Complete((strim, 1));
-                        strim.Begin();
+                        jtrim.Status = WorkRequestStatus.Complete;
+                        if (jtrim.AssignedCrewman != null)
+                            jtrim.AssignedCrewman.CurrentTask = null;
+                        crewWinchInstructions.Remove(jtrim.Sail.getPortSheetWinch());
+                        crewWinchInstructions.Remove(jtrim.Sail.getStarboardSheetWinch());
+                    }
+                    else if (jtrim.Status == WorkRequestStatus.InProgress && jtrim.IsRepositioning && jtrim.SecondWinch != null)
+                    {
+                        navCoord.TryBeginWinchPositioning((jtrim, 1), jtrim.AssignedCrewman, jtrim.SecondWinch);
+                        if (navCoord.IsPositioningComplete((jtrim, 1)))
+                        {
+                            navCoord.Complete((jtrim, 1));
+                            jtrim.BeginSecondWinch();
+                        }
+                    }
+                    else if (jtrim.Status == WorkRequestStatus.Positioning &&
+                             (navCoord.IsPositioningComplete(jtrim) || jtrim.IsPositioningComplete()))
+                    {
+                        navCoord.Complete(jtrim);
+                        jtrim.Begin(jtrim.AssignedCrewman);
                     }
                 }
+
+                JibTrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
             }
 
-            SquareTrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.JibTrimRequestAssignment"))
+            {
+                foreach (var jtrim in JibTrimRequests)
+                {
+                    if (jtrim.Status != WorkRequestStatus.Open) continue;
+                    var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
+                    if (crewman == null) break;
+                    crewman.CurrentTask = jtrim;
+                    jtrim.AssignedCrewman = crewman;
+                    jtrim.BeginPositioning(crewman);
+                    navCoord.TryBeginWinchPositioning(jtrim, crewman, jtrim.Sail.getPortSheetWinch());
+                }
+            }
+
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SquareTrimRequests"))
+            {
+                foreach (var strim in SquareTrimRequests)
+                {
+                    if (strim.Status == WorkRequestStatus.InProgress && strim.IsComplete())
+                    {
+                        strim.Status = WorkRequestStatus.Complete;
+                        if (strim.AssignedCrewman  != null) strim.AssignedCrewman.CurrentTask  = null;
+                        if (strim.AssignedCrewman2 != null) strim.AssignedCrewman2.CurrentTask = null;
+                        crewWinchInstructions.Remove(strim.Sail.getPortSheetWinch());
+                        crewWinchInstructions.Remove(strim.Sail.getStarboardSheetWinch());
+                    }
+                    else if (strim.Status == WorkRequestStatus.Positioning)
+                    {
+                        bool c1 = navCoord.IsPositioningComplete((strim, 0)) || strim.IsPositioningComplete();
+                        bool c2 = navCoord.IsPositioningComplete((strim, 1)) || strim.IsPositioningComplete();
+                        if (c1 && c2)
+                        {
+                            navCoord.Complete((strim, 0));
+                            navCoord.Complete((strim, 1));
+                            strim.Begin();
+                        }
+                    }
+                }
+
+                SquareTrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
 
             // Square trim requires two simultaneous deckhands; only start when both are free.
-            foreach (var strim in SquareTrimRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SquareTrimRequestAssignment"))
             {
-                if (strim.Status != WorkRequestStatus.Open) continue;
-                var free = Crew.Where(c => !c.IsOccupied && c.Role == ShipRole.Deckhand).Take(2).ToList();
-                if (free.Count < 2) continue;
-                free[0].CurrentTask = strim;
-                free[1].CurrentTask = strim;
-                strim.AssignedCrewman  = free[0];
-                strim.AssignedCrewman2 = free[1];
-                strim.BeginPositioning();
-                navCoord.TryBeginWinchPositioning((strim, 0), free[0], strim.Sail.getPortSheetWinch());
-                navCoord.TryBeginWinchPositioning((strim, 1), free[1], strim.Sail.getStarboardSheetWinch());
+                foreach (var strim in SquareTrimRequests)
+                {
+                    if (strim.Status != WorkRequestStatus.Open) continue;
+                    var free = Crew.Where(c => !c.IsOccupied && c.Role == ShipRole.Deckhand).Take(2).ToList();
+                    if (free.Count < 2) continue;
+                    free[0].CurrentTask = strim;
+                    free[1].CurrentTask = strim;
+                    strim.AssignedCrewman  = free[0];
+                    strim.AssignedCrewman2 = free[1];
+                    strim.BeginPositioning();
+                    navCoord.TryBeginWinchPositioning((strim, 0), free[0], strim.Sail.getPortSheetWinch());
+                    navCoord.TryBeginWinchPositioning((strim, 1), free[1], strim.Sail.getStarboardSheetWinch());
+                }
             }
 
             // Navigate requests: assign navigator when free, complete when timer expires.
-            foreach (var nav in NavigateRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.NavigateRequests"))
             {
-                if (nav.Status == WorkRequestStatus.Open)
+                foreach (var nav in NavigateRequests)
                 {
-                    var crewman = Navigator;
-                    if (crewman != null && !crewman.IsOccupied)
+                    if (nav.Status == WorkRequestStatus.Open)
                     {
-                        if (!nav.RequireTimeWindow || IsNavigationMethodInTimeWindow(nav.Method))
+                        var crewman = Navigator;
+                        if (crewman != null && !crewman.IsOccupied)
                         {
-                            nav.Begin(crewman);
+                            if (!nav.RequireTimeWindow || IsNavigationMethodInTimeWindow(nav.Method))
+                            {
+                                nav.Begin(crewman);
+                            }
+                            else
+                            {
+                                nav.Status = WorkRequestStatus.Complete;
+                                AddNavigationMessage(GetNavigationToolLabel(nav.Method) + " missed its time window.");
+                            }
                         }
-                        else
+                    }
+                    else if (nav.Status == WorkRequestStatus.InProgress && nav.IsComplete())
+                    {
+                        nav.Status = WorkRequestStatus.Complete;
+                        if (nav.Navigator != null) nav.Navigator.CurrentTask = null;
+
+                        var boat = CrewBoatContextResolver.GetActiveWorldBoat();
+                        if (boat != null)
                         {
-                            nav.Status = WorkRequestStatus.Complete;
-                            AddNavigationMessage(GetNavigationToolLabel(nav.Method) + " missed its time window.");
+                            var coords  = FloatingOriginManager.instance.GetGlobeCoords(boat);
+                            float trueLat = coords.z;
+                            float trueLon = coords.x;
+
+                            var weatherState = WeatherUtils.GetWeatherState();
+
+                            if (weatherState >= WeatherState.Rain)
+                            {
+                                nav.OnComplete?.Invoke(NavigationResult.Failure(nav.Method, weatherState));
+                            }
+                            else
+                            {
+                                int intel    = nav.Navigator?.Intelligence ?? 3;
+                                float maxErr = intel == 1 ? 5f : Mathf.Max(0f, (6 - intel) * 0.25f);
+                                float latErr = (float)(rng.NextDouble() * 2.0 - 1.0) * maxErr;
+                                float lonErr = (float)(rng.NextDouble() * 2.0 - 1.0) * maxErr;
+
+                                var result = new NavigationResult(
+                                    nav.Method,
+                                    GetCurrentLocalDay(), GetCurrentLocalHour(),
+                                    nav.CanEstimateLatitude,  trueLat + (nav.CanEstimateLatitude  ? latErr : 0f),
+                                    nav.CanEstimateLongitude, trueLon + (nav.CanEstimateLongitude ? lonErr : 0f),
+                                    HasNavigationTimekeepingDevice());
+                                nav.OnComplete?.Invoke(result);
+                            }
                         }
                     }
                 }
-                else if (nav.Status == WorkRequestStatus.InProgress && nav.IsComplete())
-                {
-                    nav.Status = WorkRequestStatus.Complete;
-                    if (nav.Navigator != null) nav.Navigator.CurrentTask = null;
-
-                    var boat = CrewBoatContextResolver.GetActiveWorldBoat();
-                    if (boat != null)
-                    {
-                        var coords  = FloatingOriginManager.instance.GetGlobeCoords(boat);
-                        float trueLat = coords.z;
-                        float trueLon = coords.x;
-
-                        var weatherState = WeatherUtils.GetWeatherState();
-
-                        if (weatherState >= WeatherState.Rain)
-                        {
-                            nav.OnComplete?.Invoke(NavigationResult.Failure(nav.Method, weatherState));
-                        }
-                        else
-                        {
-                            int intel    = nav.Navigator?.Intelligence ?? 3;
-                            float maxErr = intel == 1 ? 5f : Mathf.Max(0f, (6 - intel) * 0.25f);
-                            float latErr = (float)(rng.NextDouble() * 2.0 - 1.0) * maxErr;
-                            float lonErr = (float)(rng.NextDouble() * 2.0 - 1.0) * maxErr;
-
-                            var result = new NavigationResult(
-                                nav.Method,
-                                GetCurrentLocalDay(), GetCurrentLocalHour(),
-                                nav.CanEstimateLatitude,  trueLat + (nav.CanEstimateLatitude  ? latErr : 0f),
-                                nav.CanEstimateLongitude, trueLon + (nav.CanEstimateLongitude ? lonErr : 0f),
-                                HasNavigationTimekeepingDevice());
-                            nav.OnComplete?.Invoke(result);
-                        }
-                    }
-                }
+                NavigateRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
             }
-            NavigateRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
             // Mooring requests: walk to the selected side, tie available ropes to matching dock cleats, then complete.
-            foreach (var mooring in MooringRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.MooringRequests"))
             {
-                if (mooring.Status == WorkRequestStatus.Positioning
-                    && (mooring.IsPositioningComplete() || mooring.IsPositioningTimedOut()))
+                foreach (var mooring in MooringRequests)
                 {
-                    mooring.Begin();
+                    if (mooring.Status == WorkRequestStatus.Positioning
+                        && (mooring.IsPositioningComplete() || mooring.IsPositioningTimedOut()))
+                    {
+                        mooring.Begin();
+                    }
+                    else if (mooring.Status == WorkRequestStatus.InProgress)
+                    {
+                        mooring.Tick();
+                    }
                 }
-                else if (mooring.Status == WorkRequestStatus.InProgress)
-                {
-                    mooring.Tick();
-                }
-            }
 
-            MooringRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                MooringRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
 
             // Haul & Sell requests: walk to the cargo, then hand off to the per-frame cargo haul.
-            foreach (var haul in HaulSellRequests)
-                haul.AbortIfPlayerLeftOriginBoat();
-
-            foreach (var haul in HaulSellRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.HaulSellRequests"))
             {
-                if (haul.Status == WorkRequestStatus.Positioning
-                    && (haul.IsPositioningComplete() || haul.IsPositioningTimedOut()))
-                {
-                    haul.BeginHaul();
-                }
-            }
+                foreach (var haul in HaulSellRequests)
+                    haul.AbortIfPlayerLeftOriginBoat();
 
-            HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                foreach (var haul in HaulSellRequests)
+                {
+                    if (haul.Status == WorkRequestStatus.Positioning
+                        && (haul.IsPositioningComplete() || haul.IsPositioningTimedOut()))
+                    {
+                        haul.BeginHaul();
+                    }
+                }
+
+                HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
 
             // Bail requests: tick active ones, then assign free deckhands to open ones.
-            foreach (var bail in BailRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.BailRequests"))
             {
-                if (bail.Status == WorkRequestStatus.InProgress)
-                    bail.Tick();
-            }
+                foreach (var bail in BailRequests)
+                {
+                    if (bail.Status == WorkRequestStatus.InProgress)
+                        bail.Tick();
+                }
 
-            BailRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                BailRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
-            foreach (var bail in BailRequests)
-            {
-                if (bail.Status != WorkRequestStatus.Open) continue;
-                var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
-                if (crewman == null) break;
-                bail.Begin(crewman);
+                foreach (var bail in BailRequests)
+                {
+                    if (bail.Status != WorkRequestStatus.Open) continue;
+                    var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
+                    if (crewman == null) break;
+                    bail.Begin(crewman);
+                }
             }
 
             // Swab Decks requests: roam the deck in five second cycles, cleaning a little each cycle.
-            foreach (var swab in SwabDecksRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SwabDecksRequests"))
             {
-                if (swab.Status == WorkRequestStatus.Open && swab.IsDone())
-                    swab.Status = WorkRequestStatus.Complete;
-                else if (swab.Status == WorkRequestStatus.InProgress)
-                    swab.Tick();
-            }
+                foreach (var swab in SwabDecksRequests)
+                {
+                    if (swab.Status == WorkRequestStatus.Open && swab.IsDone())
+                        swab.Status = WorkRequestStatus.Complete;
+                    else if (swab.Status == WorkRequestStatus.InProgress)
+                        swab.Tick();
+                }
 
-            SwabDecksRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                SwabDecksRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
-            foreach (var swab in SwabDecksRequests)
-            {
-                if (swab.Status != WorkRequestStatus.Open) continue;
-                var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
-                if (crewman == null) break;
-                swab.Begin(crewman);
+                foreach (var swab in SwabDecksRequests)
+                {
+                    if (swab.Status != WorkRequestStatus.Open) continue;
+                    var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
+                    if (crewman == null) break;
+                    swab.Begin(crewman);
+                }
             }
 
             // Sleep requests: tick active ones, advance positioning completions, assign beds to waiting ones.
-            foreach (var sleep in SleepRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SleepRequests"))
             {
-                if (sleep.Status == WorkRequestStatus.InProgress)
+                foreach (var sleep in SleepRequests)
                 {
-                    sleep.Tick(deltaMinutes);
-                    if (sleep.Status == WorkRequestStatus.Complete)
+                    if (sleep.Status == WorkRequestStatus.InProgress)
                     {
-                        sleep.AssignedCrewman.SetShiftSleepPending(false);
-                        navCoord.OnSleepCompleted(sleep.AssignedCrewman);
+                        sleep.Tick(deltaMinutes);
+                        if (sleep.Status == WorkRequestStatus.Complete)
+                        {
+                            sleep.AssignedCrewman.SetShiftSleepPending(false);
+                            navCoord.OnSleepCompleted(sleep.AssignedCrewman);
+                        }
+                    }
+                    else if (sleep.Status == WorkRequestStatus.Positioning
+                          && (navCoord.IsPositioningComplete(sleep) || sleep.IsPositioningTimedOut()))
+                    {
+                        navCoord.Complete(sleep);
+                        sleep.Begin();
                     }
                 }
-                else if (sleep.Status == WorkRequestStatus.Positioning
-                      && (navCoord.IsPositioningComplete(sleep) || sleep.IsPositioningTimedOut()))
-                {
-                    navCoord.Complete(sleep);
-                    sleep.Begin();
-                }
-            }
 
-            SleepRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                SleepRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
-            int bedsInUse = SleepRequests.Count(r => r.Status == WorkRequestStatus.InProgress
-                                                   || r.Status == WorkRequestStatus.Positioning);
-            List<Component> availableBeds = null;
-            foreach (var sleep in SleepRequests)
-            {
-                if (sleep.Status != WorkRequestStatus.Open) continue;
-                if (sleep.AssignedCrewman.CurrentTask != sleep) continue;
-                if (availableBeds == null) availableBeds = LocatorUtils.FindBedsOnBoat();
-                var bed = availableBeds.FirstOrDefault(b => !SleepRequests.Any(s => s.AssignedBed == b));
-                if (bed == null) break;
-                if (navCoord.BeginSleep(sleep, sleep.AssignedCrewman, bed))
+                int bedsInUse = SleepRequests.Count(r => r.Status == WorkRequestStatus.InProgress
+                                                       || r.Status == WorkRequestStatus.Positioning);
+                List<Component> availableBeds = null;
+                foreach (var sleep in SleepRequests)
                 {
-                    sleep.BeginPositioning(bed);
-                    bedsInUse++;
+                    if (sleep.Status != WorkRequestStatus.Open) continue;
+                    if (sleep.AssignedCrewman.CurrentTask != sleep) continue;
+                    if (availableBeds == null) availableBeds = LocatorUtils.FindBedsOnBoat();
+                    var bed = availableBeds.FirstOrDefault(b => !SleepRequests.Any(s => s.AssignedBed == b));
+                    if (bed == null) break;
+                    if (navCoord.BeginSleep(sleep, sleep.AssignedCrewman, bed))
+                    {
+                        sleep.BeginPositioning(bed);
+                        bedsInUse++;
+                    }
                 }
             }
         }
@@ -3700,34 +3755,50 @@ namespace SailwindVirtualCrew
         // for active trim operations.
         public void TrimTick()
         {
-            foreach (var trim in TrimRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.TrimRequests"))
             {
-                if (trim.Status == WorkRequestStatus.InProgress)
-                    trim.UpdateFrame();
+                foreach (var trim in TrimRequests)
+                {
+                    if (trim.Status == WorkRequestStatus.InProgress)
+                        trim.UpdateFrame();
+                }
             }
 
-            foreach (var jtrim in JibTrimRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.JibTrimRequests"))
             {
-                if (jtrim.Status == WorkRequestStatus.InProgress)
-                    jtrim.UpdateFrame();
+                foreach (var jtrim in JibTrimRequests)
+                {
+                    if (jtrim.Status == WorkRequestStatus.InProgress)
+                        jtrim.UpdateFrame();
+                }
             }
 
-            foreach (var strim in SquareTrimRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.SquareTrimRequests"))
             {
-                if (strim.Status == WorkRequestStatus.InProgress)
-                    strim.UpdateFrame();
+                foreach (var strim in SquareTrimRequests)
+                {
+                    if (strim.Status == WorkRequestStatus.InProgress)
+                        strim.UpdateFrame();
+                }
             }
 
-            foreach (var haul in HaulSellRequests)
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.HaulSellRequests"))
             {
-                if (haul.Status == WorkRequestStatus.InProgress)
-                    haul.UpdateFrame();
+                foreach (var haul in HaulSellRequests)
+                {
+                    if (haul.Status == WorkRequestStatus.InProgress)
+                        haul.UpdateFrame();
+                }
             }
 
-            foreach (var food in StewardFoodRequests)
-                food.UpdateFrame();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.StewardFoodRequests"))
+            {
+                foreach (var food in StewardFoodRequests)
+                    food.UpdateFrame();
+            }
 
-            ActiveStewardPhilosophyRequest?.UpdateFrame();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.StewardPhilosophyRequest"))
+                ActiveStewardPhilosophyRequest?.UpdateFrame();
         }
 
         public void deployAllSails()

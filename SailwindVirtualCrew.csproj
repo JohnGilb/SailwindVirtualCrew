@@ -99,6 +99,7 @@
     <Compile Include="Core\ShipRole.cs" />
     <Compile Include="Core\SupercargoTradeService.cs" />
     <Compile Include="Core\PlayerWaitingState.cs" />
+    <Compile Include="Core\PerformanceInstrumentation.cs" />
     <Compile Include="Core\VirtualCrewManager.cs" />
     <Compile Include="Core\VirtualCrewSaveData.cs" />
     <Compile Include="Crew\CrewAgent.cs" />

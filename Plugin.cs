@@ -26,6 +26,9 @@ namespace SailwindVirtualCrew
         internal static ConfigEntry<KeyboardShortcut> SupercargoKeepCargoKey;
         internal static ConfigEntry<KeyboardShortcut> CargoControllerGrabPortCargoKey;
         internal static ConfigEntry<bool> ExtraWorkingStaminaDrain;
+        internal static ConfigEntry<bool> InstrumentationEnabled;
+        internal static ConfigEntry<string> InstrumentationOutputDirectory;
+        internal static ConfigEntry<float> InstrumentationFlushIntervalSeconds;
 
         // PID slider ranges
         internal static ConfigEntry<float> PidMaxP;
@@ -58,6 +61,23 @@ namespace SailwindVirtualCrew
                 "ExtraWorkingStaminaDrain",
                 false,
                 "When enabled, crew assigned to active tasks lose stamina twice as fast. When disabled, working and idle crew use the same baseline stamina drain.");
+            InstrumentationEnabled = Config.Bind(
+                "Instrumentation",
+                "Enabled",
+                false,
+                "High-level opt-in for VirtualCrew performance instrumentation. When disabled, profiling cannot run.");
+            InstrumentationOutputDirectory = Config.Bind(
+                "Instrumentation",
+                "OutputDirectory",
+                "BepInEx\\VirtualCrewProfiles",
+                "Directory for profiling TSV and folded-stack files. Relative paths are resolved from the game working directory.");
+            InstrumentationFlushIntervalSeconds = Config.Bind(
+                "Instrumentation",
+                "FlushIntervalSeconds",
+                5f,
+                new ConfigDescription(
+                    "How often active profiling data is flushed to disk.",
+                    new AcceptableValueRange<float>(1f, 60f)));
 
             ToggleCrewWindow = Config.Bind("CrewHotkeys", "ToggleCrewWindow", new KeyboardShortcut(KeyCode.B));
             ResetWindowPositions = Config.Bind("CrewHotkeys", "ResetWindowPositions", new KeyboardShortcut(KeyCode.Backslash));
@@ -98,37 +118,47 @@ namespace SailwindVirtualCrew
 
         private void Update()
         {
-            tickTimer += Time.deltaTime;
-            if (tickTimer >= tickInterval)
+            PerformanceInstrumentation.Update();
+
+            using (PerformanceInstrumentation.Measure("Plugin.Update"))
             {
-                tickTimer -= tickInterval;
-                VirtualCrewManager.Instance.Tick();
-            }
-
-            VirtualCrewManager.Instance.TrimTick();
-            CrewDebugObjects.Tick();
-            CrewNavigationCoordinator.Instance.Tick();
-            CargoControllerPortCargoHotkey.Tick();
-            PlayerWaitingState.Tick();
-
-            if (ResetWindowPositions.Value.IsDown())
-                ResetAllWindowPositions();
-
-            bool requestedVesselScan = _vesselScanRequested;
-            if (BuildShipMap.Value.IsDown() || requestedVesselScan)
-            {
-                _vesselScanRequested = false;
-	            Console.WriteLine("====================");
-	            Console.WriteLine(requestedVesselScan ? "Embark-triggered ship map scan!" : "Building ship map!");
-	            Console.WriteLine("====================");
-                var context = CrewBoatContextResolver.ResolveAndLog();
-                if (context == null)
+                tickTimer += Time.deltaTime;
+                if (tickTimer >= tickInterval)
                 {
-                    Console.WriteLine("CRITICAL ERROR: Could not resolve active vessel context!");
-                    return;
+                    tickTimer -= tickInterval;
+                    using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick"))
+                        VirtualCrewManager.Instance.Tick();
                 }
 
-                Transform worldBoat = context.WorldBoat;
+                using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick"))
+                    VirtualCrewManager.Instance.TrimTick();
+                using (PerformanceInstrumentation.Measure("CrewDebugObjects.Tick"))
+                    CrewDebugObjects.Tick();
+                using (PerformanceInstrumentation.Measure("CrewNavigationCoordinator.Tick"))
+                    CrewNavigationCoordinator.Instance.Tick();
+                using (PerformanceInstrumentation.Measure("CargoControllerPortCargoHotkey.Tick"))
+                    CargoControllerPortCargoHotkey.Tick();
+                using (PerformanceInstrumentation.Measure("PlayerWaitingState.Tick"))
+                    PlayerWaitingState.Tick();
+
+                if (ResetWindowPositions.Value.IsDown())
+                    ResetAllWindowPositions();
+
+                bool requestedVesselScan = _vesselScanRequested;
+                if (BuildShipMap.Value.IsDown() || requestedVesselScan)
+                {
+                    _vesselScanRequested = false;
+	                Console.WriteLine("====================");
+	                Console.WriteLine(requestedVesselScan ? "Embark-triggered ship map scan!" : "Building ship map!");
+	                Console.WriteLine("====================");
+                    var context = CrewBoatContextResolver.ResolveAndLog();
+                    if (context == null)
+                    {
+                        Console.WriteLine("CRITICAL ERROR: Could not resolve active vessel context!");
+                        return;
+                    }
+
+                    Transform worldBoat = context.WorldBoat;
 	            // Ok, now to learn about iteration. Grab each mast, get all sails on mast, give them a name, spray output.
 	            string vesselKey = worldBoat.name.Replace("(Clone)", "").Trim();
                 Console.WriteLine($"Vessel detected: {worldBoat.name} (Key: {vesselKey})");
@@ -375,6 +405,7 @@ namespace SailwindVirtualCrew
             if (ScanItems.Value.IsDown())
             {
                 CrewNavigationCoordinator.Instance.ForceRingLookoutBell();
+            }
             }
         }
 

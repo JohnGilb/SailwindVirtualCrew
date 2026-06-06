@@ -33,7 +33,7 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 30f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 30f * 7; // add basic crew/steward + refresh ports + legendary + stamina buttons + workstation customizer
+                height += 30f * 15; // developer actions plus instrumentation controls
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Developer Tools");
@@ -81,10 +81,50 @@ namespace SailwindVirtualCrew
                 if (workstationCustomizer != null
                     && GUILayout.Button(workstationCustomizer.IsVisible ? "Hide Workstation Customizer" : "Show Workstation Customizer"))
                     workstationCustomizer.ToggleWindow();
+
+                DrawInstrumentationControls();
             }
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        private static void DrawInstrumentationControls()
+        {
+            GUILayout.Space(8);
+            GUILayout.Label("Instrumentation");
+
+            bool configEnabled = PerformanceInstrumentation.IsCollectionAllowed;
+            string configLabel = configEnabled ? "Disable Instrumentation Config" : "Enable Instrumentation Config";
+            if (GUILayout.Button(configLabel))
+            {
+                Plugin.InstrumentationEnabled.Value = !Plugin.InstrumentationEnabled.Value;
+                if (!Plugin.InstrumentationEnabled.Value)
+                    PerformanceInstrumentation.StopSession();
+            }
+
+            GUILayout.Label(PerformanceInstrumentation.IsRunning
+                ? "Status: Running, " + PerformanceInstrumentation.EventCount + " events, " + PerformanceInstrumentation.ElapsedSeconds.ToString("0.0") + "s"
+                : "Status: Stopped");
+
+            if (!configEnabled)
+                GUILayout.Label("Config opt-in is off.");
+
+            GUI.enabled = configEnabled && !PerformanceInstrumentation.IsRunning;
+            if (GUILayout.Button("Start Profiling Session"))
+                PerformanceInstrumentation.StartSession();
+
+            GUI.enabled = PerformanceInstrumentation.IsRunning;
+            if (GUILayout.Button("Stop Profiling Session"))
+                PerformanceInstrumentation.StopSession();
+            if (GUILayout.Button("Flush Profiling Data"))
+                PerformanceInstrumentation.FlushNow();
+            GUI.enabled = true;
+
+            if (!string.IsNullOrEmpty(PerformanceInstrumentation.OutputDirectory))
+                GUILayout.Label("Output: " + PerformanceInstrumentation.OutputDirectory);
+            if (!string.IsNullOrEmpty(PerformanceInstrumentation.LastError))
+                GUILayout.Label("Last error: " + PerformanceInstrumentation.LastError);
         }
 
         private void DrawLegendaryWindow(int id)

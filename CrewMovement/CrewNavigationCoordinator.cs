@@ -151,9 +151,13 @@ namespace SailwindVirtualCrew
 
         internal void Tick()
         {
-            EnsureRestActors();
-            foreach (var actor in _actorsByCrew.Values.ToList())
-                actor.Tick();
+            using (PerformanceInstrumentation.Measure("CrewNavigationCoordinator.Tick.EnsureRestActors"))
+                EnsureRestActors();
+            using (PerformanceInstrumentation.Measure("CrewNavigationCoordinator.Tick.Actors"))
+            {
+                foreach (var actor in _actorsByCrew.Values.ToList())
+                    actor.Tick();
+            }
         }
 
         internal void OnRestLocationChanged(Crewman crewman)
