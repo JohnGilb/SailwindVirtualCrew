@@ -42,11 +42,14 @@ namespace SailwindVirtualCrew
         private const float ShiftSleepDelayHours = 5f / 60f;
         private const float NavigatorMapNoonWindowHours = 1f;
         private const float NavigatorMapIslandRangeMeters = 500f;
+        private const float StewardSourceScanCooldownSeconds = 10f;
         private const int MaxNavigationResults = 3;
         private float _lastFirstOfficerLocalTime = -1f;
         private float _lastFirstOfficerTrimGameHours = -1f;
         private float _lastShiftLocalTime = -1f;
         private PilotTask _pilotShiftHandoffTask;
+        private float _nextStewardWaterSourceScanRealtime;
+        private float _nextStewardFoodSourceScanRealtime;
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownEnd = new Dictionary<NavigationMethod, float>();
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownTotal = new Dictionary<NavigationMethod, float>();
         private readonly List<string> recentNavigationResults = new List<string>();
@@ -703,6 +706,8 @@ namespace SailwindVirtualCrew
             _lastFirstOfficerTrimGameHours = -1f;
             _lastShiftLocalTime = -1f;
             _pilotShiftHandoffTask = null;
+            _nextStewardWaterSourceScanRealtime = 0f;
+            _nextStewardFoodSourceScanRealtime = 0f;
             LookoutGroundingRisk.ResetRuntimeState();
             if (PlayerWaitingState.IsActive)
                 PlayerWaitingState.Interrupt("crew reset");
@@ -966,20 +971,50 @@ namespace SailwindVirtualCrew
 
         private static bool IsItemOnActiveVessel(ShipItem item)
         {
-            if (item == null || !CrewBoatContextResolver.TryResolveBoatTransforms(out var topBoat, out var worldBoat))
+            ActiveVesselItemContext context;
+            return TryGetActiveVesselItemContext(out context)
+                && IsItemOnActiveVessel(item, context);
+        }
+
+        private static bool TryGetActiveVesselItemContext(out ActiveVesselItemContext context)
+        {
+            context = default(ActiveVesselItemContext);
+            Transform topBoat;
+            Transform worldBoat;
+            if (!CrewBoatContextResolver.TryResolveBoatTransforms(out topBoat, out worldBoat))
                 return false;
 
-            if (item.currentActualBoat != null && item.currentActualBoat == worldBoat)
+            context = new ActiveVesselItemContext
+            {
+                TopBoat = topBoat,
+                WorldBoat = worldBoat,
+                VesselSaveable = topBoat != null ? topBoat.GetComponent<SaveableObject>() : null
+            };
+            return true;
+        }
+
+        private static bool IsItemOnActiveVessel(ShipItem item, ActiveVesselItemContext context)
+        {
+            if (item == null || !context.WorldBoat)
+                return false;
+
+            if (item.currentActualBoat != null && item.currentActualBoat == context.WorldBoat)
                 return true;
 
-            if (item.transform.IsChildOf(worldBoat) || item.transform.IsChildOf(topBoat))
+            if (item.transform.IsChildOf(context.WorldBoat) || (context.TopBoat && item.transform.IsChildOf(context.TopBoat)))
                 return true;
 
             var saveable = item.GetComponent<SaveablePrefab>();
-            var vesselSaveable = topBoat != null ? topBoat.GetComponent<SaveableObject>() : null;
             return saveable != null
-                && vesselSaveable != null
-                && saveable.GetParentObject() == vesselSaveable.sceneIndex;
+                && context.VesselSaveable != null
+                && saveable.GetParentObject() == context.VesselSaveable.sceneIndex;
+        }
+
+        private struct ActiveVesselItemContext
+        {
+            internal Transform TopBoat;
+            internal Transform WorldBoat;
+            internal SaveableObject VesselSaveable;
         }
 
         public void ClearCurrentPort()
@@ -2437,43 +2472,62 @@ namespace SailwindVirtualCrew
             if (PlayerNeeds.instance == null)
                 return;
 
+            var steward = FreshestCrewman(ShipRole.Steward);
+            if (steward == null)
+                return;
+
             if (PlayerNeeds.water < StewardThirstLimitPercent
                 && !StewardWaterRequests.Any(r => r.Status != WorkRequestStatus.Complete)
+                && Time.realtimeSinceStartup >= _nextStewardWaterSourceScanRealtime
                 && TryFindStewardWaterSource(out var waterBarrel))
             {
-                var steward = FreshestCrewman(ShipRole.Steward);
-                if (steward != null)
-                {
-                    var request = new StewardWaterRequest(waterBarrel);
-                    StewardWaterRequests.Add(request);
-                    request.Begin(steward);
-                }
+                var request = new StewardWaterRequest(waterBarrel);
+                StewardWaterRequests.Add(request);
+                request.Begin(steward);
+            }
+            else if (PlayerNeeds.water < StewardThirstLimitPercent
+                && !StewardWaterRequests.Any(r => r.Status != WorkRequestStatus.Complete)
+                && Time.realtimeSinceStartup >= _nextStewardWaterSourceScanRealtime)
+            {
+                _nextStewardWaterSourceScanRealtime = Time.realtimeSinceStartup + StewardSourceScanCooldownSeconds;
             }
 
             if (PlayerNeeds.food < StewardHungerLimitPercent
                 && !StewardFoodRequests.Any(r => r.Status != WorkRequestStatus.Complete)
+                && Time.realtimeSinceStartup >= _nextStewardFoodSourceScanRealtime
                 && TryFindStewardFoodSource(out var food))
             {
-                var steward = FreshestCrewman(ShipRole.Steward);
-                if (steward != null)
-                {
-                    var request = new StewardFoodRequest(food);
-                    StewardFoodRequests.Add(request);
-                    request.Begin(steward);
-                }
+                var request = new StewardFoodRequest(food);
+                StewardFoodRequests.Add(request);
+                request.Begin(steward);
+            }
+            else if (PlayerNeeds.food < StewardHungerLimitPercent
+                && !StewardFoodRequests.Any(r => r.Status != WorkRequestStatus.Complete)
+                && Time.realtimeSinceStartup >= _nextStewardFoodSourceScanRealtime)
+            {
+                _nextStewardFoodSourceScanRealtime = Time.realtimeSinceStartup + StewardSourceScanCooldownSeconds;
             }
         }
 
         private static bool TryFindStewardWaterSource(out ShipItemBottle barrel)
         {
-            barrel = GameObject.FindObjectsOfType<ShipItemBottle>()
-                .Where(IsStewardWaterSource)
-                .OrderBy(b => b.health)
-                .FirstOrDefault();
+            barrel = null;
+            if (!TryGetActiveVesselItemContext(out var context))
+                return false;
+
+            foreach (var candidate in GameObject.FindObjectsOfType<ShipItemBottle>())
+            {
+                if (!IsStewardWaterSource(candidate, context))
+                    continue;
+
+                if (barrel == null || candidate.health < barrel.health)
+                    barrel = candidate;
+            }
+
             return barrel != null;
         }
 
-        private static bool IsStewardWaterSource(ShipItemBottle bottle)
+        private static bool IsStewardWaterSource(ShipItemBottle bottle, ActiveVesselItemContext context)
         {
             if (bottle == null || !bottle.sold || bottle.GetCapacity() < BarrelCapacityThreshold || bottle.health < 1f)
                 return false;
@@ -2485,20 +2539,47 @@ namespace SailwindVirtualCrew
             if (good != null && good.GetMissionIndex() > -1)
                 return false;
 
-            return IsItemOnActiveVessel(bottle);
+            return IsItemOnActiveVessel(bottle, context);
         }
 
         private bool TryFindStewardFoodSource(out ShipItemFood food)
         {
-            food = GameObject.FindObjectsOfType<ShipItemFood>()
-                .Where(IsStewardFoodSource)
-                .Where(f => !StewardFoodRequests.Any(r => r.Food == f && r.Status != WorkRequestStatus.Complete))
-                .OrderByDescending(f => f.GetEnergyPerBite())
-                .FirstOrDefault();
+            food = null;
+            if (!TryGetActiveVesselItemContext(out var vesselContext))
+                return false;
+
+            var scanContext = new StewardFoodSourceScanContext(vesselContext);
+            float bestEnergy = float.MinValue;
+            foreach (var candidate in GameObject.FindObjectsOfType<ShipItemFood>())
+            {
+                if (!IsStewardFoodSource(candidate, scanContext)
+                    || HasActiveStewardFoodRequest(candidate))
+                    continue;
+
+                float energy = candidate.GetEnergyPerBite();
+                if (food == null || energy > bestEnergy)
+                {
+                    food = candidate;
+                    bestEnergy = energy;
+                }
+            }
+
             return food != null;
         }
 
-        private static bool IsStewardFoodSource(ShipItemFood food)
+        private bool HasActiveStewardFoodRequest(ShipItemFood food)
+        {
+            if (food == null || StewardFoodRequests == null)
+                return false;
+
+            foreach (var request in StewardFoodRequests)
+                if (request.Food == food && request.Status != WorkRequestStatus.Complete)
+                    return true;
+
+            return false;
+        }
+
+        private static bool IsStewardFoodSource(ShipItemFood food, StewardFoodSourceScanContext context)
         {
             if (food == null || !food.sold || food.held != null || food.health <= 0f)
                 return false;
@@ -2508,9 +2589,9 @@ namespace SailwindVirtualCrew
                 return false;
 
             if (IsFoodInCrate(food))
-                return TryGetUnsealedFoodCrate(food, out _);
+                return context.TryGetUnsealedFoodCrate(food, out _);
 
-            return IsItemOnActiveVessel(food);
+            return IsItemOnActiveVessel(food, context.Vessel);
         }
 
         public void ScanStewardFoodSources(
@@ -2523,10 +2604,18 @@ namespace SailwindVirtualCrew
             unsealedCrateFoodCount = 0;
             var looseCounts = new Dictionary<string, int>();
             var crateCounts = new Dictionary<string, int>();
+            ActiveVesselItemContext vesselContext;
+            if (!TryGetActiveVesselItemContext(out vesselContext))
+            {
+                looseFoodLines = FormatFoodScanLines(looseCounts);
+                unsealedCrateFoodLines = FormatFoodScanLines(crateCounts);
+                return;
+            }
 
+            var scanContext = new StewardFoodSourceScanContext(vesselContext);
             foreach (var food in GameObject.FindObjectsOfType<ShipItemFood>())
             {
-                if (!IsStewardFoodSource(food))
+                if (!IsStewardFoodSource(food, scanContext))
                     continue;
 
                 string name = GetFoodDisplayName(food);
@@ -2578,18 +2667,37 @@ namespace SailwindVirtualCrew
             if (food == null)
                 return false;
 
+            ActiveVesselItemContext vesselContext;
+            if (!TryGetActiveVesselItemContext(out vesselContext))
+                return false;
+
             var saveable = food.GetComponent<SaveablePrefab>();
             if (saveable == null || saveable.currentCrateId <= 0)
                 return false;
 
-            crate = GameObject.FindObjectsOfType<CrateInventory>()
-                .FirstOrDefault(c => IsUnsealedFoodCrate(c, saveable.currentCrateId, food));
-            return crate != null;
+            foreach (var candidate in GameObject.FindObjectsOfType<CrateInventory>())
+            {
+                if (IsUnsealedFoodCrate(candidate, saveable.currentCrateId, food, vesselContext))
+                {
+                    crate = candidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        private static bool IsUnsealedFoodCrate(CrateInventory crate, int crateId, ShipItemFood food)
+        private static bool IsUnsealedFoodCrate(CrateInventory crate, int crateId, ShipItemFood food, ActiveVesselItemContext context)
         {
             if (crate == null || food == null || !crate.containedItems.Contains(food))
+                return false;
+
+            return IsUnsealedFoodCrate(crate, crateId, context);
+        }
+
+        private static bool IsUnsealedFoodCrate(CrateInventory crate, int crateId, ActiveVesselItemContext context)
+        {
+            if (crate == null)
                 return false;
 
             var crateSaveable = crate.GetComponent<SaveablePrefab>();
@@ -2599,13 +2707,62 @@ namespace SailwindVirtualCrew
             var shipCrate = crate.GetComponent<ShipItemCrate>();
             return shipCrate != null
                 && shipCrate.amount <= 0f
-                && IsItemOnActiveVessel(shipCrate);
+                && IsItemOnActiveVessel(shipCrate, context);
         }
 
         private static bool IsFoodInCrate(ShipItemFood food)
         {
             var saveable = food != null ? food.GetComponent<SaveablePrefab>() : null;
             return saveable != null && saveable.currentCrateId > 0;
+        }
+
+        private sealed class StewardFoodSourceScanContext
+        {
+            private Dictionary<int, CrateInventory> _unsealedCratesById;
+
+            internal ActiveVesselItemContext Vessel { get; private set; }
+
+            internal StewardFoodSourceScanContext(ActiveVesselItemContext vessel)
+            {
+                Vessel = vessel;
+            }
+
+            internal bool TryGetUnsealedFoodCrate(ShipItemFood food, out CrateInventory crate)
+            {
+                crate = null;
+                if (food == null)
+                    return false;
+
+                var saveable = food.GetComponent<SaveablePrefab>();
+                if (saveable == null || saveable.currentCrateId <= 0)
+                    return false;
+
+                EnsureCrateLookup();
+                if (!_unsealedCratesById.TryGetValue(saveable.currentCrateId, out crate) || crate == null)
+                    return false;
+
+                return crate.containedItems.Contains(food);
+            }
+
+            private void EnsureCrateLookup()
+            {
+                if (_unsealedCratesById != null)
+                    return;
+
+                _unsealedCratesById = new Dictionary<int, CrateInventory>();
+                foreach (var crate in GameObject.FindObjectsOfType<CrateInventory>())
+                {
+                    if (crate == null)
+                        continue;
+
+                    var saveable = crate.GetComponent<SaveablePrefab>();
+                    if (saveable == null || saveable.instanceId <= 0)
+                        continue;
+
+                    if (IsUnsealedFoodCrate(crate, saveable.instanceId, Vessel))
+                        _unsealedCratesById[saveable.instanceId] = crate;
+                }
+            }
         }
 
         private void TickQuartermasterBailing()
