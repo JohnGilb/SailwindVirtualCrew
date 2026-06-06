@@ -16,7 +16,7 @@ namespace SailwindVirtualCrew
     {
         public const string PLUGIN_ID = "com.zorkinian.virtualcrew";
         public const string PLUGIN_NAME = "VirtualCrew";
-        public const string PLUGIN_VERSION = "0.1.12";
+        public const string PLUGIN_VERSION = "0.1.13";
 
         //--settings--
         internal static ConfigEntry<bool> exampleSetting;
