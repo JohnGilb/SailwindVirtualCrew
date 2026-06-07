@@ -29,12 +29,15 @@ namespace SailwindVirtualCrew
         private static Texture2D _nightBox;
 
         internal static bool IsDarkMode => IsNightTime();
+        internal static Font ButtonFont { get { EnsureFonts(); return _architectsFont; } }
+        internal static Font LabelFont { get { EnsureFonts(); return _immortalFont; } }
 
         internal static void Apply()
         {
             using (PerformanceInstrumentation.MeasureGui("UI.Style.Apply"))
             {
                 if (!_initialized) Initialize();
+                EnsureFonts();
 
                 var palette = IsDarkMode ? Palette.Night : Palette.Day;
 
@@ -119,11 +122,7 @@ namespace SailwindVirtualCrew
             _defaultWindowBackground = GUI.skin.window.normal.background;
             _defaultWindowOnBackground = GUI.skin.window.onNormal.background ?? _defaultWindowBackground;
 
-            foreach (Font font in Resources.FindObjectsOfTypeAll<Font>())
-            {
-                if (font.name == "IMMORTAL")            _immortalFont   = font;
-                else if (font.name == "ArchitectsDaughter") _architectsFont = font;
-            }
+            EnsureFonts();
 
             _dayButton       = MakeTexture(new Color(230f / 255f, 187f / 255f, 156f / 255f));
             _dayButtonHover  = MakeTexture(new Color(244f / 255f, 204f / 255f, 173f / 255f));
@@ -139,6 +138,20 @@ namespace SailwindVirtualCrew
             _nightLabel        = MakeTexture(new Color(55f / 255f, 42f / 255f, 35f / 255f));
             _nightField        = MakeTexture(new Color(46f / 255f, 38f / 255f, 32f / 255f));
             _nightBox          = MakeTexture(new Color(62f / 255f, 50f / 255f, 42f / 255f));
+        }
+
+        private static void EnsureFonts()
+        {
+            if (_immortalFont && _architectsFont)
+                return;
+
+            foreach (Font font in Resources.FindObjectsOfTypeAll<Font>())
+            {
+                if (!_immortalFont && font.name == "IMMORTAL")
+                    _immortalFont = font;
+                else if (!_architectsFont && font.name == "ArchitectsDaughter")
+                    _architectsFont = font;
+            }
         }
 
         private static bool IsNightTime()

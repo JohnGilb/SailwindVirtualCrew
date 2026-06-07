@@ -265,14 +265,14 @@ namespace SailwindVirtualCrew
             Rigidbody attachedRigidbody = collider.attachedRigidbody;
             if (attachedRigidbody != null)
             {
-                Transform rigidbodyTransform = attachedRigidbody.transform;
-                if ((context.Rigidbody != null && attachedRigidbody == context.Rigidbody)
-                    || (context.TopBoat && (rigidbodyTransform == context.TopBoat || rigidbodyTransform.IsChildOf(context.TopBoat)))
-                    || (context.WorldBoat && (rigidbodyTransform == context.WorldBoat || rigidbodyTransform.IsChildOf(context.WorldBoat))))
+                if (IsActiveVesselRigidbody(context, attachedRigidbody))
                     return true;
             }
 
             if (IsActiveVesselHullGhost(collider))
+                return true;
+
+            if (IsActiveVesselAnchor(context, collider))
                 return true;
 
             int waterLayer = LayerMask.NameToLayer("Water");
@@ -280,6 +280,17 @@ namespace SailwindVirtualCrew
                 return true;
 
             return false;
+        }
+
+        private static bool IsActiveVesselRigidbody(CrewBoatContext context, Rigidbody rigidbody)
+        {
+            if (rigidbody == null)
+                return false;
+
+            Transform rigidbodyTransform = rigidbody.transform;
+            return (context.Rigidbody != null && rigidbody == context.Rigidbody)
+                || (context.TopBoat && (rigidbodyTransform == context.TopBoat || rigidbodyTransform.IsChildOf(context.TopBoat)))
+                || (context.WorldBoat && (rigidbodyTransform == context.WorldBoat || rigidbodyTransform.IsChildOf(context.WorldBoat)));
         }
 
         private static bool IsActiveVesselHullGhost(Collider collider)
@@ -290,6 +301,21 @@ namespace SailwindVirtualCrew
             string name = collider.name;
             return !string.IsNullOrEmpty(name)
                 && string.Equals(name.Trim(), "hull player collider", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsActiveVesselAnchor(CrewBoatContext context, Collider collider)
+        {
+            if (!collider)
+                return false;
+
+            var anchor = collider.GetComponentInParent<Anchor>();
+            if (anchor == null)
+                return false;
+
+            var joint = anchor.GetComponent<ConfigurableJoint>();
+            return joint != null
+                && joint.connectedBody != null
+                && IsActiveVesselRigidbody(context, joint.connectedBody);
         }
 
         private static IslandHorizon FindIslandForHit(RaycastHit hit)

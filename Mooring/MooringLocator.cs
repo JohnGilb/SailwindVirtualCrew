@@ -92,8 +92,11 @@ namespace SailwindVirtualCrew
     internal static class MooringLocator
     {
         private const float DockSearchRadius = 90f;
+        private const float DockCacheRefreshSeconds = 30f;
         private static readonly FieldInfo SpringAnchorField =
             AccessTools.Field(typeof(PickupableBoatMooringRope), "springAnchor");
+        private static readonly List<GPButtonDockMooring> CachedDocks = new List<GPButtonDockMooring>();
+        private static float nextDockCacheRefreshRealtime;
 
         internal static bool TryScan(out MooringScan scan)
         {
@@ -142,6 +145,47 @@ namespace SailwindVirtualCrew
             int freeRopes = scan.Ropes.Count(r => r.Side == side && !r.IsMoored && r.Rope != null && !excluded.Contains(r.Rope));
             int freeDocks = scan.Docks.Count(d => d.Side == side && !d.IsOccupied && d.Mooring != null);
             return Mathf.Min(freeRopes, freeDocks);
+        }
+
+        internal static void GetAvailableRopeCounts(
+            IEnumerable<PickupableBoatMooringRope> excludedRopes,
+            out int portCount,
+            out int starboardCount)
+        {
+            portCount = 0;
+            starboardCount = 0;
+
+            using (PerformanceInstrumentation.Measure("MooringLocator.GetAvailableRopeCounts"))
+            {
+                if (!TryScan(out var scan))
+                    return;
+
+                var excluded = new HashSet<PickupableBoatMooringRope>(excludedRopes ?? Enumerable.Empty<PickupableBoatMooringRope>());
+                int portRopes = 0;
+                int starboardRopes = 0;
+                foreach (var rope in scan.Ropes)
+                {
+                    if (rope.IsMoored || rope.Rope == null || excluded.Contains(rope.Rope))
+                        continue;
+
+                    if (rope.Side == MooringSide.Port) portRopes++;
+                    else starboardRopes++;
+                }
+
+                int portDocks = 0;
+                int starboardDocks = 0;
+                foreach (var dock in scan.Docks)
+                {
+                    if (dock.IsOccupied || dock.Mooring == null)
+                        continue;
+
+                    if (dock.Side == MooringSide.Port) portDocks++;
+                    else starboardDocks++;
+                }
+
+                portCount = Mathf.Min(portRopes, portDocks);
+                starboardCount = Mathf.Min(starboardRopes, starboardDocks);
+            }
         }
 
         internal static bool TryFindAvailableRopes(MooringSide side, IEnumerable<PickupableBoatMooringRope> excludedRopes, out List<MooringRopeInfo> ropes)
@@ -323,30 +367,76 @@ namespace SailwindVirtualCrew
         private static List<MooringDockInfo> BuildDockInfos(CrewBoatContext context, MooringSideMap sideMap)
         {
             Vector3 boatPosition = context.TopBoat.position;
-            return Object.FindObjectsOfType<GPButtonDockMooring>()
-                .Where(d => d && d.gameObject.activeInHierarchy)
-                .Where(d => !IsBoatOwnedDock(context, d))
-                .Select((d, i) =>
+            using (PerformanceInstrumentation.Measure("MooringLocator.BuildDockInfos"))
+            {
+                var docks = GetCachedDocks();
+                var result = new List<MooringDockInfo>();
+
+                foreach (var dock in docks)
                 {
-                    Vector3 local = context.WorldBoat.InverseTransformPoint(d.transform.position);
-                    return new MooringDockInfo
+                    if (!dock || !dock.gameObject.activeInHierarchy || IsBoatOwnedDock(context, dock))
+                        continue;
+
+                    Vector3 local = context.WorldBoat.InverseTransformPoint(dock.transform.position);
+                    float distance = Vector3.Distance(boatPosition, dock.transform.position);
+                    if (distance > DockSearchRadius)
+                        continue;
+
+                    result.Add(new MooringDockInfo
                     {
-                        Index = i,
-                        Mooring = d,
+                        Index = result.Count,
+                        Mooring = dock,
                         LocalPosition = local,
-                        DistanceToBoat = Vector3.Distance(boatPosition, d.transform.position),
-                        IsOccupied = d.spring != null && d.spring.connectedBody != null,
+                        DistanceToBoat = distance,
+                        IsOccupied = dock.spring != null && dock.spring.connectedBody != null,
                         Side = sideMap.Classify(local)
-                    };
-                })
-                .Where(d => d.DistanceToBoat <= DockSearchRadius)
-                .OrderBy(d => d.DistanceToBoat)
-                .Select((d, i) =>
-                {
-                    d.Index = i;
-                    return d;
-                })
-                .ToList();
+                    });
+                }
+
+                result.Sort((a, b) => a.DistanceToBoat.CompareTo(b.DistanceToBoat));
+                for (int i = 0; i < result.Count; i++)
+                    result[i].Index = i;
+
+                return result;
+            }
+        }
+
+        private static List<GPButtonDockMooring> GetCachedDocks()
+        {
+            if (Time.realtimeSinceStartup >= nextDockCacheRefreshRealtime)
+                RefreshDockCache();
+            else
+                CachedDocks.RemoveAll(d => !d);
+
+            return CachedDocks;
+        }
+
+        private static void RefreshDockCache()
+        {
+            using (PerformanceInstrumentation.Measure("MooringLocator.RefreshDockCache"))
+            {
+                CachedDocks.Clear();
+                CachedDocks.AddRange(Object.FindObjectsOfType<GPButtonDockMooring>());
+                CachedDocks.RemoveAll(d => !d);
+                nextDockCacheRefreshRealtime = Time.realtimeSinceStartup + DockCacheRefreshSeconds;
+            }
+        }
+
+        internal static void InvalidateDockCache()
+        {
+            nextDockCacheRefreshRealtime = 0f;
+        }
+
+        internal static void RegisterDock(GPButtonDockMooring dock)
+        {
+            if (dock && !CachedDocks.Contains(dock))
+                CachedDocks.Add(dock);
+        }
+
+        internal static void UnregisterDock(GPButtonDockMooring dock)
+        {
+            if (dock)
+                CachedDocks.Remove(dock);
         }
 
         private static bool IsBoatOwnedDock(CrewBoatContext context, GPButtonDockMooring dock)

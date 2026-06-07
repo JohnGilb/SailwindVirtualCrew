@@ -32,6 +32,7 @@ namespace SailwindVirtualCrew
         internal static string FoldedStackPath { get; private set; }
         internal static string PluginUpdateFoldedStackPath { get; private set; }
         internal static string OnGuiFoldedStackPath { get; private set; }
+        internal static string UGuiFoldedStackPath { get; private set; }
         internal static long EventCount => eventCount;
 
         internal static bool IsCollectionAllowed =>
@@ -63,6 +64,11 @@ namespace SailwindVirtualCrew
             return Measure("Unity.OnGUI." + eventName + "." + function);
         }
 
+        internal static Measurement MeasureUGui(string function)
+        {
+            return Measure("Unity.uGUI." + function);
+        }
+
         internal static bool StartSession()
         {
             lock (SyncRoot)
@@ -88,6 +94,7 @@ namespace SailwindVirtualCrew
                     FoldedStackPath = Path.Combine(OutputDirectory, "VirtualCrew_Profile_" + sessionId + ".folded");
                     PluginUpdateFoldedStackPath = Path.Combine(OutputDirectory, "VirtualCrew_Profile_" + sessionId + ".plugin-update.folded");
                     OnGuiFoldedStackPath = Path.Combine(OutputDirectory, "VirtualCrew_Profile_" + sessionId + ".ongui.folded");
+                    UGuiFoldedStackPath = Path.Combine(OutputDirectory, "VirtualCrew_Profile_" + sessionId + ".ugui.folded");
 
                     writer = new StreamWriter(RawTsvPath, false, Encoding.UTF8, 65536);
                     writer.WriteLine("SessionId\tFrameNumber\tRealtimeSeconds\tFunction\tDurationMicroseconds\tExclusiveMicroseconds\tDepth\tParentFunction\tThreadId");
@@ -248,6 +255,7 @@ namespace SailwindVirtualCrew
             WriteFoldedStackFile(FoldedStackPath, null);
             WriteFoldedStackFile(PluginUpdateFoldedStackPath, "Plugin.Update");
             WriteFoldedStackFile(OnGuiFoldedStackPath, "Unity.OnGUI.");
+            WriteFoldedStackFile(UGuiFoldedStackPath, "Unity.uGUI.");
         }
 
         private static void WriteFoldedStackFile(string path, string rootPrefix)
