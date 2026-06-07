@@ -40,7 +40,7 @@ namespace SailwindVirtualCrew
         // Time windows for each method
         // Quadrant: local 20:00–04:00 (wraps midnight)
         // Sun Compass: local 11:00–13:00
-        // Chronometer: global 11:00–13:00
+        // Chronometer: local 11:00–13:00
         // Chronocompass: local 08:00–16:00
 
         private bool overrideTimeWindows = false;
@@ -195,7 +195,7 @@ namespace SailwindVirtualCrew
             if (GUILayout.Button(ToolButtonLabel(hasSunCompass, "Sun Compass")))
                 QueueNavigation(manager, NavigationMethod.SunCompass);
 
-            // Chronometer — longitude, global 11:00–13:00
+            // Chronometer — longitude, local 11:00–13:00
             GUI.enabled = navFree && CanUseChronometer;
             if (GUILayout.Button(ToolButtonLabel(hasChronometer, "Chronometer")))
                 QueueNavigation(manager, NavigationMethod.Chronometer);

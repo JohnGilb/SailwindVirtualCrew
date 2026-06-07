@@ -2008,7 +2008,7 @@ namespace SailwindVirtualCrew
                 case NavigationMethod.SunCompass:
                     return IsHourInWindow(Sun.sun.localTime, 11f, 13f);
                 case NavigationMethod.Chronometer:
-                    return IsHourInWindow(Sun.sun.globalTime, 11f, 13f);
+                    return IsHourInWindow(Sun.sun.localTime, 11f, 13f);
                 case NavigationMethod.Chronocompass:
                     return IsHourInWindow(Sun.sun.localTime, 8f, 16f);
                 default:

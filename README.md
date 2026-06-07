@@ -73,7 +73,7 @@ Strongly inspired by:
 Tools:
 - Quadrant: Can only be used between 20:00-04:00 local time. Gets latitude.
 - Sun Compass: Can only be used between 11:00-13:00 local time. Gets latitude.
-- Chronometer: Can only be used between 11:00-13:00 Global time. Gets longitude.
+- Chronometer: Can only be used between 11:00-13:00 local time. Gets longitude.
 - Chronocompass: Can be used between 08:00-16:00 local time. Gets longitude and latitude. Can be used more times per day.
 
 #### Lookout
