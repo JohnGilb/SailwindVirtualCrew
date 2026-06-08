@@ -176,7 +176,7 @@ namespace SailwindVirtualCrew
             {
                 GUILayout.Label(mgr.CurrentPort == null
                     ? "Visit a port to hire crew."
-                    : "No crew available here.");
+                    : "No crew available here; visit a Port Trader.");
             }
             else
             {
