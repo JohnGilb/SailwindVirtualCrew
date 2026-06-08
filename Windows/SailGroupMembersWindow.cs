@@ -86,7 +86,7 @@ namespace SailwindVirtualCrew
                     if (GUILayout.Button("−", GUILayout.Width(28))) memberToRemove = member;
                     GUILayout.EndHorizontal();
                 }
-                if (memberToRemove != null) selectedGroup.RemoveSail(memberToRemove);
+                if (memberToRemove != null) manager.RemoveSailFromGroup(selectedGroup, memberToRemove);
             }
 
             _resizer.HandleInWindow(ref windowRect);

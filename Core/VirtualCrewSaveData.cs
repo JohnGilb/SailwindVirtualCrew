@@ -26,6 +26,27 @@ namespace SailwindVirtualCrew
     }
 
     [Serializable]
+    public class StandingOrderSailSaveData
+    {
+        public string sailIdentifier;
+        public bool hasHalyard;
+        public float halyard;
+        public bool hasSimpleSheet;
+        public float simpleSheet;
+        public bool hasPortSheet;
+        public float portSheet;
+        public bool hasStarboardSheet;
+        public float starboardSheet;
+    }
+
+    [Serializable]
+    public class StandingOrderConditionSaveData
+    {
+        public StandingOrderWindState windState;
+        public List<StandingOrderSailSaveData> sails = new List<StandingOrderSailSaveData>();
+    }
+
+    [Serializable]
     public class CrewRestLocationSaveData
     {
         public float[] localPosition;
@@ -119,6 +140,7 @@ namespace SailwindVirtualCrew
         public string friendlyName;
         public Dictionary<string, string> sailFriendlyNames = new Dictionary<string, string>();
         public List<SailGroupSaveData> sailGroups = new List<SailGroupSaveData>();
+        public List<StandingOrderConditionSaveData> standingOrders = new List<StandingOrderConditionSaveData>();
         public Dictionary<string, CrewRestLocationSaveData> crewRestLocations = new Dictionary<string, CrewRestLocationSaveData>();
         public Dictionary<string, WorkstationLocationSaveData> customWorkstationLocations = new Dictionary<string, WorkstationLocationSaveData>();
         public LookoutStationSaveData lookoutStation;
@@ -132,6 +154,7 @@ namespace SailwindVirtualCrew
     {
         public int firstOfficerSettingsVersion;
         public bool firstOfficerAutoTrimEnabled = true;
+        public bool firstOfficerStandingOrdersEnabled;
         public int stewardSettingsVersion;
         public float stewardThirstLimitPercent = 50f;
         public float stewardHungerLimitPercent = 50f;

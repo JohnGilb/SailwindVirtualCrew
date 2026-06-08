@@ -37,6 +37,8 @@ namespace SailwindVirtualCrew
         private const float NavigatorWakeStaminaRatio = 0.33f;
         private const float OffShiftSleepStaminaRatio = 0.8f;
         private const float FirstOfficerTrimIntervalHours = 2f;
+        private const float FirstOfficerStandingOrderReturnDelayHours = 1f;
+        private const float StandingOrderWinchTolerance = 0.05f;
         private const float DayShiftStartHour = 6f;
         private const float NightShiftStartHour = 18f;
         private const float ShiftSleepDelayHours = 5f / 60f;
@@ -46,6 +48,10 @@ namespace SailwindVirtualCrew
         private const int MaxNavigationResults = 3;
         private float _lastFirstOfficerLocalTime = -1f;
         private float _lastFirstOfficerTrimGameHours = -1f;
+        private StandingOrderWindState _lastStandingOrdersIssuedState = StandingOrderWindState.None;
+        private StandingOrderWindState _previousStandingOrdersIssuedState = StandingOrderWindState.None;
+        private StandingOrderWindState _pendingStandingOrdersReturnState = StandingOrderWindState.None;
+        private float _standingOrdersReturnStartedGameHours = -1f;
         private float _lastShiftLocalTime = -1f;
         private PilotTask _pilotShiftHandoffTask;
         private float _nextStewardWaterSourceScanRealtime;
@@ -64,6 +70,7 @@ namespace SailwindVirtualCrew
         public float LookoutSpyglassZoom { get; private set; } = 1f;
         public bool LookoutSpyglassScanned { get; private set; }
         public bool FirstOfficerAutoTrimEnabled { get; private set; } = true;
+        public bool FirstOfficerStandingOrdersEnabled { get; private set; }
         public float StewardThirstLimitPercent { get; private set; } = 50f;
         public float StewardHungerLimitPercent { get; private set; } = 50f;
 
@@ -260,10 +267,30 @@ namespace SailwindVirtualCrew
             return group;
         }
 
+        public void AddSailToGroup(SailGroup group, ICommonSailActions sail)
+        {
+            if (group == null || sail == null || group.IsAllSails || group.Contains(sail))
+                return;
+
+            InheritStandingOrdersForAddedGroupSail(group, sail);
+            group.AddSail(sail);
+        }
+
+        public void RemoveSailFromGroup(SailGroup group, ICommonSailActions sail)
+        {
+            if (group == null || sail == null || group.IsAllSails || !group.Contains(sail))
+                return;
+
+            group.RemoveSail(sail);
+            ClearStandingOrdersForSail(sail);
+        }
+
         public void DeleteSailGroup(SailGroup group)
         {
             if (!group.IsAllSails)
             {
+                foreach (var sail in group.GetMembers(AllSails).ToList())
+                    ClearStandingOrdersForSail(sail);
                 if (SelectedGroup == group) SelectedGroup = null;
                 SailGroups.Remove(group);
                 RemoveFavoriteActionsForGroup(group.Id);
@@ -646,7 +673,301 @@ namespace SailwindVirtualCrew
                 vesselData.keptCargoInstanceIds = new List<int>();
             if (vesselData.navigatorShipLog == null)
                 vesselData.navigatorShipLog = new List<NavigatorShipLogEntrySaveData>();
+            if (vesselData.standingOrders == null)
+                vesselData.standingOrders = new List<StandingOrderConditionSaveData>();
             return vesselData;
+        }
+
+        public void SetStandingOrderHalyard(StandingOrderWindState state, SailGroup group, float target)
+        {
+            foreach (var sail in GetEditableStandingOrderMembers(group))
+            {
+                var targets = GetOrCreateStandingOrderTargets(state, sail);
+                targets.HasHalyard = true;
+                targets.Halyard = Mathf.Clamp01(target);
+                SaveStandingOrderTargets(state, sail, targets);
+            }
+        }
+
+        public void SetStandingOrderSimpleSheet(StandingOrderWindState state, SailGroup group, float target)
+        {
+            foreach (var sail in GetEditableStandingOrderMembers(group).OfType<SimpleSail>())
+            {
+                var targets = GetOrCreateStandingOrderTargets(state, sail);
+                targets.HasSimpleSheet = true;
+                targets.SimpleSheet = Mathf.Clamp01(target);
+                SaveStandingOrderTargets(state, sail, targets);
+            }
+        }
+
+        public void SetStandingOrderDualSheet(StandingOrderWindState state, SailGroup group,
+                                              DualSheetSail.DualSheetSailSubtype subtype,
+                                              float portTarget, float starboardTarget)
+        {
+            foreach (var sail in GetEditableStandingOrderMembers(group).OfType<DualSheetSail>()
+                         .Where(s => s.getSubtype() == subtype))
+            {
+                var targets = GetOrCreateStandingOrderTargets(state, sail);
+                targets.HasPortSheet = true;
+                targets.PortSheet = Mathf.Clamp01(portTarget);
+                targets.HasStarboardSheet = true;
+                targets.StarboardSheet = Mathf.Clamp01(starboardTarget);
+                SaveStandingOrderTargets(state, sail, targets);
+            }
+        }
+
+        public void ClearStandingOrdersForGroup(StandingOrderWindState state, SailGroup group)
+        {
+            foreach (var sail in GetEditableStandingOrderMembers(group))
+                ClearStandingOrderForSail(state, sail);
+        }
+
+        public bool TryGetStandingOrderTargets(StandingOrderWindState state, ICommonSailActions sail,
+                                               out StandingOrderTargets targets)
+        {
+            targets = null;
+            if (state == StandingOrderWindState.None || sail == null)
+                return false;
+
+            var vesselData = GetCurrentVesselData();
+            var condition = GetStandingOrderCondition(vesselData, state, create: false);
+            if (condition == null || condition.sails == null)
+                return false;
+
+            var saved = condition.sails.FirstOrDefault(s => s.sailIdentifier == sail.getDefaultIdentifier());
+            if (saved == null)
+                return false;
+
+            targets = StandingOrderTargets.FromSaveData(saved);
+            return targets.HasAny;
+        }
+
+        public void MirrorPortStandingOrdersToStarboard()
+        {
+            foreach (StandingOrderWindState portState in new[]
+            {
+                StandingOrderWindState.PortClose,
+                StandingOrderWindState.PortBeam,
+                StandingOrderWindState.PortBroad,
+                StandingOrderWindState.PortRun
+            })
+            {
+                if (!WindAngleUtils.TryGetMirroredStarboardState(portState, out StandingOrderWindState starboardState))
+                    continue;
+
+                CopyMirroredStandingOrders(portState, starboardState);
+            }
+        }
+
+        private IEnumerable<ICommonSailActions> GetEditableStandingOrderMembers(SailGroup group)
+        {
+            if (group == null)
+                return Enumerable.Empty<ICommonSailActions>();
+
+            return group.GetMembers(AllSails);
+        }
+
+        private StandingOrderTargets GetOrCreateStandingOrderTargets(StandingOrderWindState state, ICommonSailActions sail)
+        {
+            if (TryGetStandingOrderTargets(state, sail, out StandingOrderTargets existing))
+                return existing;
+
+            return new StandingOrderTargets();
+        }
+
+        private void SaveStandingOrderTargets(StandingOrderWindState state, ICommonSailActions sail,
+                                              StandingOrderTargets targets)
+        {
+            if (state == StandingOrderWindState.None || sail == null)
+                return;
+
+            var vesselData = GetCurrentVesselData();
+            var condition = GetStandingOrderCondition(vesselData, state, create: true);
+            var saved = GetStandingOrderSail(condition, sail.getDefaultIdentifier(), create: true);
+            targets.ApplyTo(saved);
+        }
+
+        private void ClearStandingOrderForSail(StandingOrderWindState state, ICommonSailActions sail)
+        {
+            if (state == StandingOrderWindState.None || sail == null)
+                return;
+
+            var vesselData = GetCurrentVesselData();
+            var condition = GetStandingOrderCondition(vesselData, state, create: false);
+            if (condition?.sails == null)
+                return;
+
+            condition.sails.RemoveAll(s => s.sailIdentifier == sail.getDefaultIdentifier());
+            PruneStandingOrderCondition(vesselData, condition);
+        }
+
+        private void ClearStandingOrdersForSail(ICommonSailActions sail)
+        {
+            if (sail == null)
+                return;
+
+            var vesselData = GetCurrentVesselData();
+            if (vesselData?.standingOrders == null)
+                return;
+
+            string id = sail.getDefaultIdentifier();
+            foreach (var condition in vesselData.standingOrders.ToList())
+            {
+                if (condition?.sails == null)
+                    continue;
+
+                condition.sails.RemoveAll(s => s.sailIdentifier == id);
+                PruneStandingOrderCondition(vesselData, condition);
+            }
+        }
+
+        private void InheritStandingOrdersForAddedGroupSail(SailGroup group, ICommonSailActions addedSail)
+        {
+            var vesselData = GetCurrentVesselData();
+            if (vesselData?.standingOrders == null)
+                return;
+
+            foreach (var condition in vesselData.standingOrders.ToList())
+            {
+                if (condition == null || condition.windState == StandingOrderWindState.None)
+                    continue;
+
+                if (TryGetStandingOrderInheritanceSource(group, addedSail, condition.windState,
+                    out StandingOrderTargets inherited))
+                    SaveStandingOrderTargets(condition.windState, addedSail, inherited);
+            }
+        }
+
+        private bool TryGetStandingOrderInheritanceSource(SailGroup group, ICommonSailActions addedSail,
+                                                          StandingOrderWindState state,
+                                                          out StandingOrderTargets inherited)
+        {
+            inherited = null;
+            StandingOrderTargets halyardOnly = null;
+
+            foreach (var member in group.GetMembers(AllSails))
+            {
+                if (member == addedSail)
+                    continue;
+
+                if (!TryGetStandingOrderTargets(state, member, out StandingOrderTargets targets))
+                    continue;
+
+                if (AreStandingOrderSheetCapabilitiesCompatible(member, addedSail))
+                {
+                    inherited = targets.Clone();
+                    return true;
+                }
+
+                if (halyardOnly == null && targets.HasHalyard)
+                {
+                    halyardOnly = new StandingOrderTargets
+                    {
+                        HasHalyard = true,
+                        Halyard = targets.Halyard
+                    };
+                }
+            }
+
+            inherited = halyardOnly;
+            return inherited != null && inherited.HasAny;
+        }
+
+        private static bool AreStandingOrderSheetCapabilitiesCompatible(ICommonSailActions source,
+                                                                        ICommonSailActions target)
+        {
+            if (source is SimpleSail && target is SimpleSail)
+                return true;
+
+            var sourceDual = source as DualSheetSail;
+            var targetDual = target as DualSheetSail;
+            return sourceDual != null
+                && targetDual != null
+                && sourceDual.getSubtype() == targetDual.getSubtype();
+        }
+
+        private void CopyMirroredStandingOrders(StandingOrderWindState sourceState, StandingOrderWindState targetState)
+        {
+            var vesselData = GetCurrentVesselData();
+            if (vesselData == null)
+                return;
+
+            var source = GetStandingOrderCondition(vesselData, sourceState, create: false);
+            var target = GetStandingOrderCondition(vesselData, targetState, create: true);
+            target.sails.Clear();
+
+            if (source?.sails == null)
+            {
+                PruneStandingOrderCondition(vesselData, target);
+                return;
+            }
+
+            foreach (var sourceSail in source.sails)
+            {
+                if (sourceSail == null || string.IsNullOrEmpty(sourceSail.sailIdentifier))
+                    continue;
+
+                var sail = AllSails.FirstOrDefault(s => s.getDefaultIdentifier() == sourceSail.sailIdentifier);
+                var mirrored = StandingOrderTargets.FromSaveData(sourceSail).MirroredFor(sail);
+                var saved = new StandingOrderSailSaveData { sailIdentifier = sourceSail.sailIdentifier };
+                mirrored.ApplyTo(saved);
+                target.sails.Add(saved);
+            }
+
+            PruneStandingOrderCondition(vesselData, target);
+        }
+
+        private StandingOrderConditionSaveData GetStandingOrderCondition(VesselSaveData vesselData,
+                                                                         StandingOrderWindState state,
+                                                                         bool create)
+        {
+            if (vesselData == null || state == StandingOrderWindState.None)
+                return null;
+
+            if (vesselData.standingOrders == null)
+                vesselData.standingOrders = new List<StandingOrderConditionSaveData>();
+
+            var condition = vesselData.standingOrders.FirstOrDefault(c => c.windState == state);
+            if (condition == null && create)
+            {
+                condition = new StandingOrderConditionSaveData { windState = state };
+                vesselData.standingOrders.Add(condition);
+            }
+
+            if (condition != null && condition.sails == null)
+                condition.sails = new List<StandingOrderSailSaveData>();
+
+            return condition;
+        }
+
+        private static StandingOrderSailSaveData GetStandingOrderSail(StandingOrderConditionSaveData condition,
+                                                                      string sailIdentifier,
+                                                                      bool create)
+        {
+            if (condition == null || string.IsNullOrEmpty(sailIdentifier))
+                return null;
+
+            if (condition.sails == null)
+                condition.sails = new List<StandingOrderSailSaveData>();
+
+            var sail = condition.sails.FirstOrDefault(s => s.sailIdentifier == sailIdentifier);
+            if (sail == null && create)
+            {
+                sail = new StandingOrderSailSaveData { sailIdentifier = sailIdentifier };
+                condition.sails.Add(sail);
+            }
+
+            return sail;
+        }
+
+        private static void PruneStandingOrderCondition(VesselSaveData vesselData,
+                                                        StandingOrderConditionSaveData condition)
+        {
+            if (vesselData?.standingOrders == null || condition == null)
+                return;
+
+            if (condition.sails == null || condition.sails.Count == 0)
+                vesselData.standingOrders.Remove(condition);
         }
 
         private static bool TryGetCargoInstanceId(ShipItem item, out int instanceId)
@@ -704,6 +1025,7 @@ namespace SailwindVirtualCrew
             _lastLookoutPassiveDecayGameHours = -1f;
             _lastFirstOfficerLocalTime = -1f;
             _lastFirstOfficerTrimGameHours = -1f;
+            ResetStandingOrdersRuntimeState();
             _lastShiftLocalTime = -1f;
             _pilotShiftHandoffTask = null;
             _nextStewardWaterSourceScanRealtime = 0f;
@@ -1289,9 +1611,19 @@ namespace SailwindVirtualCrew
                 _lastFirstOfficerTrimGameHours = GetCurrentGameHours();
         }
 
-        public void RestoreFirstOfficerSettings(int settingsVersion, bool autoTrimEnabled)
+        public void SetFirstOfficerStandingOrdersEnabled(bool enabled)
+        {
+            FirstOfficerStandingOrdersEnabled = enabled;
+            if (!enabled)
+                ResetStandingOrdersRuntimeState();
+        }
+
+        public void RestoreFirstOfficerSettings(int settingsVersion, bool autoTrimEnabled,
+                                                bool standingOrdersEnabled)
         {
             FirstOfficerAutoTrimEnabled = settingsVersion <= 0 || autoTrimEnabled;
+            FirstOfficerStandingOrdersEnabled = settingsVersion > 0 && standingOrdersEnabled;
+            ResetStandingOrdersRuntimeState();
         }
 
         public void SetStewardThirstLimit(float percent)
@@ -2887,7 +3219,129 @@ namespace SailwindVirtualCrew
                 _lastFirstOfficerTrimGameHours = currentGameHours;
             }
 
+            TickFirstOfficerStandingOrders(currentGameHours);
+
             _lastFirstOfficerLocalTime = currentLocalTime;
+        }
+
+        private void TickFirstOfficerStandingOrders(float currentGameHours)
+        {
+            if (!FirstOfficerStandingOrdersEnabled)
+            {
+                ResetStandingOrdersRuntimeState();
+                return;
+            }
+
+            if (!WindAngleUtils.TryGetApparentWindAngle(out float apparentWindAngle))
+                return;
+
+            var state = WindAngleUtils.ClassifyStandingOrderWindState(apparentWindAngle);
+            if (state == StandingOrderWindState.None)
+                return;
+
+            if (_lastStandingOrdersIssuedState == StandingOrderWindState.None)
+            {
+                IssueStandingOrdersForWindState(state);
+                RecordStandingOrdersIssuedState(state);
+                return;
+            }
+
+            if (state == _lastStandingOrdersIssuedState)
+            {
+                _pendingStandingOrdersReturnState = StandingOrderWindState.None;
+                _standingOrdersReturnStartedGameHours = -1f;
+                return;
+            }
+
+            if (state == _previousStandingOrdersIssuedState)
+            {
+                if (_pendingStandingOrdersReturnState != state)
+                {
+                    _pendingStandingOrdersReturnState = state;
+                    _standingOrdersReturnStartedGameHours = currentGameHours;
+                    return;
+                }
+
+                if (currentGameHours - _standingOrdersReturnStartedGameHours < FirstOfficerStandingOrderReturnDelayHours)
+                    return;
+
+                IssueStandingOrdersForWindState(state);
+                RecordStandingOrdersIssuedState(state);
+                return;
+            }
+
+            IssueStandingOrdersForWindState(state);
+            RecordStandingOrdersIssuedState(state);
+        }
+
+        private void IssueStandingOrdersForWindState(StandingOrderWindState state)
+        {
+            foreach (var sail in allSails)
+            {
+                if (!TryGetStandingOrderTargets(state, sail, out StandingOrderTargets targets))
+                    continue;
+
+                QueueStandingOrderTargets(sail, targets);
+            }
+        }
+
+        private void QueueStandingOrderTargets(ICommonSailActions sail, StandingOrderTargets targets)
+        {
+            if (sail == null || targets == null)
+                return;
+
+            if (targets.HasHalyard)
+                QueueStandingOrderWinch(sail, "Standing Order Halyard",
+                    sail.getHalyardWinch(), targets.Halyard);
+
+            var simple = sail as SimpleSail;
+            if (simple != null && targets.HasSimpleSheet)
+            {
+                QueueStandingOrderWinch(sail, "Standing Order Sheet",
+                    simple.getSheetWinch(), targets.SimpleSheet);
+                return;
+            }
+
+            var dual = sail as DualSheetSail;
+            if (dual == null)
+                return;
+
+            if (targets.HasPortSheet)
+                QueueStandingOrderWinch(sail, "Standing Order Port Sheet",
+                    dual.getPortSheetWinch(), targets.PortSheet);
+
+            if (targets.HasStarboardSheet)
+                QueueStandingOrderWinch(sail, "Standing Order Starboard Sheet",
+                    dual.getStarboardSheetWinch(), targets.StarboardSheet);
+        }
+
+        private void QueueStandingOrderWinch(ICommonSailActions sail, string commandName,
+                                             GPButtonRopeWinch winch, float target)
+        {
+            if (winch == null || winch.rope == null)
+                return;
+
+            var winchTarget = new WinchTarget(winch, target);
+            if (Mathf.Abs(winch.rope.currentLength - winchTarget.TargetLength) <= StandingOrderWinchTolerance)
+                return;
+
+            AddWorkRequest(new WorkRequest(sail, commandName, winchTarget));
+        }
+
+        private void RecordStandingOrdersIssuedState(StandingOrderWindState state)
+        {
+            _previousStandingOrdersIssuedState = _lastStandingOrdersIssuedState;
+            _lastStandingOrdersIssuedState = state;
+            _pendingStandingOrdersReturnState = StandingOrderWindState.None;
+            _standingOrdersReturnStartedGameHours = -1f;
+        }
+
+        private void ResetStandingOrdersRuntimeState()
+        {
+            _lastStandingOrdersIssuedState = StandingOrderWindState.None;
+            _previousStandingOrdersIssuedState = StandingOrderWindState.None;
+            _pendingStandingOrdersReturnState = StandingOrderWindState.None;
+            _standingOrdersReturnStartedGameHours = -1f;
         }
 
         private void RotateWatchCrew()

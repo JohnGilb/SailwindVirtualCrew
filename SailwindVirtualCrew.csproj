@@ -106,6 +106,7 @@
     <Compile Include="Core\SupercargoTradeService.cs" />
     <Compile Include="Core\PlayerWaitingState.cs" />
     <Compile Include="Core\PerformanceInstrumentation.cs" />
+    <Compile Include="Core\StandingOrderTargets.cs" />
     <Compile Include="Core\VirtualCrewManager.cs" />
     <Compile Include="Core\VirtualCrewSaveData.cs" />
     <Compile Include="Crew\CrewAgent.cs" />
@@ -149,6 +150,7 @@
     <Compile Include="Utilities\CrewApiProbe.cs" />
     <Compile Include="Utilities\LocatorUtils.cs" />
     <Compile Include="Utilities\WeatherUtils.cs" />
+    <Compile Include="Utilities\WindAngleUtils.cs" />
     <Compile Include="Windows\VirtualCrewDebugWindow.cs" />
     <Compile Include="Windows\WindowLauncherWindow.cs" />
     <Compile Include="Windows\CrewRosterWindow.cs" />
@@ -160,6 +162,7 @@
     <Compile Include="Windows\SupercargoWindow.cs" />
     <Compile Include="Windows\StewardWindow.cs" />
     <Compile Include="Windows\FirstOfficerWindow.cs" />
+    <Compile Include="Windows\StandingOrdersWindow.cs" />
     <Compile Include="Windows\NavigatorWindow.cs" />
     <Compile Include="Windows\NavigatorMapWindow.cs" />
     <Compile Include="Windows\NavigatorShipLogWindow.cs" />

@@ -385,8 +385,8 @@ namespace SailwindVirtualCrew
                     bool inGroup = selectedGroup.Contains(selectedSail);
                     AddRow(CreateButton(inGroup ? "Remove from " + selectedGroup.Name : "Add to " + selectedGroup.Name, () =>
                     {
-                        if (selectedGroup.Contains(selectedSail)) selectedGroup.RemoveSail(selectedSail);
-                        else selectedGroup.AddSail(selectedSail);
+                        if (selectedGroup.Contains(selectedSail)) manager.RemoveSailFromGroup(selectedGroup, selectedSail);
+                        else manager.AddSailToGroup(selectedGroup, selectedSail);
                         RequestRebuild();
                     }));
                 }

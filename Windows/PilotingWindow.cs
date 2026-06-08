@@ -271,40 +271,22 @@ namespace SailwindVirtualCrew
 
         private float GetApparentWindAngle()
         {
-            Transform boat = GetSailInfoBoatTransform();
-            Rigidbody body = GetSailInfoBoatRigidbody(boat);
-            if (boat == null || body == null) return 0f;
-
-            if (!TryGetSailInfoApparentWind(out Vector3 apparentWind)) return 0f;
-
-            return Vector3.SignedAngle(-boat.forward, apparentWind.normalized, Vector3.up);
+            return WindAngleUtils.TryGetApparentWindAngle(out float angle) ? angle : 0f;
         }
 
         private bool TryGetSailInfoApparentWind(out Vector3 apparentWind)
         {
-            apparentWind = Vector3.zero;
-            Transform boat = GetSailInfoBoatTransform();
-            Rigidbody body = GetSailInfoBoatRigidbody(boat);
-            if (boat == null || body == null) return false;
-
-            apparentWind = Wind.currentWind - body.velocity;
-            apparentWind.y = 0f;
-            return apparentWind.sqrMagnitude >= 0.001f;
+            return WindAngleUtils.TryGetSailInfoApparentWind(out apparentWind);
         }
 
         private Transform GetSailInfoBoatTransform()
         {
-            var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
-            if (!worldBoat) return null;
-
-            var purchasableBoat = worldBoat.GetComponentInParent<PurchasableBoat>();
-            return purchasableBoat ? purchasableBoat.transform : worldBoat.transform;
+            return WindAngleUtils.GetSailInfoBoatTransform();
         }
 
         private Rigidbody GetSailInfoBoatRigidbody(Transform boat)
         {
-            if (boat == null) return null;
-            return boat.GetComponent<Rigidbody>() ?? boat.GetComponentInParent<Rigidbody>();
+            return WindAngleUtils.GetSailInfoBoatRigidbody(boat);
         }
 
         private static string Cardinal(float heading)
@@ -328,13 +310,7 @@ namespace SailwindVirtualCrew
 
         private static string FormatWindAngleCoarse(float angle)
         {
-            float abs = Mathf.Abs(angle);
-            string side = angle >= 0f ? "Stbd" : "Port";
-            if (abs < 10f) return "Ahead";
-            if (abs < 60f) return side + " Close";
-            if (abs < 115f) return side + " Beam";
-            if (abs < 160f) return side + " Broad";
-            return side + " Run";
+            return WindAngleUtils.FormatWindAngleCoarse(angle);
         }
 
         private static string FormatTarget(float heading, float windAngle, bool windHold)
