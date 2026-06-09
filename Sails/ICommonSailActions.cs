@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,6 +11,7 @@ namespace SailwindVirtualCrew
         string getSailName();
         string getDefaultIdentifier();
         string FriendlyName { get; set; }
+        Sail getRealSail();
         GPButtonRopeWinch getHalyardWinch();
         void stop();
         void deploySail();
