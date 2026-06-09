@@ -3862,6 +3862,10 @@ namespace SailwindVirtualCrew
         {
             foreach (var sail in allSails)
             {
+                var realSail = sail.getRealSail();
+                if (realSail != null && realSail.currentUnroll < 0.05f)
+                    continue;
+
                 if (sail is SimpleSail simple)
                 {
                     AddTrimRequest(new TrimRequest(simple));
