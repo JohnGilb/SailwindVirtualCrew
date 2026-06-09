@@ -170,15 +170,16 @@ namespace SailwindVirtualCrew
 
             // ── Available at Port ────────────────────────────────────────────
             GUILayout.Space(8);
-            GUILayout.Label("Available at Port:");
             var avail = mgr.AvailableAtPort;
-            if (avail.Count == 0)
-            {
-                GUILayout.Label(mgr.CurrentPort == null
-                    ? "Visit a port to hire crew."
-                    : "No crew available here; visit a Port Trader.");
-            }
+            string availableAtPortLabel;
+            if (mgr.CurrentPort == null)
+                availableAtPortLabel = "Visit a Port Trader to hire crew";
+            else if (avail.Count == 0)
+                availableAtPortLabel = $"Crew Available Here: 0. Refresh in {mgr.GetPortCrewRefreshDaysRemaining()} days.";
             else
+                availableAtPortLabel = $"Crew Available Here: {avail.Count}";
+            GUILayout.Label(availableAtPortLabel);
+            if (avail.Count > 0)
             {
                 foreach (var c in avail)
                 {
@@ -207,6 +208,10 @@ namespace SailwindVirtualCrew
                     if (!canHire)
                         GUILayout.Label(hireReason);
                 }
+            }
+            else
+            {
+                selectedAvailable = null;
             }
 
             _resizer.HandleInWindow(ref windowRect);

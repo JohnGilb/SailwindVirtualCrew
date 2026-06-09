@@ -90,6 +90,7 @@ namespace SailwindVirtualCrew
 
         private const int SalaryCurrency = 0;
         private const int SalaryPerCrewPerDay = 10;
+        private const int PortCrewRefreshIntervalDays = 7;
         private const int QuartermasterWaterRefillCooldownDays = 7;
         private const float WaterLiquidIndex = 1f;
         private const float BarrelCapacityThreshold = 30f;
@@ -154,7 +155,7 @@ namespace SailwindVirtualCrew
                 return false;
             }
 
-            return GameState.day - LastPortCrewRefreshDay >= 7;
+            return GameState.day - LastPortCrewRefreshDay >= PortCrewRefreshIntervalDays;
         }
 
         private void PayDailySalaries()
@@ -202,6 +203,19 @@ namespace SailwindVirtualCrew
             LastPortCrewRefreshDay = GameState.day;
             if (CurrentPort != null && PortCrewPools.TryGetValue(CurrentPort.GetPortName(), out var current))
                 AvailableAtPort = current;
+        }
+
+        public int GetPortCrewRefreshDaysRemaining()
+        {
+            if (LastPortCrewRefreshDay < 0)
+                return PortCrewRefreshIntervalDays;
+
+            float refreshAtHours = (LastPortCrewRefreshDay + PortCrewRefreshIntervalDays) * 24f;
+            float hoursRemaining = refreshAtHours - GetCurrentGameHours();
+            if (hoursRemaining <= 0f)
+                return 0;
+
+            return (int)Math.Ceiling(hoursRemaining / 24f);
         }
 
         private Dictionary<string, bool> GetKnownPortHubFlags()
@@ -1609,6 +1623,7 @@ namespace SailwindVirtualCrew
 
         public void ClearCurrentPort()
         {
+            CurrentPort = null;
             AvailableAtPort = new List<Crewman>();
         }
 
