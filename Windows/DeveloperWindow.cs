@@ -33,7 +33,7 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 30f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 30f * 15; // developer actions plus instrumentation controls
+                height += 30f * 16; // developer actions plus instrumentation controls
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Developer Tools");
@@ -70,6 +70,14 @@ namespace SailwindVirtualCrew
                     showLegendaryWindow = !showLegendaryWindow;
                 if (GUILayout.Button("Refresh Crew at Ports"))
                     VirtualCrewManager.Instance.RefreshPortCrewPools();
+                if (GUILayout.Button("Fill Water Barrels"))
+                {
+                    int refilled = VirtualCrewManager.Instance.FillAllWaterBarrelsOnActiveVessel();
+                    NotificationUi.instance?.ShowNotification(
+                        refilled > 0
+                            ? "Filled " + refilled + " water barrel" + (refilled == 1 ? "" : "s")
+                            : "No empty water barrels found");
+                }
                 if (GUILayout.Button("Drain 60 Stamina (All Crew)"))
                     foreach (var c in VirtualCrewManager.Instance.Crew)
                         c.DrainStamina(60f);

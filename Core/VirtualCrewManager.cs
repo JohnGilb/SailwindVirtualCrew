@@ -38,7 +38,6 @@ namespace SailwindVirtualCrew
         private const float OffShiftSleepStaminaRatio = 0.8f;
         private const float FirstOfficerTrimIntervalHours = 2f;
         private const float FirstOfficerStandingOrderReturnDelayHours = 1f;
-        private const float StandingOrderWinchTolerance = 0.05f;
         private const float DayShiftStartHour = 6f;
         private const float NightShiftStartHour = 18f;
         private const float ShiftSleepDelayHours = 5f / 60f;
@@ -73,6 +72,9 @@ namespace SailwindVirtualCrew
         public bool FirstOfficerStandingOrdersEnabled { get; private set; }
         public float StewardThirstLimitPercent { get; private set; } = 50f;
         public float StewardHungerLimitPercent { get; private set; } = 50f;
+        public float MaintenanceBailOneDeckhandThresholdPercent { get; private set; } = 15f;
+        public float MaintenanceBailTwoDeckhandsThresholdPercent { get; private set; } = 35f;
+        public float MaintenanceBailAllDeckhandsThresholdPercent { get; private set; } = 66f;
 
         public List<SailGroup> SailGroups { get; private set; }
         public SailGroup AllSailsGroup { get; private set; }
@@ -462,9 +464,16 @@ namespace SailwindVirtualCrew
             var vesselData = GetCurrentVesselData();
             if (vesselData == null) return;
             var list = vesselData.favoriteActions ?? (vesselData.favoriteActions = new List<FavoriteAction>());
-            RefreshFavoriteActionGroupName(action);
+            RefreshFavoriteActionGroupNames(action);
             list.Add(action);
             CrewDebugLog.Ok("Favorites", "Created favorite action '" + action.DisplayName + "'");
+        }
+
+        public FavoriteAction CreateFavoriteAction(string name)
+        {
+            var action = FavoriteAction.Custom(name);
+            AddFavoriteAction(action);
+            return action;
         }
 
         public void RemoveFavoriteAction(FavoriteAction action)
@@ -473,6 +482,12 @@ namespace SailwindVirtualCrew
             var vesselData = GetCurrentVesselData();
             if (vesselData?.favoriteActions == null) return;
             vesselData.favoriteActions.Remove(action);
+        }
+
+        public void SetFavoriteActionName(FavoriteAction action, string name)
+        {
+            if (action == null) return;
+            action.name = string.IsNullOrEmpty(name) ? "New Favorite" : name.Trim();
         }
 
         public bool IsCargoMarkedKeep(ShipItem item)
@@ -553,7 +568,15 @@ namespace SailwindVirtualCrew
             if (string.IsNullOrEmpty(groupId)) return;
             var vesselData = GetCurrentVesselData();
             if (vesselData?.favoriteActions == null) return;
-            vesselData.favoriteActions.RemoveAll(a => a.groupId == groupId);
+            foreach (var action in vesselData.favoriteActions.ToList())
+            {
+                if (action.commands != null)
+                    action.commands.RemoveAll(c => c.groupId == groupId);
+            }
+
+            vesselData.favoriteActions.RemoveAll(a =>
+                a.groupId == groupId
+                || (a.IsCustom && (a.commands == null || a.commands.Count == 0)));
         }
 
         public void SetFavoriteActionKey(FavoriteAction action, KeyCode key)
@@ -576,7 +599,14 @@ namespace SailwindVirtualCrew
         public void InvokeFavoriteAction(FavoriteAction action)
         {
             if (action == null) return;
-            RefreshFavoriteActionGroupName(action);
+            RefreshFavoriteActionGroupNames(action);
+            if (action.IsCustom)
+            {
+                InvokeCustomFavoriteAction(action);
+                CrewDebugLog.Ok("Favorites", "Invoked favorite action '" + action.DisplayName + "'");
+                return;
+            }
+
             var group = GetFavoriteActionGroup(action);
             if (group == null)
             {
@@ -586,6 +616,222 @@ namespace SailwindVirtualCrew
 
             InvokeFavoriteAction(group, action);
             CrewDebugLog.Ok("Favorites", "Invoked favorite action '" + action.DisplayName + "'");
+        }
+
+        public void SetFavoriteActionHalyard(FavoriteAction action, SailGroup group, float target)
+        {
+            var command = GetOrCreateFavoriteActionCommand(action, group);
+            if (command == null) return;
+            command.hasHalyard = true;
+            command.halyard = Mathf.Clamp01(target);
+        }
+
+        public void SetFavoriteActionSimpleSheet(FavoriteAction action, SailGroup group, float target)
+        {
+            var command = GetOrCreateFavoriteActionCommand(action, group);
+            if (command == null) return;
+            command.hasSimpleSheet = true;
+            command.simpleSheet = Mathf.Clamp01(target);
+        }
+
+        public void SetFavoriteActionDualSheet(FavoriteAction action, SailGroup group,
+                                               float portTarget, float starboardTarget)
+        {
+            var command = GetOrCreateFavoriteActionCommand(action, group);
+            if (command == null) return;
+            command.hasPortSheet = true;
+            command.portSheet = Mathf.Clamp01(portTarget);
+            command.hasStarboardSheet = true;
+            command.starboardSheet = Mathf.Clamp01(starboardTarget);
+        }
+
+        public void SetFavoriteActionTrim(FavoriteAction action, SailGroup group)
+        {
+            var command = GetOrCreateFavoriteActionCommand(action, group);
+            if (command == null) return;
+            command.trim = true;
+        }
+
+        public void ClearFavoriteActionGroup(FavoriteAction action, SailGroup group)
+        {
+            if (action?.commands == null || group == null) return;
+            action.commands.RemoveAll(c => c.groupId == group.Id);
+        }
+
+        public void SetFavoriteShipAction(FavoriteAction action, FavoriteShipAction actionKind, bool enabled)
+        {
+            if (action == null)
+                return;
+
+            action.kind = FavoriteActionKind.Custom;
+            switch (actionKind)
+            {
+                case FavoriteShipAction.DropAnchor:
+                    action.dropAnchor = enabled;
+                    break;
+                case FavoriteShipAction.RaiseAnchor:
+                    action.raiseAnchor = enabled;
+                    break;
+                case FavoriteShipAction.MoorPort:
+                    action.moorPort = enabled;
+                    break;
+                case FavoriteShipAction.MoorStarboard:
+                    action.moorStarboard = enabled;
+                    break;
+            }
+        }
+
+        public bool TryGetFavoriteActionTargets(FavoriteAction action, SailGroup group,
+                                                out StandingOrderTargets targets)
+        {
+            targets = null;
+            if (action?.commands == null || group == null)
+                return false;
+
+            var command = action.commands.FirstOrDefault(c => c.groupId == group.Id)
+                ?? action.commands.FirstOrDefault(c => c.groupName == group.Name);
+            if (command == null)
+                return false;
+
+            targets = FavoriteCommandToTargets(command);
+            return targets.HasAny;
+        }
+
+        private FavoriteActionGroupCommand GetOrCreateFavoriteActionCommand(FavoriteAction action, SailGroup group)
+        {
+            if (action == null || group == null)
+                return null;
+
+            action.kind = FavoriteActionKind.Custom;
+            if (action.commands == null)
+                action.commands = new List<FavoriteActionGroupCommand>();
+
+            var command = action.commands.FirstOrDefault(c => c.groupId == group.Id);
+            if (command == null)
+            {
+                command = new FavoriteActionGroupCommand
+                {
+                    groupId = group.Id,
+                    groupName = group.Name
+                };
+                action.commands.Add(command);
+            }
+
+            command.groupName = group.Name;
+            return command;
+        }
+
+        private void InvokeCustomFavoriteAction(FavoriteAction action)
+        {
+            InvokeFavoriteShipActions(action);
+
+            if (action.commands == null)
+                return;
+
+            foreach (var command in action.commands.ToList())
+            {
+                var group = GetFavoriteActionGroup(command.groupId, command.groupName);
+                if (group == null)
+                    continue;
+
+                InvokeFavoriteActionCommand(group, command);
+            }
+        }
+
+        private void InvokeFavoriteShipActions(FavoriteAction action)
+        {
+            if (action.dropAnchor)
+                AddAnchorWorkRequest("Drop Anchor", 1f);
+            if (action.raiseAnchor)
+                AddAnchorWorkRequest("Raise Anchor", 0f);
+            if (action.moorPort)
+                AddMooringRequests(MooringSide.Port);
+            if (action.moorStarboard)
+                AddMooringRequests(MooringSide.Starboard);
+        }
+
+        private void AddAnchorWorkRequest(string commandName, float target)
+        {
+            if (AnchorWinches == null || AnchorWinches.Count == 0)
+                return;
+
+            AddWorkRequest(new WorkRequest(null, commandName,
+                AnchorWinches.Select(w => new WinchTarget(w, target)).ToArray()));
+        }
+
+        private void InvokeFavoriteActionCommand(SailGroup group, FavoriteActionGroupCommand command)
+        {
+            if (command.hasHalyard)
+            {
+                foreach (var sail in group.GetMembers(AllSails))
+                    AddWorkRequest(new WorkRequest(sail, "Halyard " + FormatFavoriteTarget(command.halyard),
+                        new WinchTarget(sail.getHalyardWinch(), command.halyard)));
+            }
+
+            if (command.hasSimpleSheet)
+            {
+                foreach (var sail in group.GetMembers(AllSails).OfType<SimpleSail>())
+                    AddWorkRequest(new WorkRequest(sail, "Sheet " + FormatFavoriteTarget(command.simpleSheet),
+                        new WinchTarget(sail.getSheetWinch(), command.simpleSheet)));
+            }
+
+            if (command.hasPortSheet || command.hasStarboardSheet)
+            {
+                foreach (var sail in group.GetMembers(AllSails).OfType<DualSheetSail>())
+                {
+                    if (command.hasPortSheet)
+                        AddWorkRequest(new WorkRequest(sail, "Port Sheet " + FormatFavoriteTarget(command.portSheet),
+                            new WinchTarget(sail.getPortSheetWinch(), command.portSheet)));
+                    if (command.hasStarboardSheet)
+                        AddWorkRequest(new WorkRequest(sail, "Starboard Sheet " + FormatFavoriteTarget(command.starboardSheet),
+                            new WinchTarget(sail.getStarboardSheetWinch(), command.starboardSheet)));
+                }
+            }
+
+            if (command.trim)
+                QueueFavoriteTrimRequests(group);
+        }
+
+        private void QueueFavoriteTrimRequests(SailGroup group)
+        {
+            foreach (var sail in group.GetMembers(AllSails))
+            {
+                if (sail is SimpleSail simple)
+                    AddTrimRequest(new TrimRequest(simple));
+                else if (sail is DualSheetSail dual)
+                {
+                    if (dual.getSubtype() == DualSheetSail.DualSheetSailSubtype.Jib)
+                        AddJibTrimRequest(new JibTrimRequest(dual));
+                    else if (dual.getSubtype() == DualSheetSail.DualSheetSailSubtype.Square)
+                        AddSquareTrimRequest(new SquareTrimRequest(dual));
+                }
+            }
+        }
+
+        private static StandingOrderTargets FavoriteCommandToTargets(FavoriteActionGroupCommand command)
+        {
+            return new StandingOrderTargets
+            {
+                HasHalyard = command.hasHalyard,
+                Halyard = Mathf.Clamp01(command.halyard),
+                HasSimpleSheet = command.hasSimpleSheet,
+                SimpleSheet = Mathf.Clamp01(command.simpleSheet),
+                HasPortSheet = command.hasPortSheet,
+                PortSheet = Mathf.Clamp01(command.portSheet),
+                HasStarboardSheet = command.hasStarboardSheet,
+                StarboardSheet = Mathf.Clamp01(command.starboardSheet),
+                HasTrim = command.trim
+            };
+        }
+
+        private static string FormatFavoriteTarget(float target)
+        {
+            if (Mathf.Abs(target - 0.00f) <= 0.01f) return "0%";
+            if (Mathf.Abs(target - 0.25f) <= 0.01f) return "1/4";
+            if (Mathf.Abs(target - 0.50f) <= 0.01f) return "1/2";
+            if (Mathf.Abs(target - 0.75f) <= 0.01f) return "3/4";
+            if (Mathf.Abs(target - 1.00f) <= 0.01f) return "Full";
+            return Mathf.RoundToInt(Mathf.Clamp01(target) * 100f) + "%";
         }
 
         private void InvokeFavoriteAction(SailGroup group, FavoriteAction action)
@@ -644,18 +890,35 @@ namespace SailwindVirtualCrew
 
         private SailGroup GetFavoriteActionGroup(FavoriteAction action)
         {
-            var group = SailGroups.FirstOrDefault(g => g.Id == action.groupId);
+            return GetFavoriteActionGroup(action.groupId, action.groupName);
+        }
+
+        private SailGroup GetFavoriteActionGroup(string groupId, string groupName)
+        {
+            var group = SailGroups.FirstOrDefault(g => g.Id == groupId);
             if (group != null)
                 return group;
 
-            return SailGroups.FirstOrDefault(g => g.Name == action.groupName);
+            return SailGroups.FirstOrDefault(g => g.Name == groupName);
         }
 
-        private void RefreshFavoriteActionGroupName(FavoriteAction action)
+        private void RefreshFavoriteActionGroupNames(FavoriteAction action)
         {
+            if (action == null) return;
+
             var group = GetFavoriteActionGroup(action);
             if (group != null)
                 action.groupName = group.Name;
+
+            if (action.commands == null)
+                return;
+
+            foreach (var command in action.commands)
+            {
+                var commandGroup = GetFavoriteActionGroup(command.groupId, command.groupName);
+                if (commandGroup != null)
+                    command.groupName = commandGroup.Name;
+            }
         }
 
         private VesselSaveData GetCurrentVesselData()
@@ -1273,6 +1536,11 @@ namespace SailwindVirtualCrew
             return refilled;
         }
 
+        public int FillAllWaterBarrelsOnActiveVessel()
+        {
+            return RefillWaterBarrels(int.MaxValue);
+        }
+
         private static bool IsRefillableWaterBarrelOnActiveVessel(ShipItemBottle bottle)
         {
             if (bottle == null || !bottle.sold || bottle.GetCapacity() < BarrelCapacityThreshold)
@@ -1640,6 +1908,54 @@ namespace SailwindVirtualCrew
         {
             StewardThirstLimitPercent = settingsVersion <= 0 ? 50f : Mathf.Clamp(thirstLimitPercent, 0f, 100f);
             StewardHungerLimitPercent = settingsVersion <= 0 ? 50f : Mathf.Clamp(hungerLimitPercent, 0f, 100f);
+        }
+
+        public void SetMaintenanceBailOneDeckhandThreshold(float percent)
+        {
+            MaintenanceBailOneDeckhandThresholdPercent = Mathf.Clamp(percent, 0f, 100f);
+            if (MaintenanceBailTwoDeckhandsThresholdPercent < MaintenanceBailOneDeckhandThresholdPercent)
+                MaintenanceBailTwoDeckhandsThresholdPercent = MaintenanceBailOneDeckhandThresholdPercent;
+            if (MaintenanceBailAllDeckhandsThresholdPercent < MaintenanceBailTwoDeckhandsThresholdPercent)
+                MaintenanceBailAllDeckhandsThresholdPercent = MaintenanceBailTwoDeckhandsThresholdPercent;
+        }
+
+        public void SetMaintenanceBailTwoDeckhandsThreshold(float percent)
+        {
+            MaintenanceBailTwoDeckhandsThresholdPercent = Mathf.Clamp(percent, 0f, 100f);
+            if (MaintenanceBailOneDeckhandThresholdPercent > MaintenanceBailTwoDeckhandsThresholdPercent)
+                MaintenanceBailOneDeckhandThresholdPercent = MaintenanceBailTwoDeckhandsThresholdPercent;
+            if (MaintenanceBailAllDeckhandsThresholdPercent < MaintenanceBailTwoDeckhandsThresholdPercent)
+                MaintenanceBailAllDeckhandsThresholdPercent = MaintenanceBailTwoDeckhandsThresholdPercent;
+        }
+
+        public void SetMaintenanceBailAllDeckhandsThreshold(float percent)
+        {
+            MaintenanceBailAllDeckhandsThresholdPercent = Mathf.Clamp(percent, 0f, 100f);
+            if (MaintenanceBailTwoDeckhandsThresholdPercent > MaintenanceBailAllDeckhandsThresholdPercent)
+                MaintenanceBailTwoDeckhandsThresholdPercent = MaintenanceBailAllDeckhandsThresholdPercent;
+            if (MaintenanceBailOneDeckhandThresholdPercent > MaintenanceBailTwoDeckhandsThresholdPercent)
+                MaintenanceBailOneDeckhandThresholdPercent = MaintenanceBailTwoDeckhandsThresholdPercent;
+        }
+
+        public void RestoreMaintenanceSettings(
+            int settingsVersion,
+            float oneDeckhandThresholdPercent,
+            float twoDeckhandsThresholdPercent,
+            float allDeckhandsThresholdPercent)
+        {
+            if (settingsVersion <= 0)
+            {
+                MaintenanceBailOneDeckhandThresholdPercent = 15f;
+                MaintenanceBailTwoDeckhandsThresholdPercent = 35f;
+                MaintenanceBailAllDeckhandsThresholdPercent = 66f;
+                return;
+            }
+
+            MaintenanceBailOneDeckhandThresholdPercent = Mathf.Clamp(oneDeckhandThresholdPercent, 0f, 100f);
+            MaintenanceBailTwoDeckhandsThresholdPercent = Mathf.Clamp(twoDeckhandsThresholdPercent, 0f, 100f);
+            MaintenanceBailAllDeckhandsThresholdPercent = Mathf.Clamp(allDeckhandsThresholdPercent, 0f, 100f);
+            SetMaintenanceBailTwoDeckhandsThreshold(MaintenanceBailTwoDeckhandsThresholdPercent);
+            SetMaintenanceBailAllDeckhandsThreshold(MaintenanceBailAllDeckhandsThresholdPercent);
         }
 
         public void RestorePayData(int totalSalaryPay, int[] totalSharePayByCurrency, Dictionary<int, CargoPaySaveData> cargoPayRecords)
@@ -2223,10 +2539,29 @@ namespace SailwindVirtualCrew
 
         public void AddWorkRequest(WorkRequest request)
         {
+            if (IsNoOpSailWorkRequest(request))
+                return;
+
             // Reject if any of this request's target winches are already claimed.
             if (request.Targets.Any(t => HasPendingRequestForWinch(t.Winch)))
                 return;
             WorkRequests.Add(request);
+        }
+
+        private static bool IsNoOpSailWorkRequest(WorkRequest request)
+        {
+            if (request == null || request.Sail == null || request.Targets == null || request.Targets.Length == 0)
+                return false;
+
+            return request.Targets.All(IsWinchTargetWithinNoOpTolerance);
+        }
+
+        private static bool IsWinchTargetWithinNoOpTolerance(WinchTarget target)
+        {
+            return target != null
+                && target.Winch != null
+                && target.Winch.rope != null
+                && target.IsAtTarget();
         }
 
         public void CancelWorkRequest(WorkRequest request)
@@ -2780,6 +3115,12 @@ namespace SailwindVirtualCrew
 
         private void TickSteward()
         {
+            if (!IsPlayerEmbarkedOnActiveVessel())
+            {
+                CancelStewardSurvivalRequests();
+                return;
+            }
+
             if (StewardWaterRequests != null)
             {
                 foreach (var request in StewardWaterRequests)
@@ -2841,6 +3182,29 @@ namespace SailwindVirtualCrew
             }
         }
 
+        private void CancelStewardSurvivalRequests()
+        {
+            if (StewardWaterRequests != null)
+            {
+                foreach (var request in StewardWaterRequests.ToList())
+                    CancelStewardWaterRequest(request);
+                StewardWaterRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            if (StewardFoodRequests != null)
+            {
+                foreach (var request in StewardFoodRequests.ToList())
+                    CancelStewardFoodRequest(request);
+                StewardFoodRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+        }
+
+        private static bool IsPlayerEmbarkedOnActiveVessel()
+        {
+            var context = CrewBoatContextResolver.Resolve();
+            return context != null && context.PlayerEmbarked;
+        }
+
         private static bool TryFindStewardWaterSource(out ShipItemBottle barrel)
         {
             barrel = null;
@@ -2881,7 +3245,14 @@ namespace SailwindVirtualCrew
                 return false;
 
             var scanContext = new StewardFoodSourceScanContext(vesselContext);
-            float bestEnergy = float.MinValue;
+            ShipItemFood bestVitaminFood = null;
+            float bestVitaminEnergy = float.MinValue;
+            ShipItemFood bestProteinFood = null;
+            float bestProteinEnergy = float.MinValue;
+            ShipItemFood bestSafeFood = null;
+            float bestSafeEnergy = float.MinValue;
+            ShipItemFood bestAnyFood = null;
+            float bestAnyEnergy = float.MinValue;
             foreach (var candidate in GameObject.FindObjectsOfType<ShipItemFood>())
             {
                 if (!IsStewardFoodSource(candidate, scanContext)
@@ -2889,14 +3260,80 @@ namespace SailwindVirtualCrew
                     continue;
 
                 float energy = candidate.GetEnergyPerBite();
-                if (food == null || energy > bestEnergy)
+                float protein = GetFoodProteinPerBite(candidate);
+                float vitamins = GetFoodVitaminsPerBite(candidate);
+                if (vitamins > 0f && (bestVitaminFood == null || energy > bestVitaminEnergy))
                 {
-                    food = candidate;
-                    bestEnergy = energy;
+                    bestVitaminFood = candidate;
+                    bestVitaminEnergy = energy;
+                }
+
+                if (protein > 0f && (bestProteinFood == null || energy > bestProteinEnergy))
+                {
+                    bestProteinFood = candidate;
+                    bestProteinEnergy = energy;
+                }
+
+                if (PlayerNeeds.protein + protein <= 100f && PlayerNeeds.vitamins + vitamins <= 100f)
+                {
+                    if (bestSafeFood == null || energy > bestSafeEnergy)
+                    {
+                        bestSafeFood = candidate;
+                        bestSafeEnergy = energy;
+                    }
+                }
+
+                if (bestAnyFood == null || energy > bestAnyEnergy)
+                {
+                    bestAnyFood = candidate;
+                    bestAnyEnergy = energy;
                 }
             }
 
+            if (PlayerNeeds.vitamins < 20f && bestVitaminFood != null)
+                food = bestVitaminFood;
+            else if (PlayerNeeds.protein < 20f && bestProteinFood != null)
+                food = bestProteinFood;
+            else
+                food = bestSafeFood ?? bestProteinFood ?? bestAnyFood;
+
             return food != null;
+        }
+
+        private static float GetFoodProteinPerBite(ShipItemFood food)
+        {
+            if (food == null)
+                return 0f;
+
+            float protein = food.GetProtein();
+            ApplyFoodAmountAndSpoilage(food, ref protein);
+            return protein;
+        }
+
+        private static float GetFoodVitaminsPerBite(ShipItemFood food)
+        {
+            if (food == null)
+                return 0f;
+
+            float vitamins = food.GetVitamins();
+            ApplyFoodAmountAndSpoilage(food, ref vitamins);
+            return vitamins;
+        }
+
+        private static void ApplyFoodAmountAndSpoilage(ShipItemFood food, ref float nutrition)
+        {
+            if (food.amount >= 1.5f)
+            {
+                float burnt = Mathf.InverseLerp(1.5f, 1.75f, food.amount);
+                nutrition = Mathf.Lerp(nutrition, 0f, burnt);
+            }
+
+            var state = food.GetComponent<FoodState>();
+            if (state != null && state.spoiled > 0.9f)
+            {
+                float spoiled = Mathf.InverseLerp(0.9f, 1f, state.spoiled);
+                nutrition = Mathf.Lerp(nutrition, 0f, spoiled);
+            }
         }
 
         private bool HasActiveStewardFoodRequest(ShipItemFood food)
@@ -3112,16 +3549,16 @@ namespace SailwindVirtualCrew
                 return;
 
             int targetRequests = 0;
-            if (waterLevel >= 0.66f)
+            if (waterLevel >= MaintenanceBailAllDeckhandsThresholdPercent / 100f)
             {
                 WakeSleepingDeckhands();
                 targetRequests = deckhandCount;
             }
-            else if (waterLevel >= 0.35f)
+            else if (waterLevel >= MaintenanceBailTwoDeckhandsThresholdPercent / 100f)
             {
                 targetRequests = deckhandCount >= 2 ? 2 : 1;
             }
-            else if (waterLevel >= 0.15f)
+            else if (waterLevel >= MaintenanceBailOneDeckhandThresholdPercent / 100f)
             {
                 targetRequests = 1;
             }
@@ -3322,7 +3759,7 @@ namespace SailwindVirtualCrew
                 return;
 
             var winchTarget = new WinchTarget(winch, target);
-            if (Mathf.Abs(winch.rope.currentLength - winchTarget.TargetLength) <= StandingOrderWinchTolerance)
+            if (winchTarget.IsAtTarget())
                 return;
 
             AddWorkRequest(new WorkRequest(sail, commandName, winchTarget));

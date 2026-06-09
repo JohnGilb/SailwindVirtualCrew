@@ -9,7 +9,7 @@ namespace SailwindVirtualCrew
         public float TargetLength { get; set; }  // 0.0–1.0
         public float StartLength { get; private set; }
 
-        private const float Tolerance = 0.015f;
+        public const float TargetTolerance = 0.015f;
         private const float Kp        = 2.5f;
         public float MaxPower { get; set; } = 25f;  // set to Strength*5 when crewman is assigned
 
@@ -42,7 +42,7 @@ namespace SailwindVirtualCrew
         }
 
         public bool IsAtTarget() =>
-            Mathf.Abs(Winch.rope.currentLength - TargetLength) <= Tolerance;
+            Mathf.Abs(Winch.rope.currentLength - TargetLength) <= TargetTolerance;
 
         // 0 = rope at task-start length, 100 = rope at target length.
         public float GetProgress()

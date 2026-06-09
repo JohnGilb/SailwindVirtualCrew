@@ -145,6 +145,7 @@
     <Compile Include="UI\IWindowPosition.cs" />
     <Compile Include="UI\WindowVisibilityUtility.cs" />
     <Compile Include="UI\WindowLayoutUtility.cs" />
+    <Compile Include="UI\SailGroupCommandPalette.cs" />
     <Compile Include="UI\SailwindGuiStyle.cs" />
     <Compile Include="UI\WindowResizer.cs" />
     <Compile Include="Utilities\CrewApiProbe.cs" />

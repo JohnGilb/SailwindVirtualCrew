@@ -100,7 +100,7 @@ namespace SailwindVirtualCrew
             phase = Phase.ToPlayer;
             positioningStartTime = Time.time;
             if (!StewardRequestNavigation.TryRetargetNearPlayer(this, "steward water player"))
-                Complete();
+                Cancel();
         }
 
         private void FeedPlayer()

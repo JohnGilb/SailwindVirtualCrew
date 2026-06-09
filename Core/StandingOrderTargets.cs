@@ -12,9 +12,10 @@ namespace SailwindVirtualCrew
         public float PortSheet;
         public bool HasStarboardSheet;
         public float StarboardSheet;
+        public bool HasTrim;
 
         public bool HasAny =>
-            HasHalyard || HasSimpleSheet || HasPortSheet || HasStarboardSheet;
+            HasHalyard || HasSimpleSheet || HasPortSheet || HasStarboardSheet || HasTrim;
 
         public static StandingOrderTargets FromSaveData(StandingOrderSailSaveData data)
         {
@@ -57,7 +58,8 @@ namespace SailwindVirtualCrew
                 HasPortSheet = HasPortSheet,
                 PortSheet = PortSheet,
                 HasStarboardSheet = HasStarboardSheet,
-                StarboardSheet = StarboardSheet
+                StarboardSheet = StarboardSheet,
+                HasTrim = HasTrim
             };
         }
 

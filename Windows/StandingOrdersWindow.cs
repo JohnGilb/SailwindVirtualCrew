@@ -265,107 +265,20 @@ namespace SailwindVirtualCrew
                 return;
             }
 
-            var sails = manager.AllSails;
-            var caps = _selectedGroup.GetCommonCapabilities(sails);
-            if (caps == SailCapability.None)
-            {
-                GUILayout.Label("This group has no sails.");
-                return;
-            }
-
             GUILayout.Label("Editing: " + WindAngleUtils.GetStateLabel(_selectedState) + " / " + _selectedGroup.Name);
-
-            if (caps.HasFlag(SailCapability.Halyard))
-            {
-                GUILayout.Label("Halyard:");
-                GUILayout.BeginHorizontal();
-                DrawHalyardButton(manager, "Reef", 0.00f);
-                DrawHalyardButton(manager, "1/4", 0.25f);
-                DrawHalyardButton(manager, "1/2", 0.50f);
-                DrawHalyardButton(manager, "3/4", 0.75f);
-                DrawHalyardButton(manager, "Full", 1.00f);
-                GUILayout.EndHorizontal();
-            }
-
-            if (caps.HasFlag(SailCapability.SimpleSheet))
-            {
-                GUILayout.Label("Sheet:");
-                GUILayout.BeginHorizontal();
-                DrawSimpleSheetButton(manager, "Hard", 0.00f);
-                DrawSimpleSheetButton(manager, "1/4", 0.25f);
-                DrawSimpleSheetButton(manager, "1/2", 0.50f);
-                DrawSimpleSheetButton(manager, "3/4", 0.75f);
-                DrawSimpleSheetButton(manager, "Let Fly", 1.00f);
-                GUILayout.EndHorizontal();
-            }
-            else if (caps.HasFlag(SailCapability.SquareSheet))
-            {
-                GUILayout.Label("Sheet:");
-                GUILayout.BeginHorizontal();
-                DrawDualSheetButton(manager, "Full Port",
-                    DualSheetSail.DualSheetSailSubtype.Square, 0.00f, 1.00f);
-                DrawDualSheetButton(manager, "1/2 Port",
-                    DualSheetSail.DualSheetSailSubtype.Square, 0.25f, 0.75f);
-                DrawDualSheetButton(manager, "Ahead",
-                    DualSheetSail.DualSheetSailSubtype.Square, 0.50f, 0.50f);
-                DrawDualSheetButton(manager, "1/2 Stbd",
-                    DualSheetSail.DualSheetSailSubtype.Square, 0.75f, 0.25f);
-                DrawDualSheetButton(manager, "Full Stbd",
-                    DualSheetSail.DualSheetSailSubtype.Square, 1.00f, 0.00f);
-                GUILayout.EndHorizontal();
-            }
-            else if (caps.HasFlag(SailCapability.JibSheet))
-            {
-                GUILayout.Label("Sheet:");
-                GUILayout.BeginHorizontal();
-                DrawDualSheetButton(manager, "Full Port",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 0.00f, 1.00f);
-                DrawDualSheetButton(manager, "3/4 Port",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 0.25f, 1.00f);
-                DrawDualSheetButton(manager, "1/2 Port",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 0.50f, 1.00f);
-                DrawDualSheetButton(manager, "1/4 Port",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 0.75f, 1.00f);
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                DrawDualSheetButton(manager, "Let Fly",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 1.00f, 1.00f);
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                DrawDualSheetButton(manager, "Full Stbd",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 1.00f, 0.00f);
-                DrawDualSheetButton(manager, "3/4 Stbd",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 1.00f, 0.25f);
-                DrawDualSheetButton(manager, "1/2 Stbd",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 1.00f, 0.50f);
-                DrawDualSheetButton(manager, "1/4 Stbd",
-                    DualSheetSail.DualSheetSailSubtype.Jib, 1.00f, 0.75f);
-                GUILayout.EndHorizontal();
-            }
+            SailGroupCommandPalette.Draw(
+                manager,
+                _selectedGroup,
+                includeTrim: false,
+                onHalyard: (label, target) => manager.SetStandingOrderHalyard(_selectedState, _selectedGroup, target),
+                onSimpleSheet: (label, target) => manager.SetStandingOrderSimpleSheet(_selectedState, _selectedGroup, target),
+                onDualSheet: (label, subtype, portTarget, starboardTarget) =>
+                    manager.SetStandingOrderDualSheet(_selectedState, _selectedGroup, subtype, portTarget, starboardTarget),
+                onTrim: null);
 
             GUILayout.Space(4);
             if (GUILayout.Button("Clear saved orders for this group / wind"))
                 manager.ClearStandingOrdersForGroup(_selectedState, _selectedGroup);
-        }
-
-        private void DrawHalyardButton(VirtualCrewManager manager, string label, float target)
-        {
-            if (GUILayout.Button(label))
-                manager.SetStandingOrderHalyard(_selectedState, _selectedGroup, target);
-        }
-
-        private void DrawSimpleSheetButton(VirtualCrewManager manager, string label, float target)
-        {
-            if (GUILayout.Button(label))
-                manager.SetStandingOrderSimpleSheet(_selectedState, _selectedGroup, target);
-        }
-
-        private void DrawDualSheetButton(VirtualCrewManager manager, string label,
-                                         DualSheetSail.DualSheetSailSubtype subtype,
-                                         float portTarget, float starboardTarget)
-        {
-            if (GUILayout.Button(label))
-                manager.SetStandingOrderDualSheet(_selectedState, _selectedGroup, subtype, portTarget, starboardTarget);
         }
     }
 }

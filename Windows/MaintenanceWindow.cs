@@ -62,6 +62,8 @@ namespace SailwindVirtualCrew
             float contentHeight = ButtonHeight  // water label
                                 + ButtonHeight  // bucket status
                                 + ButtonHeight  // dirty label
+                                + ButtonHeight  // auto-bailing label
+                                + ButtonHeight * 6 // threshold labels + sliders
                                 + ButtonHeight  // bail button
                                 + ButtonHeight; // swab button
 
@@ -93,6 +95,21 @@ namespace SailwindVirtualCrew
                 ? $"{dirtyLevel * 100f:F2}%"
                 : $"{dirtyLevel * 100f:F0}%";
             GUILayout.Label($"Dirty: {dirtyStr}");
+
+            GUILayout.Space(4);
+            GUILayout.Label("Auto-Bailing");
+            DrawThresholdSlider(
+                "Start",
+                manager.MaintenanceBailOneDeckhandThresholdPercent,
+                manager.SetMaintenanceBailOneDeckhandThreshold);
+            DrawThresholdSlider(
+                "Two Deckhands",
+                manager.MaintenanceBailTwoDeckhandsThresholdPercent,
+                manager.SetMaintenanceBailTwoDeckhandsThreshold);
+            DrawThresholdSlider(
+                "All Deckhands",
+                manager.MaintenanceBailAllDeckhandsThresholdPercent,
+                manager.SetMaintenanceBailAllDeckhandsThreshold);
 
             // ── Bail button ──────────────────────────────────────────────────
             GUI.enabled = bd != null && waterLevel > 0.05f;
@@ -138,6 +155,14 @@ namespace SailwindVirtualCrew
         }
 
         private static string Check(bool value) => value ? "[x]" : "[ ]";
+
+        private static void DrawThresholdSlider(string label, float value, System.Action<float> setter)
+        {
+            GUILayout.Label(label + ": " + Mathf.RoundToInt(value) + "%");
+            float next = GUILayout.HorizontalSlider(value, 0f, 100f);
+            if (!Mathf.Approximately(next, value))
+                setter(next);
+        }
 
         private Texture2D fillTexture;
 

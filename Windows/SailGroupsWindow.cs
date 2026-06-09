@@ -20,7 +20,6 @@ namespace SailwindVirtualCrew
 
         private string groupNameBuffer = "";
         private bool   _renamingGroup  = false;
-        private bool   _creatingFavoriteAction = false;
 
         private const float ButtonHeight      = 28f;
         private const float BaseContentHeight = 300f;
@@ -49,7 +48,7 @@ namespace SailwindVirtualCrew
             }
 
             // Height accounting
-            float contentHeight = ButtonHeight * 4; // favorite action controls + members toggle + header row
+            float contentHeight = ButtonHeight * 3; // members toggle + header row
             contentHeight += manager.SailGroups.Count * ButtonHeight;
             if (selectedGroup != null)
             {
@@ -77,11 +76,6 @@ namespace SailwindVirtualCrew
             var selectedGroup = manager.SelectedGroup;
 
             // ── Group list ──────────────────────────────────────────────────
-            if (GUILayout.Button(_creatingFavoriteAction ? "Cancel Favorite Action" : "Create Favorite Action"))
-                _creatingFavoriteAction = !_creatingFavoriteAction;
-            if (_creatingFavoriteAction)
-                GUILayout.Label("Select a group, then click an action.");
-
             var membersWindow = GetMembersWindow();
             if (membersWindow != null
                 && GUILayout.Button(membersWindow.IsVisible ? "Hide Group Members" : "Show Group Members"))
@@ -256,13 +250,6 @@ namespace SailwindVirtualCrew
         {
             if (GUILayout.Button(label))
             {
-                if (_creatingFavoriteAction)
-                {
-                    manager.AddFavoriteAction(FavoriteAction.Halyard(group, label, target));
-                    _creatingFavoriteAction = false;
-                    return;
-                }
-
                 foreach (var sail in group.GetMembers(allSails))
                     manager.AddWorkRequest(new WorkRequest(sail, "Halyard " + label,
                         new WinchTarget(sail.getHalyardWinch(), target)));
@@ -275,13 +262,6 @@ namespace SailwindVirtualCrew
         {
             if (GUILayout.Button(label))
             {
-                if (_creatingFavoriteAction)
-                {
-                    manager.AddFavoriteAction(FavoriteAction.SimpleSheet(group, label, target));
-                    _creatingFavoriteAction = false;
-                    return;
-                }
-
                 foreach (var sail in group.GetMembers(allSails).OfType<SimpleSail>())
                     manager.AddWorkRequest(new WorkRequest(sail, "Sheet " + label,
                         new WinchTarget(sail.getSheetWinch(), target)));
@@ -294,13 +274,6 @@ namespace SailwindVirtualCrew
         {
             if (GUILayout.Button(label))
             {
-                if (_creatingFavoriteAction)
-                {
-                    manager.AddFavoriteAction(FavoriteAction.RelativeSheet(group, label, delta));
-                    _creatingFavoriteAction = false;
-                    return;
-                }
-
                 foreach (var sail in group.GetMembers(allSails).OfType<SimpleSail>())
                 {
                     var winch  = sail.getSheetWinch();
@@ -318,13 +291,6 @@ namespace SailwindVirtualCrew
         {
             if (GUILayout.Button(label))
             {
-                if (_creatingFavoriteAction)
-                {
-                    manager.AddFavoriteAction(FavoriteAction.DualSheet(group, label, subtype, portTarget, starboardTarget));
-                    _creatingFavoriteAction = false;
-                    return;
-                }
-
                 foreach (var sail in group.GetMembers(allSails).OfType<DualSheetSail>()
                                           .Where(s => s.getSubtype() == subtype))
                 {
@@ -341,13 +307,6 @@ namespace SailwindVirtualCrew
         {
             if (GUILayout.Button("Trim"))
             {
-                if (_creatingFavoriteAction)
-                {
-                    manager.AddFavoriteAction(FavoriteAction.Trim(group));
-                    _creatingFavoriteAction = false;
-                    return;
-                }
-
                 foreach (var sail in group.GetMembers(allSails))
                 {
                     if (sail is SimpleSail simple)
