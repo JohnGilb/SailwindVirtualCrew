@@ -43,6 +43,7 @@ namespace SailwindVirtualCrew
         private GUIStyle _inactiveButtonStyle;
         private GUIStyle _tooltipStyle;
         private bool _stylesDarkMode;
+        private string _tooltipThisFrame = "";
         private string _hoverTooltip = "";
         private float _hoverTooltipStartTime;
 
@@ -75,6 +76,7 @@ namespace SailwindVirtualCrew
                 Event.current.Use();
 
             EnsureStyles();
+            _tooltipThisFrame = "";
             GUILayout.Space(4);
             DrawLockButton();
             GUILayout.Space(ButtonGap);
@@ -97,13 +99,14 @@ namespace SailwindVirtualCrew
         private void DrawLockButton()
         {
             bool locked = WindowLayoutUtility.WindowPositionsLocked;
-            string label = locked ? "Unlock" : "Lock";
+            string label = locked ? "Unlock Windows" : "Lock Windows";
             string tooltip = locked
                 ? "Unlock window positions so Virtual Crew windows can be moved again."
                 : "Lock window positions. Windows can still be shown, hidden, and resized.";
 
-            if (GUILayout.Button(new GUIContent(label, tooltip), GUILayout.Height(LockButtonHeight)))
+            if (GUILayout.Button(label, GUILayout.Height(LockButtonHeight)))
                 WindowLayoutUtility.SetWindowPositionsLocked(!locked);
+            TrackTooltip(tooltip);
         }
 
         private void DrawLauncherButton(LauncherEntry entry)
@@ -117,16 +120,29 @@ namespace SailwindVirtualCrew
                 visible = false;
             }
 
-            var content = new GUIContent(entry.Icon, entry.Title);
-            if (GUILayout.Button(content, visible ? _activeButtonStyle : _inactiveButtonStyle, GUILayout.Width(ButtonSize), GUILayout.Height(ButtonSize)))
+            if (GUILayout.Button(entry.Icon, visible ? _activeButtonStyle : _inactiveButtonStyle, GUILayout.Width(ButtonSize), GUILayout.Height(ButtonSize)))
                 WindowVisibilityUtility.TrySetVisible(component, !visible);
+            TrackTooltip(entry.Title);
 
             GUI.enabled = true;
         }
 
+        private void TrackTooltip(string tooltip)
+        {
+            if (Event.current.type != EventType.Repaint)
+                return;
+
+            Rect rect = GUILayoutUtility.GetLastRect();
+            if (rect.Contains(Event.current.mousePosition))
+                _tooltipThisFrame = tooltip ?? "";
+        }
+
         private void UpdateAndDrawTooltip()
         {
-            string tooltip = GUI.tooltip ?? "";
+            if (Event.current.type != EventType.Repaint)
+                return;
+
+            string tooltip = _tooltipThisFrame;
             if (!string.Equals(tooltip, _hoverTooltip, StringComparison.Ordinal))
             {
                 _hoverTooltip = tooltip;
