@@ -11,8 +11,10 @@ namespace SailwindVirtualCrew
         private static bool _togglePressedThisFrame;
         private static bool _modLayerVisible;
         private static readonly Dictionary<int, Vector2> _windowScrollPositions = new Dictionary<int, Vector2>();
+        private static readonly List<Rect> _imguiWindowRects = new List<Rect>();
         private static int _activeScrollableWindowId;
         private static bool _activeScrollableWindowEnded;
+        private static int _imguiWindowRectFrame = -1;
 
         internal static bool ModLayerVisible => _modLayerVisible;
 
@@ -72,8 +74,33 @@ namespace SailwindVirtualCrew
             {
                 Rect updated = GUI.Window(windowId, windowRect, measuredWindowFunction, title);
                 ClampToScreen(ref updated);
+                RegisterImguiWindowRect(updated);
                 return updated;
             }
+        }
+
+        internal static bool IsPointerOverImguiWindow(Vector2 screenPosition)
+        {
+            if (!_modLayerVisible || _imguiWindowRectFrame < Time.frameCount - 1)
+                return false;
+
+            Vector2 guiPoint = new Vector2(screenPosition.x, Screen.height - screenPosition.y);
+            for (int i = _imguiWindowRects.Count - 1; i >= 0; i--)
+                if (_imguiWindowRects[i].Contains(guiPoint))
+                    return true;
+
+            return false;
+        }
+
+        private static void RegisterImguiWindowRect(Rect rect)
+        {
+            if (_imguiWindowRectFrame != Time.frameCount)
+            {
+                _imguiWindowRects.Clear();
+                _imguiWindowRectFrame = Time.frameCount;
+            }
+
+            _imguiWindowRects.Add(rect);
         }
 
         private static void DrawScrollableWindow(int windowId, Rect windowRect, int id, GUI.WindowFunction drawWindow)

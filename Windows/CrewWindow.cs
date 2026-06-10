@@ -146,6 +146,7 @@ namespace SailwindVirtualCrew
             _panelRect.anchorMax = new Vector2(0f, 1f);
             _panelRect.pivot = new Vector2(0f, 1f);
             _panelImage = panel.AddComponent<Image>();
+            panel.AddComponent<ImguiWindowRaycastBlocker>();
             var panelDrag = panel.AddComponent<DragHandler>();
             panelDrag.Initialize(this);
 
@@ -619,10 +620,12 @@ namespace SailwindVirtualCrew
         {
             var buttonObject = new GameObject("Button " + text);
             var image = buttonObject.AddComponent<Image>();
-            image.color = Color.white;
+            image.color = GetButtonNormalColor();
             var button = buttonObject.AddComponent<Button>();
             button.targetGraphic = image;
-            button.colors = GetButtonColors();
+            var colors = GetButtonColors();
+            button.colors = colors;
+            image.color = colors.normalColor;
             button.onClick.AddListener(() =>
             {
                 action?.Invoke();
@@ -699,6 +702,7 @@ namespace SailwindVirtualCrew
             colors.pressedColor = dark ? new Color(116f / 255f, 86f / 255f, 62f / 255f, 1f) : new Color(196f / 255f, 150f / 255f, 118f / 255f, 1f);
             colors.disabledColor = dark ? new Color(0.16f, 0.14f, 0.12f, 0.72f) : new Color(0.45f, 0.42f, 0.38f, 0.72f);
             colors.colorMultiplier = 1f;
+            colors.fadeDuration = 0f;
             return colors;
         }
 
@@ -1034,6 +1038,14 @@ namespace SailwindVirtualCrew
             {
                 Button = button;
                 Text = text;
+            }
+        }
+
+        private sealed class ImguiWindowRaycastBlocker : MonoBehaviour, ICanvasRaycastFilter
+        {
+            public bool IsRaycastLocationValid(Vector2 screenPosition, Camera eventCamera)
+            {
+                return !WindowLayoutUtility.IsPointerOverImguiWindow(screenPosition);
             }
         }
 
