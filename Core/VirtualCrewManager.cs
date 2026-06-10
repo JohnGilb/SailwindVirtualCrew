@@ -81,6 +81,7 @@ namespace SailwindVirtualCrew
         public SailGroup SelectedGroup { get; set; }
 
         public Port CurrentPort { get; private set; }
+        public PortDude CurrentPortDude { get; private set; }
         public List<Crewman> AvailableAtPort { get; private set; } = new List<Crewman>();
         public Dictionary<string, List<Crewman>> PortCrewPools { get; private set; } = new Dictionary<string, List<Crewman>>();
         private Dictionary<string, bool> portIsHub = new Dictionary<string, bool>();
@@ -92,6 +93,8 @@ namespace SailwindVirtualCrew
         private const int SalaryPerCrewPerDay = 10;
         private const int PortCrewRefreshIntervalDays = 7;
         private const int QuartermasterWaterRefillCooldownDays = 7;
+        private const float PortDudeHireTriggerPadding = 5f;
+        private const float PortDudeHireFallbackRange = 100f;
         private const float WaterLiquidIndex = 1f;
         private const float BarrelCapacityThreshold = 30f;
         private const float BailMugUnits = 3f;
@@ -1469,12 +1472,13 @@ namespace SailwindVirtualCrew
             }
         }
 
-        public void SetCurrentPort(Port port)
+        public void SetCurrentPort(Port port, PortDude portDude = null)
         {
             if (port == null)
                 return;
 
             CurrentPort = port;
+            CurrentPortDude = portDude != null ? portDude : port.GetDude();
             string key = port.GetPortName();
             portIsHub[key] = port.hubPort;
             if (!PortCrewPools.ContainsKey(key))
@@ -1624,7 +1628,72 @@ namespace SailwindVirtualCrew
         public void ClearCurrentPort()
         {
             CurrentPort = null;
+            CurrentPortDude = null;
             AvailableAtPort = new List<Crewman>();
+        }
+
+        public void ClearCurrentPort(PortDude portDude)
+        {
+            if (portDude != null && CurrentPortDude != null && CurrentPortDude != portDude)
+                return;
+
+            ClearCurrentPort();
+        }
+
+        public bool ValidateCurrentPortDudeForHiring(out string reason)
+        {
+            reason = null;
+            if (CurrentPort == null)
+            {
+                reason = "Visit a Port Trader to hire crew.";
+                return false;
+            }
+
+            if (CurrentPortDude == null)
+                CurrentPortDude = CurrentPort.GetDude();
+
+            if (IsPlayerCloseToCurrentPortDude())
+                return true;
+
+            ClearCurrentPort();
+            reason = "Visit a Port Trader to hire crew.";
+            return false;
+        }
+
+        private bool IsPlayerCloseToCurrentPortDude()
+        {
+            if (CurrentPortDude == null || Refs.charController == null)
+                return false;
+
+            Transform playerTransform = Refs.charController.transform;
+            if (playerTransform == null)
+                return false;
+
+            Vector3 playerPosition = playerTransform.position;
+            Collider[] colliders = CurrentPortDude.GetComponentsInChildren<Collider>();
+            bool foundCollider = false;
+            float paddedRangeSqr = PortDudeHireTriggerPadding * PortDudeHireTriggerPadding;
+
+            foreach (var collider in colliders)
+            {
+                if (collider == null || !collider.enabled || !collider.gameObject.activeInHierarchy)
+                    continue;
+
+                foundCollider = true;
+                Vector3 closestPoint = collider.ClosestPoint(playerPosition);
+                if ((closestPoint - playerPosition).sqrMagnitude <= paddedRangeSqr)
+                    return true;
+
+                Bounds paddedBounds = collider.bounds;
+                paddedBounds.Expand(PortDudeHireTriggerPadding * 2f);
+                if (paddedBounds.Contains(playerPosition))
+                    return true;
+            }
+
+            if (foundCollider || CurrentPortDude.transform == null)
+                return false;
+
+            return Vector3.Distance(playerPosition, CurrentPortDude.transform.position) <= PortDudeHireFallbackRange;
         }
 
 
@@ -1787,6 +1856,9 @@ namespace SailwindVirtualCrew
         public bool CanHireCrew(Crewman c, out string reason)
         {
             reason = null;
+            if (!ValidateCurrentPortDudeForHiring(out reason))
+                return false;
+
             if (c == null)
             {
                 reason = "No crew selected.";

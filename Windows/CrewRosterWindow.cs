@@ -170,6 +170,8 @@ namespace SailwindVirtualCrew
 
             // ── Available at Port ────────────────────────────────────────────
             GUILayout.Space(8);
+            if (mgr.CurrentPort != null && !mgr.ValidateCurrentPortDudeForHiring(out _))
+                selectedAvailable = null;
             var avail = mgr.AvailableAtPort;
             string availableAtPortLabel;
             if (mgr.CurrentPort == null)

@@ -12,7 +12,7 @@ namespace SailwindVirtualCrew
             if (!other.CompareTag("Player")) return;
             var manager = VirtualCrewManager.Instance;
             var port = __instance.GetPort();
-            manager.SetCurrentPort(port);
+            manager.SetCurrentPort(port, __instance);
             manager.TryQuartermasterRefillWaterAtPort(port);
         }
     }
@@ -24,7 +24,7 @@ namespace SailwindVirtualCrew
         static void Postfix(PortDude __instance, Collider other)
         {
             if (!other.CompareTag("Player")) return;
-            VirtualCrewManager.Instance.ClearCurrentPort();
+            VirtualCrewManager.Instance.ClearCurrentPort(__instance);
         }
     }
 }
