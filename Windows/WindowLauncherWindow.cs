@@ -10,6 +10,9 @@ namespace SailwindVirtualCrew
         private const float ButtonSize = 42f;
         private const float ButtonGap = 4f;
         private const int Columns = 4;
+        private const float LockButtonHeight = 24f;
+        private const float TooltipDelaySeconds = 0.25f;
+        private const float TooltipMaxWidth = 220f;
 
         private static readonly int windowId = "VirtualCrewWindowLauncherWindow".GetHashCode();
 
@@ -38,7 +41,10 @@ namespace SailwindVirtualCrew
         private readonly Dictionary<string, Component> _componentCache = new Dictionary<string, Component>();
         private GUIStyle _activeButtonStyle;
         private GUIStyle _inactiveButtonStyle;
+        private GUIStyle _tooltipStyle;
         private bool _stylesDarkMode;
+        private string _hoverTooltip = "";
+        private float _hoverTooltipStartTime;
 
         public string WindowKey => "WindowLauncherWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
@@ -57,7 +63,7 @@ namespace SailwindVirtualCrew
             SailwindGuiStyle.Apply();
 
             int rows = Mathf.CeilToInt(entries.Length / (float)Columns);
-            float defaultHeight = 48f + rows * (ButtonSize + ButtonGap) + 26f;
+            float defaultHeight = 48f + LockButtonHeight + ButtonGap + rows * (ButtonSize + ButtonGap) + 26f;
             windowRect.width = Mathf.Max(windowRect.width, Columns * (ButtonSize + ButtonGap) + 28f);
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : defaultHeight;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Virtual Crew", false);
@@ -70,6 +76,8 @@ namespace SailwindVirtualCrew
 
             EnsureStyles();
             GUILayout.Space(4);
+            DrawLockButton();
+            GUILayout.Space(ButtonGap);
             _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(WindowLayoutUtility.GetScrollableContentHeight(windowRect)));
 
             for (int i = 0; i < entries.Length; i += Columns)
@@ -81,8 +89,21 @@ namespace SailwindVirtualCrew
             }
 
             GUILayout.EndScrollView();
+            UpdateAndDrawTooltip();
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        private void DrawLockButton()
+        {
+            bool locked = WindowLayoutUtility.WindowPositionsLocked;
+            string label = locked ? "Unlock" : "Lock";
+            string tooltip = locked
+                ? "Unlock window positions so Virtual Crew windows can be moved again."
+                : "Lock window positions. Windows can still be shown, hidden, and resized.";
+
+            if (GUILayout.Button(new GUIContent(label, tooltip), GUILayout.Height(LockButtonHeight)))
+                WindowLayoutUtility.SetWindowPositionsLocked(!locked);
         }
 
         private void DrawLauncherButton(LauncherEntry entry)
@@ -101,6 +122,35 @@ namespace SailwindVirtualCrew
                 WindowVisibilityUtility.TrySetVisible(component, !visible);
 
             GUI.enabled = true;
+        }
+
+        private void UpdateAndDrawTooltip()
+        {
+            string tooltip = GUI.tooltip ?? "";
+            if (!string.Equals(tooltip, _hoverTooltip, StringComparison.Ordinal))
+            {
+                _hoverTooltip = tooltip;
+                _hoverTooltipStartTime = Time.realtimeSinceStartup;
+            }
+
+            if (string.IsNullOrEmpty(_hoverTooltip)
+                || Time.realtimeSinceStartup - _hoverTooltipStartTime < TooltipDelaySeconds)
+                return;
+
+            EnsureTooltipStyle();
+
+            var content = new GUIContent(_hoverTooltip);
+            float width = Mathf.Min(TooltipMaxWidth, Mathf.Max(80f, _tooltipStyle.CalcSize(content).x + 12f));
+            float height = _tooltipStyle.CalcHeight(content, width) + 8f;
+            Vector2 mouse = Event.current.mousePosition;
+            Rect rect = new Rect(mouse.x + 12f, mouse.y + 16f, width, height);
+
+            if (rect.xMax > windowRect.width - 4f)
+                rect.x = Mathf.Max(4f, windowRect.width - rect.width - 4f);
+            if (rect.yMax > windowRect.height - WindowResizer.HandleHeight - 4f)
+                rect.y = Mathf.Max(24f, mouse.y - rect.height - 8f);
+
+            GUI.Box(rect, content, _tooltipStyle);
         }
 
         private Component GetWindowComponent(string key)
@@ -135,6 +185,21 @@ namespace SailwindVirtualCrew
                 normal = { textColor = Color.cyan },
                 hover = { textColor = Color.cyan },
                 active = { textColor = Color.cyan }
+            };
+            _tooltipStyle = null;
+        }
+
+        private void EnsureTooltipStyle()
+        {
+            if (_tooltipStyle != null && !SailwindGuiStyle.HasThemeChanged(_stylesDarkMode))
+                return;
+
+            _tooltipStyle = new GUIStyle(GUI.skin.box)
+            {
+                alignment = TextAnchor.MiddleLeft,
+                fontSize = 12,
+                wordWrap = true,
+                padding = new RectOffset(6, 6, 4, 4)
             };
         }
 

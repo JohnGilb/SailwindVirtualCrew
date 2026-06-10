@@ -191,6 +191,7 @@ namespace SailwindVirtualCrew
             layout.childForceExpandHeight = false;
             layout.childAlignment = TextAnchor.UpperCenter;
             layout.spacing = RowGap;
+            layout.padding = new RectOffset(0, 0, 0, Mathf.RoundToInt(ResizeHandleHeight + Padding));
             var fitter = _contentRect.gameObject.AddComponent<ContentSizeFitter>();
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             scrollRect.content = _contentRect;
@@ -864,6 +865,9 @@ namespace SailwindVirtualCrew
 
         private void MoveWindow(Vector2 screenDelta)
         {
+            if (WindowLayoutUtility.WindowPositionsLocked)
+                return;
+
             windowRect.x += screenDelta.x;
             windowRect.y -= screenDelta.y;
             ApplyWindowRect();

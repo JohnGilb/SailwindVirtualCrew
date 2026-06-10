@@ -15,13 +15,13 @@ namespace SailwindVirtualCrew
         public float[] GetDefaultPosition() => new[] { 560f, 340f, 0f };
         public void SetPosition(float x, float y, float userHeight) { windowRect.x = x; windowRect.y = y; _resizer.UserHeight = userHeight; }
 
-        private float waterLevel   = 0f;
-        private float dirtyLevel   = 0f;
-        private float pollTimer    = 0f;
-        private int   bucketCount  = 0;
-        private const float PollInterval  = 10f;
-        private const float ButtonHeight  = 28f;
-        private const float MugUnits    = 3f;
+        private float waterLevel = 0f;
+        private float dirtyLevel = 0f;
+        private float pollTimer = 0f;
+        private int bucketCount = 0;
+        private const float PollInterval = 10f;
+        private const float ButtonHeight = 28f;
+        private const float MugUnits = 3f;
         private const float BucketUnits = 10f;
 
         private static BoatDamage GetBoatDamage()
@@ -62,10 +62,10 @@ namespace SailwindVirtualCrew
             float contentHeight = ButtonHeight  // water label
                                 + ButtonHeight  // bucket status
                                 + ButtonHeight  // dirty label
-                                + ButtonHeight  // auto-bailing label
-                                + ButtonHeight * 6 // threshold labels + sliders
                                 + ButtonHeight  // bail button
-                                + ButtonHeight; // swab button
+                                + ButtonHeight  // swab button
+                                + ButtonHeight  // auto-bailing label
+                                + ButtonHeight * 6; // threshold labels + sliders
 
             if (DeveloperMode.IsEnabled)
                 contentHeight += 4f + ButtonHeight; // dev button
@@ -81,10 +81,9 @@ namespace SailwindVirtualCrew
             GUILayout.Space(4);
 
             var manager = VirtualCrewManager.Instance;
-            var bd      = GetBoatDamage();
+            var bd = GetBoatDamage();
             var cleanable = SwabDecksRequest.GetCurrentShipCleanable();
 
-            // ── Water level ─────────────────────────────────────────────────
             string waterStr = DeveloperMode.IsEnabled
                 ? $"{waterLevel * 100f:F2}%"
                 : $"{waterLevel * 100f:F0}%";
@@ -96,22 +95,6 @@ namespace SailwindVirtualCrew
                 : $"{dirtyLevel * 100f:F0}%";
             GUILayout.Label($"Dirty: {dirtyStr}");
 
-            GUILayout.Space(4);
-            GUILayout.Label("Auto-Bailing");
-            DrawThresholdSlider(
-                "Start",
-                manager.MaintenanceBailOneDeckhandThresholdPercent,
-                manager.SetMaintenanceBailOneDeckhandThreshold);
-            DrawThresholdSlider(
-                "Two Deckhands",
-                manager.MaintenanceBailTwoDeckhandsThresholdPercent,
-                manager.SetMaintenanceBailTwoDeckhandsThreshold);
-            DrawThresholdSlider(
-                "All Deckhands",
-                manager.MaintenanceBailAllDeckhandsThresholdPercent,
-                manager.SetMaintenanceBailAllDeckhandsThreshold);
-
-            // ── Bail button ──────────────────────────────────────────────────
             GUI.enabled = bd != null && waterLevel > 0.05f;
             if (GUILayout.Button("Bail Until Empty") && bd != null)
             {
@@ -134,7 +117,21 @@ namespace SailwindVirtualCrew
             }
             GUI.enabled = true;
 
-            // ── Developer controls ───────────────────────────────────────────
+            GUILayout.Space(4);
+            GUILayout.Label("Auto-Bailing");
+            DrawThresholdSlider(
+                "Start",
+                manager.MaintenanceBailOneDeckhandThresholdPercent,
+                manager.SetMaintenanceBailOneDeckhandThreshold);
+            DrawThresholdSlider(
+                "Two Deckhands",
+                manager.MaintenanceBailTwoDeckhandsThresholdPercent,
+                manager.SetMaintenanceBailTwoDeckhandsThreshold);
+            DrawThresholdSlider(
+                "All Deckhands",
+                manager.MaintenanceBailAllDeckhandsThresholdPercent,
+                manager.SetMaintenanceBailAllDeckhandsThreshold);
+
             if (DeveloperMode.IsEnabled)
             {
                 GUILayout.Space(4);
@@ -145,7 +142,7 @@ namespace SailwindVirtualCrew
                     {
                         freshBd.waterLevel = 0.5f;
                         waterLevel = 0.5f;
-                        pollTimer  = PollInterval;
+                        pollTimer = PollInterval;
                     }
                 }
             }

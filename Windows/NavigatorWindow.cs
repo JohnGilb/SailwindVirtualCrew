@@ -98,7 +98,6 @@ namespace SailwindVirtualCrew
             float contentHeight = ButtonHeight * 2                               // name + stats
                                 + (showGlobalTime ? ButtonHeight : 0f)           // chronometer global time
                                 + ButtonHeight                                   // Search for Tools button
-                                + ButtonHeight                                   // Map button
                                 + 4f + ButtonHeight                              // space + weather label
                                 + 4f                                             // space
                                 + (DeveloperMode.IsEnabled ? ButtonHeight : 0f) // override toggle
@@ -166,8 +165,6 @@ namespace SailwindVirtualCrew
             // ── Tool search ─────────────────────────────────────────────────
             if (GUILayout.Button("Search for Tools"))
                 ScanForTools();
-            if (GUILayout.Button("Map"))
-                ShowMapWindow();
 
             // ── Equipment status ────────────────────────────────────────────
             GUILayout.Space(4);
@@ -305,13 +302,6 @@ namespace SailwindVirtualCrew
         {
             if (!manager.TryAddNavigateRequest(method, out string reason, requireTimeWindow: !EffectiveOverride))
                 manager.AddNavigationMessage(reason);
-        }
-
-        private void ShowMapWindow()
-        {
-            var mapWindow = GetComponent<NavigatorMapWindow>();
-            if (mapWindow != null)
-                mapWindow.SetVisible(true);
         }
 
         private void ScanForTools()

@@ -15,8 +15,15 @@ namespace SailwindVirtualCrew
         private static int _activeScrollableWindowId;
         private static bool _activeScrollableWindowEnded;
         private static int _imguiWindowRectFrame = -1;
+        private static bool _windowPositionsLocked;
 
         internal static bool ModLayerVisible => _modLayerVisible;
+        internal static bool WindowPositionsLocked => _windowPositionsLocked;
+
+        internal static void SetWindowPositionsLocked(bool locked)
+        {
+            _windowPositionsLocked = locked;
+        }
 
         internal static void ToggleModLayer()
         {
@@ -41,7 +48,7 @@ namespace SailwindVirtualCrew
 
         internal static float GetScrollableContentHeight(Rect windowRect)
         {
-            return Mathf.Max(24f, windowRect.height);
+            return Mathf.Max(24f, windowRect.height - WindowResizer.HandleHeight - 36f);
         }
 
         internal static Rect DrawClampedWindow(int windowId, Rect windowRect, GUI.WindowFunction drawWindow, string title)
@@ -73,6 +80,12 @@ namespace SailwindVirtualCrew
             using (PerformanceInstrumentation.MeasureGui("UI.Window." + title))
             {
                 Rect updated = GUI.Window(windowId, windowRect, measuredWindowFunction, title);
+                if (_windowPositionsLocked)
+                {
+                    updated.x = windowRect.x;
+                    updated.y = windowRect.y;
+                }
+
                 ClampToScreen(ref updated);
                 RegisterImguiWindowRect(updated);
                 return updated;

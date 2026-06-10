@@ -13,8 +13,20 @@ namespace SailwindVirtualCrew
     {
         internal static void Initialize(Harmony harmony)
         {
+            if (!ShouldManageExternalModFeatures())
+            {
+                Debug.Log("[VirtualCrew] Profit Percent and Cargo Controller integration gates disabled by config.");
+                return;
+            }
+
             TryGateCargoController(harmony);
             TryGateProfitPercent(harmony);
+        }
+
+        internal static bool ShouldManageExternalModFeatures()
+        {
+            return Plugin.RequireCrewForExternalModFeatures == null
+                || Plugin.RequireCrewForExternalModFeatures.Value;
         }
 
         private static void TryGateCargoController(Harmony harmony)
@@ -82,6 +94,7 @@ namespace SailwindVirtualCrew
         public static bool SetVisiblePrefix(bool visible)
         {
             if (!visible) return true; // always allow closing
+            if (!ModIntegrations.ShouldManageExternalModFeatures()) return true;
             var mgr = VirtualCrewManager.Instance;
             if (mgr == null) return true; // before save loaded
             return CanUseCargoController();
@@ -89,6 +102,7 @@ namespace SailwindVirtualCrew
 
         public static bool CanUseCargoController()
         {
+            if (!ModIntegrations.ShouldManageExternalModFeatures()) return true;
             return CrewRoleAvailability.HasAwakeCrew(ShipRole.Quartermaster);
         }
     }
@@ -111,6 +125,9 @@ namespace SailwindVirtualCrew
 
         public static void Tick()
         {
+            if (!ModIntegrations.ShouldManageExternalModFeatures())
+                return;
+
             if (Plugin.CargoControllerGrabPortCargoKey == null
                 || Plugin.CargoControllerGrabPortCargoKey.Value.MainKey == KeyCode.None
                 || !Plugin.CargoControllerGrabPortCargoKey.Value.IsDown())
@@ -282,6 +299,7 @@ namespace SailwindVirtualCrew
         // Clears the mod columns and strips color tags from the base profit column.
         public static void ShowGoodPagePostfix()
         {
+            if (!ModIntegrations.ShouldManageExternalModFeatures()) return;
             var mgr = VirtualCrewManager.Instance;
             if (mgr == null) return;
             if (CrewRoleAvailability.HasAwakeCrew(ShipRole.Supercargo)) return;

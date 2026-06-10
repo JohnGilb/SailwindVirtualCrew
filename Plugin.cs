@@ -25,6 +25,7 @@ namespace SailwindVirtualCrew
         internal static ConfigEntry<KeyboardShortcut> SupercargoSellAtPortKey;
         internal static ConfigEntry<KeyboardShortcut> SupercargoKeepCargoKey;
         internal static ConfigEntry<KeyboardShortcut> CargoControllerGrabPortCargoKey;
+        internal static ConfigEntry<bool> RequireCrewForExternalModFeatures;
         internal static ConfigEntry<bool> ExtraWorkingStaminaDrain;
         internal static ConfigEntry<bool> InstrumentationEnabled;
         internal static ConfigEntry<string> InstrumentationOutputDirectory;
@@ -78,6 +79,11 @@ namespace SailwindVirtualCrew
                 new ConfigDescription(
                     "How often active profiling data is flushed to disk.",
                     new AcceptableValueRange<float>(1f, 60f)));
+            RequireCrewForExternalModFeatures = Config.Bind(
+                "Integrations",
+                "RequireCrewForProfitPercentAndCargoController",
+                true,
+                "When enabled, VirtualCrew gates Profit Percent and Cargo Controller features behind awake Supercargo/Quartermaster crew. Disable to avoid interacting with those mods.");
 
             ToggleCrewWindow = Config.Bind("CrewHotkeys", "ToggleCrewWindow", new KeyboardShortcut(KeyCode.B));
             ResetWindowPositions = Config.Bind("CrewHotkeys", "ResetWindowPositions", new KeyboardShortcut(KeyCode.Backslash));
