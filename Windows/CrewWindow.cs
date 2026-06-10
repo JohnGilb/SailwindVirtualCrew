@@ -342,6 +342,7 @@ namespace SailwindVirtualCrew
                         }
                         RequestRebuild();
                     }).GetComponent<Button>();
+                button.gameObject.AddComponent<ButtonSelectionState>();
                 _sailButtons[sail] = new SailButtonBinding(button, button.GetComponentInChildren<Text>());
                 AddRow(button.gameObject);
             }
@@ -471,7 +472,7 @@ namespace SailwindVirtualCrew
             var buttonObject = CreateButton(text, action);
             var button = buttonObject.GetComponent<Button>();
             _winchButtons.Add(new WinchButtonBinding(button, winch, null));
-            button.interactable = !IsWinchPending(manager, winch);
+            SetButtonInteractable(button, !IsWinchPending(manager, winch));
             return buttonObject;
         }
 
@@ -482,7 +483,7 @@ namespace SailwindVirtualCrew
             var port = sail.getPortSheetWinch();
             var starboard = sail.getStarboardSheetWinch();
             _winchButtons.Add(new WinchButtonBinding(button, port, starboard));
-            button.interactable = !IsWinchPending(manager, port) && !IsWinchPending(manager, starboard);
+            SetButtonInteractable(button, !IsWinchPending(manager, port) && !IsWinchPending(manager, starboard));
             return buttonObject;
         }
 
@@ -506,8 +507,8 @@ namespace SailwindVirtualCrew
                     if (_dropAnchorButton || _raiseAnchorButton)
                     {
                         bool anchorBusy = AreAnyWinchesPending(manager, manager.AnchorWinches);
-                        if (_dropAnchorButton) _dropAnchorButton.interactable = !anchorBusy;
-                        if (_raiseAnchorButton) _raiseAnchorButton.interactable = !anchorBusy;
+                        SetButtonInteractable(_dropAnchorButton, !anchorBusy);
+                        SetButtonInteractable(_raiseAnchorButton, !anchorBusy);
                     }
                 }
 
@@ -520,7 +521,7 @@ namespace SailwindVirtualCrew
                 {
                     foreach (var binding in _winchButtons)
                         if (binding.Button)
-                            binding.Button.interactable = !IsWinchPending(manager, binding.Primary) && !IsWinchPending(manager, binding.Secondary);
+                            SetButtonInteractable(binding.Button, !IsWinchPending(manager, binding.Primary) && !IsWinchPending(manager, binding.Secondary));
                 }
 
                 using (PerformanceInstrumentation.MeasureUGui("Deck Orders.RefreshState.SailButtons"))
@@ -624,9 +625,10 @@ namespace SailwindVirtualCrew
             image.color = GetButtonNormalColor();
             var button = buttonObject.AddComponent<Button>();
             button.targetGraphic = image;
-            var colors = GetButtonColors();
-            button.colors = colors;
-            image.color = colors.normalColor;
+            button.transition = Selectable.Transition.None;
+            var hover = buttonObject.AddComponent<ButtonHoverState>();
+            hover.Initialize(this, button);
+            ApplyButtonVisual(button);
             button.onClick.AddListener(() =>
             {
                 action?.Invoke();
@@ -690,21 +692,38 @@ namespace SailwindVirtualCrew
 
         private void SetButtonSelected(Button button, Text text, bool selected)
         {
+            var selection = button ? button.GetComponent<ButtonSelectionState>() : null;
+            if (selection)
+                selection.Selected = selected;
+
+            ApplyButtonVisual(button);
             if (text)
-                text.color = selected ? Color.cyan : GetTextColor();
+                text.color = GetTextColor();
         }
 
-        private ColorBlock GetButtonColors()
+        private void SetButtonInteractable(Button button, bool interactable)
         {
-            var colors = ColorBlock.defaultColorBlock;
-            bool dark = SailwindGuiStyle.IsDarkMode;
-            colors.normalColor = dark ? new Color(78f / 255f, 60f / 255f, 47f / 255f, 1f) : GetButtonNormalColor();
-            colors.highlightedColor = dark ? new Color(98f / 255f, 76f / 255f, 59f / 255f, 1f) : new Color(244f / 255f, 204f / 255f, 173f / 255f, 1f);
-            colors.pressedColor = dark ? new Color(116f / 255f, 86f / 255f, 62f / 255f, 1f) : new Color(196f / 255f, 150f / 255f, 118f / 255f, 1f);
-            colors.disabledColor = dark ? new Color(0.16f, 0.14f, 0.12f, 0.72f) : new Color(0.45f, 0.42f, 0.38f, 0.72f);
-            colors.colorMultiplier = 1f;
-            colors.fadeDuration = 0f;
-            return colors;
+            if (!button)
+                return;
+
+            button.interactable = interactable;
+            ApplyButtonVisual(button);
+        }
+
+        private void ApplyButtonVisual(Button button)
+        {
+            if (!button || !button.targetGraphic)
+                return;
+
+            button.transition = Selectable.Transition.None;
+            var selection = button.GetComponent<ButtonSelectionState>();
+            var hover = button.GetComponent<ButtonHoverState>();
+            bool selected = selection && selection.Selected;
+            bool hovered = hover && hover.Hovered;
+            button.targetGraphic.color = !button.interactable ? GetButtonDisabledColor()
+                : selected ? GetButtonSelectedColor()
+                : hovered ? GetButtonHoverColor()
+                : GetButtonNormalColor();
         }
 
         private Font FindUiFont(string exactName, string partialName)
@@ -742,12 +761,9 @@ namespace SailwindVirtualCrew
             if (_headerImage) _headerImage.color = GetHeaderColor();
             if (_resizeHandleImage) _resizeHandleImage.color = GetResizeHandleColor();
 
-            var colors = GetButtonColors();
             foreach (var button in _rootObject.GetComponentsInChildren<Button>(true))
             {
-                button.colors = colors;
-                if (button.targetGraphic)
-                    button.targetGraphic.color = button.interactable ? colors.normalColor : colors.disabledColor;
+                ApplyButtonVisual(button);
             }
 
             foreach (var image in _rootObject.GetComponentsInChildren<Image>(true))
@@ -810,6 +826,25 @@ namespace SailwindVirtualCrew
             return SailwindGuiStyle.IsDarkMode
                 ? new Color(78f / 255f, 60f / 255f, 47f / 255f, 1f)
                 : new Color(230f / 255f, 187f / 255f, 156f / 255f, 1f);
+        }
+
+        private static Color GetButtonHoverColor()
+        {
+            return SailwindGuiStyle.IsDarkMode
+                ? new Color(98f / 255f, 76f / 255f, 59f / 255f, 1f)
+                : new Color(244f / 255f, 204f / 255f, 173f / 255f, 1f);
+        }
+
+        private static Color GetButtonDisabledColor()
+        {
+            return SailwindGuiStyle.IsDarkMode
+                ? new Color(0.16f, 0.14f, 0.12f, 0.72f)
+                : new Color(0.45f, 0.42f, 0.38f, 0.72f);
+        }
+
+        private static Color GetButtonSelectedColor()
+        {
+            return new Color(0f, 0.72f, 0.62f, 1f);
         }
 
         private static Color GetLabelColor()
@@ -920,9 +955,9 @@ namespace SailwindVirtualCrew
                     if (!binding.Button)
                         continue;
 
-                    binding.Button.interactable = binding.Side == MooringSide.Port
+                    SetButtonInteractable(binding.Button, binding.Side == MooringSide.Port
                         ? _canMoorPort
-                        : _canMoorStarboard;
+                        : _canMoorStarboard);
                 }
             }
         }
@@ -1050,6 +1085,39 @@ namespace SailwindVirtualCrew
             public bool IsRaycastLocationValid(Vector2 screenPosition, Camera eventCamera)
             {
                 return !WindowLayoutUtility.IsPointerOverImguiWindow(screenPosition);
+            }
+        }
+
+        private sealed class ButtonSelectionState : MonoBehaviour
+        {
+            internal bool Selected;
+        }
+
+        private sealed class ButtonHoverState : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+        {
+            private CrewWindow _owner;
+            private Button _button;
+
+            internal bool Hovered;
+
+            internal void Initialize(CrewWindow owner, Button button)
+            {
+                _owner = owner;
+                _button = button;
+            }
+
+            public void OnPointerEnter(PointerEventData eventData)
+            {
+                Hovered = true;
+                if (_owner != null)
+                    _owner.ApplyButtonVisual(_button);
+            }
+
+            public void OnPointerExit(PointerEventData eventData)
+            {
+                Hovered = false;
+                if (_owner != null)
+                    _owner.ApplyButtonVisual(_button);
             }
         }
 
