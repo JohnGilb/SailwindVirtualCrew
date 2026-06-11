@@ -18,6 +18,8 @@ Strongly inspired by:
 
 ## Current Features
 
+TLDR: Press B and then the CR (Crew Roster) button. Walk very close to a Port Trader (the guy with missions / cargo to buy & sell) and you can see crew for hire. Experiment with other windows & crew types, or read below for more details.
+
 ### Crew Management
 
 - Crew can be hired/fired at ports.
@@ -32,7 +34,7 @@ Strongly inspired by:
   - Intelligence
   - Wisdom
   - Charisma
-- Crew members can be renamed and choose from a random NPC model
+- Crew members can be renamed and have a random NPC model
 - Crew get tired and will need beds to sleep in. (on average 1 bed per 3 crew, but you may need slightly more if you work them hard)
 - Crew require 10 Al'Ankh coins per day, though if you have none they don't care (for now).
 - Each crewmember takes a share of your profits. Each deckhand, for example, will take 1% of your profit.
@@ -43,15 +45,14 @@ Strongly inspired by:
 
 #### Deckhand
 
-- Can operate sail winches (halyards/sheets).
-- Can be commanded to bail out water
-- Can raise and lower anchors
-- Can throw mooring lines
-- You can issue commands like "lower all sails" or "trim the jibs"
-  - Dynamic hotkeys for combinations of sail groups & commands so you can shortcut your favorites (e.g. squares->deploy, jibs-> port1/2, etc
 - They take on the jobs, move to their workstation (based on Dexterity), and operate them (based on Strength).
+- Can operate sail winches (halyards/sheets).
+- Can be commanded to bail out water or swab the decks (clean the ship).
+- Can raise and lower anchors.
+- Can throw mooring lines.
+- You can issue commands like "lower all sails" or "trim the jibs".
+  - "Favorite Actions" window lets you assign hotkeys for combinations of sail groups & commands so you can shortcut your favorites (e.g. squares->deploy, jibs-> port 1/2, etc).
 - If you have a big ship, you may want to get more than one deckhand, or you'll be waiting a long time for them to finish all the jobs!
-
 
 #### Pilot
 
@@ -68,7 +69,8 @@ Strongly inspired by:
 - Navigators with better Intelligence take more precise measurements.
   - Special case: Intelligence 1 navigators have basically no idea where they are.
 - Can only operate most tools once per day, representing their "best effort" with it.
-- Keep a record of the last 3 measurements
+- Keep a record of the last 3 measurements in their window
+- Measurements taken within 1 hour of local noon will be added to a map (if you take both latitude and longitude measurements)
 
 Tools:
 - Quadrant: Can only be used between 20:00-04:00 local time. Gets latitude.
@@ -83,6 +85,7 @@ Tools:
   - Once they have a landmass in sight, they "build confidence" that it is in fact land. This speed is affected by dexterity (representing their ability to hold themselves & their tools precisely)
   - Once confidence is high enough, they announce the landmass and report heading. They also ring a bell that will wake a sleeping player.
   - Can scan for and use spyglasses on board or in player inventory
+- Will also issue a four bells alarm if they think the vessel is going to crash in under a minute.
 
 #### Quartermaster
 - Helps move supplies around the boat.
@@ -94,8 +97,14 @@ Tools:
 #### Supercargo
 
 - Pays attention to the market and prices.
-  - (Having one activates/enables the ProfitPercent mod, if you have it installed)
+  - (Having one activates/enables the ProfitPercent mod, if you have it installed.)
 - Grants access to the "Sell" command for cargo on the boat if you are moored near a Port trader (X by default); deckhands will unload and sell cargo for you. 
+  - You can mark some crates as "Keep" so they won't be sold.
+
+#### Steward
+- Keeps the captain healthy and can pass the time in philosophical discussion.
+  - Will keep the captain quenched with water, and fed with food, selecting the best food for the captain's long-term health.
+  - Discussing philosophy keeps you distracted, accelerating time until WASD is pressed. 
 
 #### First Officer
 
@@ -106,6 +115,7 @@ Tools:
   - If you have Lookouts/Pilots in both shifts, they will seamlessly transition and pass information to their successor.
 - They instruct the Navigator (if available/awake) to take their measurements at the proper times.
 - Can be configured to periodically call for the sails to be trimmed.
+- Can set "Standing Orders" for each main point of sail
 - Their Charisma acts as a buff (or detriment) to the statistics of other crew members.
 
 ---
@@ -124,6 +134,7 @@ Tools:
 - Can repair ships with Oakum
 - Add "harden/ease" buttons to dual-sheet sails (Squares, jibs) for fine adjustment
 - Can unmoor from the dock
+- Should only clean if you have brooms
 
 #### Pilot
 
@@ -156,13 +167,11 @@ Tools:
 
 - The following roles can still be hired but currently serve no function:
   - Chef
-- Window sizes are wrong and initial placement is poor.
 - Can see Water % even without Quartermaster
 - If your ship sinks, the code really bugs out. Don't sink your ship!
 - Mooring range is too large.
 - The Jong generally is a big buggy, but getting less so with every release.
 - Documentation on how to mechanically use the features is bare
-- Tasks started while you're on the boat can get real weird if you leave the boat.
 
 ---
 
