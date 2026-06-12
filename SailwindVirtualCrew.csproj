@@ -110,6 +110,7 @@
     <Compile Include="Core\VirtualCrewManager.cs" />
     <Compile Include="Core\VirtualCrewSaveData.cs" />
     <Compile Include="Crew\CrewAgent.cs" />
+    <Compile Include="Crew\CrewLanternService.cs" />
     <Compile Include="Crew\Crewman.cs" />
     <Compile Include="Crew\CrewSoundPlayer.cs" />
     <Compile Include="Crew\CrewVisualFactory.cs" />
