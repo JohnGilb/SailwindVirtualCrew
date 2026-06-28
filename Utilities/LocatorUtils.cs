@@ -109,14 +109,17 @@ namespace SailwindVirtualCrew
                     continue;
 
                 float zoom = Traverse.Create(spyglass).Field("maxZoom").GetValue<float>();
-                if (zoom > bestZoom)
-                    bestZoom = zoom;
-            }
 
-            // Patch for the 2nd tier spyglass, which for some reason returns 18x max zoom.
-            if (bestZoom >  15)
-            {
-                return 4f;
+                // Patch for the level 2 spyglass which has a huge zoom for some reason
+                if (zoom > 15)
+                {
+                    zoom = 4f;
+                }
+
+                if (zoom > bestZoom)
+                {
+                    bestZoom = zoom;
+                }
             }
 
             return bestZoom;

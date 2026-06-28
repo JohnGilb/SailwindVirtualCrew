@@ -618,10 +618,10 @@ namespace SailwindVirtualCrew
             // ── Relative adjustment buttons ────────────────────────────────
             GUI.enabled = hasPlayerSelection;
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Port 90")) AdjustPlayerTarget(-90f);
-            if (GUILayout.Button("Port 45")) AdjustPlayerTarget(-45f);
+            if (GUILayout.Button("Port 5")) AdjustPlayerTarget(-5f);
             if (GUILayout.Button("Port 15")) AdjustPlayerTarget(-15f);
-            if (GUILayout.Button("Port 5"))  AdjustPlayerTarget( -5f);
+            if (GUILayout.Button("Port 45")) AdjustPlayerTarget(-45f);
+            if (GUILayout.Button("Port 90")) AdjustPlayerTarget(-90f);            
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Stbd 5"))  AdjustPlayerTarget(  5f);
