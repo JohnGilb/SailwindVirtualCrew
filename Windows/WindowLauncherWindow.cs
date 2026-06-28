@@ -29,6 +29,7 @@ namespace SailwindVirtualCrew
             new LauncherEntry("FirstOfficerWindow", "First Officer", "FO"),
             new LauncherEntry("StandingOrdersWindow", "Standing Orders", "SO"),
             new LauncherEntry("PilotingWindow", "Piloting", "PL"),
+            new LauncherEntry("SkullingWindow", "Skulling", "SK"),
             new LauncherEntry("CrewRosterWindow", "Crew Roster", "CR"),
             new LauncherEntry("LookoutWindow", "Lookout", "LO"),
             new LauncherEntry("FavoriteActionsWindow", "Favorites", "FA"),

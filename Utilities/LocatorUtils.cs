@@ -73,6 +73,18 @@ namespace SailwindVirtualCrew
             return found;
         }
 
+        public static List<ShipItemOar> FindOarsOnCurrentVessel()
+        {
+            var oars = new List<ShipItemOar>();
+            foreach (ShipItemOar oar in GameObject.FindObjectsOfType<ShipItemOar>())
+            {
+                if (oar && oar.sold && IsItemAvailableOnCurrentVessel(oar))
+                    oars.Add(oar);
+            }
+
+            return oars;
+        }
+
         public static List<UnityEngine.Component> FindBedsOnBoat()
         {
             var beds = new List<UnityEngine.Component>();

@@ -1344,6 +1344,7 @@ namespace SailwindVirtualCrew
                 c.CurrentTask = null;
             ActivePilotTask   = null;
             ActiveLookoutTask = null;
+            ActiveSkullingRequest = null;
             _assignedNavigator = null;
             isCrewActive = false;
             simpleSails = new List<SimpleSail>();
@@ -1400,6 +1401,7 @@ namespace SailwindVirtualCrew
 
         public PilotTask   ActivePilotTask   { get; private set; }
         public LookoutTask ActiveLookoutTask { get; private set; }
+        public SkullingRequest ActiveSkullingRequest { get; private set; }
         private Crewman _assignedNavigator;
 
         public Crewman Pilot     => ActivePilotTask?.AssignedCrewman;
@@ -1478,6 +1480,53 @@ namespace SailwindVirtualCrew
         {
             ActivePilotTask?.Cancel();
             ActivePilotTask = null;
+        }
+
+        public bool StartSkulling(SkullingCommand command)
+        {
+            string reason;
+            return StartSkulling(command, out reason);
+        }
+
+        public bool StartSkulling(SkullingCommand command, out string reason)
+        {
+            reason = "";
+            if (command == SkullingCommand.Stop)
+            {
+                StopOrDismissSkulling();
+                reason = ActiveSkullingRequest == null ? "Skulling dismissed." : "Skulling waiting.";
+                return true;
+            }
+
+            if (ActiveSkullingRequest != null)
+            {
+                ActiveSkullingRequest.ChangeCommand(command);
+                reason = "Skulling " + SkullingRequest.GetCommandLabel(command) + ".";
+                return true;
+            }
+
+            if (!SkullingRequest.TryCreate(command, Crew, out var request, out reason))
+                return false;
+
+            ActiveSkullingRequest = request;
+            return true;
+        }
+
+        public void StopOrDismissSkulling()
+        {
+            if (ActiveSkullingRequest == null)
+                return;
+
+            if (ActiveSkullingRequest.IsWaiting)
+                CancelSkullingRequest();
+            else
+                ActiveSkullingRequest.Wait();
+        }
+
+        public void CancelSkullingRequest()
+        {
+            ActiveSkullingRequest?.Cancel();
+            ActiveSkullingRequest = null;
         }
 
         public void StartLookout(Crewman crewman)
@@ -1966,6 +2015,7 @@ namespace SailwindVirtualCrew
             if (navReq != null) CancelNavigateRequest(navReq);
             if (ActivePilotTask?.AssignedCrewman == c)   StopPilot();
             if (ActiveLookoutTask?.AssignedCrewman == c) StopLookout();
+            if (ActiveSkullingRequest != null && ActiveSkullingRequest.HasCrew(c)) CancelSkullingRequest();
             if (ActiveStewardPhilosophyRequest?.AssignedCrewman == c) CancelStewardPhilosophy();
             if (_assignedNavigator == c) _assignedNavigator = null;
             var sleepReq = SleepRequests.FirstOrDefault(r => r.AssignedCrewman == c);
@@ -4614,6 +4664,16 @@ namespace SailwindVirtualCrew
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.Steward"))
                 TickSteward();
 
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SkullingRequest"))
+            {
+                if (ActiveSkullingRequest != null)
+                {
+                    ActiveSkullingRequest.Tick();
+                    if (ActiveSkullingRequest.Status == WorkRequestStatus.Complete)
+                        ActiveSkullingRequest = null;
+                }
+            }
+
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.WorkRequests"))
             {
                 foreach (var req in WorkRequests)
@@ -5182,6 +5242,9 @@ namespace SailwindVirtualCrew
         // for active trim operations.
         public void TrimTick()
         {
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.SkullingRequest"))
+                ActiveSkullingRequest?.UpdateFrame();
+
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.TrimRequests"))
             {
                 foreach (var trim in TrimRequests)

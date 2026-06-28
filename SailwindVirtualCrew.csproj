@@ -142,6 +142,7 @@
     <Compile Include="Requests\StewardPhilosophyRequest.cs" />
     <Compile Include="Requests\StewardRequestNavigation.cs" />
     <Compile Include="Requests\StewardWaterRequest.cs" />
+    <Compile Include="Requests\SkullingRequest.cs" />
     <Compile Include="Requests\SwabDecksRequest.cs" />
     <Compile Include="UI\IWindowPosition.cs" />
     <Compile Include="UI\WindowVisibilityUtility.cs" />
@@ -176,6 +177,7 @@
     <Compile Include="Patches\SleepPatches.cs" />
     <Compile Include="Patches\SupercargoTradePatches.cs" />
     <Compile Include="Windows\PilotingWindow.cs" />
+    <Compile Include="Windows\SkullingWindow.cs" />
     <Compile Include="Windows\CrewWindow.cs" />
     <Compile Include="Windows\SailGroupsWindow.cs" />
     <Compile Include="Windows\SailGroupMembersWindow.cs" />
