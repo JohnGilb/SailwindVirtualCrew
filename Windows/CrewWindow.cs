@@ -291,6 +291,10 @@ namespace SailwindVirtualCrew
                     anchors.Select(w => new WinchTarget(w, 0f)).ToArray()));
             }).GetComponent<Button>();
             AddRow(_dropAnchorButton.gameObject, _raiseAnchorButton.gameObject);
+
+            AddRow(
+                CreateButton("Light Lanterns", () => manager.AddLanternRequests(true)),
+                CreateButton("Extinguish Lanterns", () => manager.AddLanternRequests(false)));
         }
 
         private void BuildMooringSection(VirtualCrewManager manager)

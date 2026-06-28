@@ -77,8 +77,8 @@ namespace SailwindVirtualCrew
                 bedCount = LocatorUtils.CountBeds();
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
-            GUILayout.Label($"Pay - salary: {mgr.TotalSalaryPay} Al'Ankh Lions", _wrappedLabelStyle);
-            GUILayout.Label($"Pay - shares: {mgr.GetSharePaySummary()}", _wrappedLabelStyle);
+            GUILayout.Label($"Pay - salary: {mgr.DailySalaryPay} Al'Ankh Lions (Daily)", _wrappedLabelStyle);
+            GUILayout.Label($"Pay - shares: {mgr.CrewProfitSharePercent}% of ship profits", _wrappedLabelStyle);
             GUILayout.Space(4);
 
             // ── On Ship ─────────────────────────────────────────────────────

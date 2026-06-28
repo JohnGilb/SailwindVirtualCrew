@@ -95,7 +95,8 @@ namespace SailwindVirtualCrew
             }
 
             GUILayout.Space(6);
-            DrawSelectedActionEditor(mgr);
+            if (_selectedAction != null)
+                DrawSelectedActionEditor(mgr);
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
@@ -119,7 +120,7 @@ namespace SailwindVirtualCrew
             GUILayout.BeginHorizontal();
             GUI.color = action == _selectedAction ? Color.cyan : Color.white;
             if (GUILayout.Button(action.DisplayName + "  [" + action.HotkeyLabel + "]"))
-                SelectAction(action);
+                SelectAction(action == _selectedAction ? null : action);
             GUI.color = Color.white;
 
             if (GUILayout.Button("Run", GUILayout.Width(48)))
@@ -140,12 +141,6 @@ namespace SailwindVirtualCrew
 
         private void DrawSelectedActionEditor(VirtualCrewManager mgr)
         {
-            if (_selectedAction == null)
-            {
-                GUILayout.Label("Select a favorite to edit its sail group actions.");
-                return;
-            }
-
             GUILayout.Label("Editing Favorite");
             GUILayout.BeginHorizontal();
             _selectedActionNameBuffer = GUILayout.TextField(_selectedActionNameBuffer);

@@ -194,6 +194,19 @@ namespace SailwindVirtualCrew
             return true;
         }
 
+        internal bool TryProjectLocalToNavMeshQuiet(Vector3 localPosition, float maxDistance, out Vector3 projectedLocal)
+        {
+            projectedLocal = localPosition;
+            if (!EnsureRuntimeReady())
+                return false;
+
+            if (!_navMeshProvider.TryGetWorldOnNavMeshQuiet(localPosition, maxDistance, out var worldPosition))
+                return false;
+
+            projectedLocal = _navMeshProvider.WorldToProxyLocal(worldPosition);
+            return true;
+        }
+
         internal void DumpNavDiagnosticsAtPlayer()
         {
             if (!TryGetPlayerLocalPosition(out var localPosition))

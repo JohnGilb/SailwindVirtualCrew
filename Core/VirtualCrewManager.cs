@@ -26,6 +26,8 @@ namespace SailwindVirtualCrew
         public List<MooringRequest>  MooringRequests  { get; private set; }
         public List<HaulSellRequest> HaulSellRequests { get; private set; }
         public List<SleepRequest>    SleepRequests    { get; private set; }
+        public List<LanternRequest> LanternRequests { get; private set; }
+        public List<LanternRefillRequest> LanternRefillRequests { get; private set; }
         public List<StewardWaterRequest> StewardWaterRequests { get; private set; }
         public List<StewardFoodRequest> StewardFoodRequests { get; private set; }
         public StewardPhilosophyRequest ActiveStewardPhilosophyRequest { get; private set; }
@@ -44,7 +46,12 @@ namespace SailwindVirtualCrew
         private const float NavigatorMapNoonWindowHours = 1f;
         private const float NavigatorMapIslandRangeMeters = 500f;
         private const float StewardSourceScanCooldownSeconds = 10f;
+        private const float LanternAutoScanIntervalSeconds = 30f;
+        private const float LanternRefillScanIntervalSeconds = 60f;
+        private const float LanternDuskHour = 18f;
+        private const float LanternDawnHour = 6f;
         private const int MaxNavigationResults = 3;
+        private const int MaxFirstOfficers = 2;
         private float _lastFirstOfficerLocalTime = -1f;
         private float _lastFirstOfficerTrimGameHours = -1f;
         private StandingOrderWindState _lastStandingOrdersIssuedState = StandingOrderWindState.None;
@@ -55,6 +62,9 @@ namespace SailwindVirtualCrew
         private PilotTask _pilotShiftHandoffTask;
         private float _nextStewardWaterSourceScanRealtime;
         private float _nextStewardFoodSourceScanRealtime;
+        private float _nextLanternAutoScanRealtime;
+        private float _nextLanternRefillScanRealtime;
+        private bool? _lastLanternWantedLit;
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownEnd = new Dictionary<NavigationMethod, float>();
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownTotal = new Dictionary<NavigationMethod, float>();
         private readonly List<string> recentNavigationResults = new List<string>();
@@ -75,6 +85,8 @@ namespace SailwindVirtualCrew
         public float MaintenanceBailOneDeckhandThresholdPercent { get; private set; } = 15f;
         public float MaintenanceBailTwoDeckhandsThresholdPercent { get; private set; } = 35f;
         public float MaintenanceBailAllDeckhandsThresholdPercent { get; private set; } = 66f;
+        public bool MaintenanceLanternAutoEnabled { get; private set; } = true;
+        public bool MaintenanceLanternRefillEnabled { get; private set; } = true;
 
         public List<SailGroup> SailGroups { get; private set; }
         public SailGroup AllSailsGroup { get; private set; }
@@ -103,6 +115,8 @@ namespace SailwindVirtualCrew
         public int TotalSalaryPay { get; private set; }
         public int[] TotalSharePayByCurrency { get; private set; }
         public Dictionary<int, CargoPaySaveData> CargoPayRecords { get; private set; }
+        public int DailySalaryPay => Crew.Count * SalaryPerCrewPerDay;
+        public int CrewProfitSharePercent => Crew.Sum(c => GetProfitSharePercent(c.Role));
         private Dictionary<string, int> quartermasterWaterRefillNextAllowedDay;
 
         private static readonly string[] CrewNamePool =
@@ -1296,6 +1310,8 @@ namespace SailwindVirtualCrew
             MooringRequests  = new List<MooringRequest>();
             HaulSellRequests = new List<HaulSellRequest>();
             SleepRequests    = new List<SleepRequest>();
+            LanternRequests = new List<LanternRequest>();
+            LanternRefillRequests = new List<LanternRefillRequest>();
             StewardWaterRequests = new List<StewardWaterRequest>();
             StewardFoodRequests = new List<StewardFoodRequest>();
             ActiveStewardPhilosophyRequest = null;
@@ -1310,6 +1326,9 @@ namespace SailwindVirtualCrew
             _pilotShiftHandoffTask = null;
             _nextStewardWaterSourceScanRealtime = 0f;
             _nextStewardFoodSourceScanRealtime = 0f;
+            _nextLanternAutoScanRealtime = 0f;
+            _nextLanternRefillScanRealtime = 0f;
+            _lastLanternWantedLit = null;
             LookoutGroundingRisk.ResetRuntimeState();
             if (PlayerWaitingState.IsActive)
                 PlayerWaitingState.Interrupt("crew reset");
@@ -1336,6 +1355,8 @@ namespace SailwindVirtualCrew
         public Crewman Lookout   => ActiveLookoutTask?.AssignedCrewman;
         public Crewman Steward   => Crew.FirstOrDefault(c => c.Role == ShipRole.Steward);
         public Crewman FirstOfficer => Crew.FirstOrDefault(c => c.Role == ShipRole.ChiefOfficer);
+        public IReadOnlyList<Crewman> FirstOfficers => Crew.Where(c => c.Role == ShipRole.ChiefOfficer).ToList().AsReadOnly();
+        public int FirstOfficerCount => Crew.Count(c => c.Role == ShipRole.ChiefOfficer);
         public bool HasFirstOfficer => Crew.Any(c => c.Role == ShipRole.ChiefOfficer);
         public IReadOnlyList<string> RecentNavigationResults => recentNavigationResults.AsReadOnly();
         public IReadOnlyList<NavigatorShipLogEntrySaveData> NavigatorShipLog
@@ -1377,8 +1398,13 @@ namespace SailwindVirtualCrew
             if (target == null || target.Role == ShipRole.ChiefOfficer || !Crew.Contains(target))
                 return 0;
 
-            var fo = Crew.FirstOrDefault(c => c.Role == ShipRole.ChiefOfficer && IsCrewAvailable(c));
-            return fo == null ? 0 : fo.BaseCharisma - 3;
+            var firstOfficers = Crew
+                .Where(c => c.Role == ShipRole.ChiefOfficer && IsCrewAvailable(c))
+                .ToList();
+            if (firstOfficers.Count == 0)
+                return 0;
+
+            return firstOfficers.Min(c => c.BaseCharisma - 3);
         }
 
         public void StartPilot(Crewman crewman)
@@ -1756,9 +1782,9 @@ namespace SailwindVirtualCrew
                 return false;
             }
 
-            if (definition.Role == ShipRole.ChiefOfficer && Crew.Any(existing => existing.Role == ShipRole.ChiefOfficer))
+            if (definition.Role == ShipRole.ChiefOfficer && FirstOfficerCount >= MaxFirstOfficers)
             {
-                reason = "A First Officer is already aboard.";
+                reason = "No more than two First Officers may be aboard.";
                 return false;
             }
 
@@ -1865,9 +1891,9 @@ namespace SailwindVirtualCrew
                 return false;
             }
 
-            if (c.Role == ShipRole.ChiefOfficer && Crew.Any(existing => existing.Role == ShipRole.ChiefOfficer))
+            if (c.Role == ShipRole.ChiefOfficer && FirstOfficerCount >= MaxFirstOfficers)
             {
-                reason = "A First Officer is already aboard.";
+                reason = "No more than two First Officers may be aboard.";
                 return false;
             }
 
@@ -1892,6 +1918,10 @@ namespace SailwindVirtualCrew
             if (_assignedNavigator == c) _assignedNavigator = null;
             var sleepReq = SleepRequests.FirstOrDefault(r => r.AssignedCrewman == c);
             if (sleepReq != null) CancelSleepRequest(sleepReq);
+            foreach (var request in LanternRequests.Where(r => r.AssignedCrewman == c).ToList())
+                CancelLanternRequest(request);
+            foreach (var request in LanternRefillRequests.Where(r => r.AssignedCrewman == c).ToList())
+                CancelLanternRefillRequest(request);
             var swabReq = SwabDecksRequests.FirstOrDefault(r => r.AssignedCrewman == c);
             if (swabReq != null) CancelSwabDecksRequest(swabReq);
             foreach (var request in StewardFoodRequests.Where(r => r.AssignedCrewman == c).ToList())
@@ -2024,23 +2054,42 @@ namespace SailwindVirtualCrew
                 MaintenanceBailOneDeckhandThresholdPercent = MaintenanceBailTwoDeckhandsThresholdPercent;
         }
 
+        public void SetMaintenanceLanternAutoEnabled(bool enabled)
+        {
+            MaintenanceLanternAutoEnabled = enabled;
+            _lastLanternWantedLit = null;
+            _nextLanternAutoScanRealtime = 0f;
+        }
+
+        public void SetMaintenanceLanternRefillEnabled(bool enabled)
+        {
+            MaintenanceLanternRefillEnabled = enabled;
+            _nextLanternRefillScanRealtime = 0f;
+        }
+
         public void RestoreMaintenanceSettings(
             int settingsVersion,
             float oneDeckhandThresholdPercent,
             float twoDeckhandsThresholdPercent,
-            float allDeckhandsThresholdPercent)
+            float allDeckhandsThresholdPercent,
+            bool lanternAutoEnabled = true,
+            bool lanternRefillEnabled = true)
         {
             if (settingsVersion <= 0)
             {
                 MaintenanceBailOneDeckhandThresholdPercent = 15f;
                 MaintenanceBailTwoDeckhandsThresholdPercent = 35f;
                 MaintenanceBailAllDeckhandsThresholdPercent = 66f;
+                MaintenanceLanternAutoEnabled = true;
+                MaintenanceLanternRefillEnabled = true;
                 return;
             }
 
             MaintenanceBailOneDeckhandThresholdPercent = Mathf.Clamp(oneDeckhandThresholdPercent, 0f, 100f);
             MaintenanceBailTwoDeckhandsThresholdPercent = Mathf.Clamp(twoDeckhandsThresholdPercent, 0f, 100f);
             MaintenanceBailAllDeckhandsThresholdPercent = Mathf.Clamp(allDeckhandsThresholdPercent, 0f, 100f);
+            MaintenanceLanternAutoEnabled = settingsVersion < 2 || lanternAutoEnabled;
+            MaintenanceLanternRefillEnabled = settingsVersion < 2 || lanternRefillEnabled;
             SetMaintenanceBailTwoDeckhandsThreshold(MaintenanceBailTwoDeckhandsThresholdPercent);
             SetMaintenanceBailAllDeckhandsThreshold(MaintenanceBailAllDeckhandsThresholdPercent);
         }
@@ -3039,6 +3088,38 @@ namespace SailwindVirtualCrew
             SwabDecksRequests.Add(request);
         }
 
+        public void AddLanternRequests(bool lightState)
+        {
+            foreach (var lantern in CrewLanternService.FindCurrentVesselLanterns())
+                AddLanternRequest(new LanternRequest(lantern, lightState));
+        }
+
+        public void AddLanternRequest(LanternRequest request)
+        {
+            if (request == null || request.IsDone() || HasPendingLanternRequest(request.Lantern))
+                return;
+
+            LanternRequests.Add(request);
+        }
+
+        public void AddLanternRefillRequest(LanternRefillRequest request)
+        {
+            if (request == null || request.IsDone() || HasPendingLanternRefillRequest(request.Lantern))
+                return;
+
+            LanternRefillRequests.Add(request);
+        }
+
+        private bool HasPendingLanternRequest(ShipItemLight lantern)
+        {
+            return lantern && LanternRequests.Any(r => r.Lantern == lantern && r.Status != WorkRequestStatus.Complete);
+        }
+
+        private bool HasPendingLanternRefillRequest(ShipItemLight lantern)
+        {
+            return lantern && LanternRefillRequests.Any(r => r.Lantern == lantern && r.Status != WorkRequestStatus.Complete);
+        }
+
         public void AddHaulSellRequest(HaulSellRequest request)
         {
             if (request == null || HasPendingHaulSellRequest(request.Item))
@@ -3135,6 +3216,24 @@ namespace SailwindVirtualCrew
 
             request.Cancel();
             SwabDecksRequests.Remove(request);
+        }
+
+        public void CancelLanternRequest(LanternRequest request)
+        {
+            if (request == null)
+                return;
+
+            request.Cancel();
+            LanternRequests.Remove(request);
+        }
+
+        public void CancelLanternRefillRequest(LanternRefillRequest request)
+        {
+            if (request == null)
+                return;
+
+            request.Cancel();
+            LanternRefillRequests.Remove(request);
         }
 
         public void CancelHaulSellRequest(HaulSellRequest request)
@@ -3283,6 +3382,20 @@ namespace SailwindVirtualCrew
                 foreach (var request in StewardFoodRequests.ToList())
                     CancelStewardFoodRequest(request);
                 StewardFoodRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            if (LanternRequests != null)
+            {
+                foreach (var request in LanternRequests.ToList())
+                    CancelLanternRequest(request);
+                LanternRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            if (LanternRefillRequests != null)
+            {
+                foreach (var request in LanternRefillRequests.ToList())
+                    CancelLanternRefillRequest(request);
+                LanternRefillRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
             }
         }
 
@@ -3683,6 +3796,55 @@ namespace SailwindVirtualCrew
             return topBoat ? topBoat.GetComponent<BoatDamage>() : null;
         }
 
+        private void TickLanternAutomation()
+        {
+            if (!MaintenanceLanternAutoEnabled
+                || Sun.sun == null
+                || !Crew.Any(c => c.Role == ShipRole.Quartermaster)
+                || Time.realtimeSinceStartup < _nextLanternAutoScanRealtime)
+                return;
+
+            bool wantedLit = WantsLanternsLit(Sun.sun.localTime);
+            _nextLanternAutoScanRealtime = Time.realtimeSinceStartup + LanternAutoScanIntervalSeconds;
+            _lastLanternWantedLit = wantedLit;
+            AddLanternRequests(wantedLit);
+        }
+
+        private void TickLanternRefillScan()
+        {
+            if (!MaintenanceLanternRefillEnabled
+                || Time.realtimeSinceStartup < _nextLanternRefillScanRealtime)
+                return;
+
+            _nextLanternRefillScanRealtime = Time.realtimeSinceStartup + LanternRefillScanIntervalSeconds;
+            if (!Crew.Any(c => c.Role == ShipRole.Quartermaster && IsCrewAvailable(c)))
+                return;
+
+            var usedFuel = LanternRefillRequests
+                .Where(r => r.Status != WorkRequestStatus.Complete && r.Fuel)
+                .Select(r => r.Fuel)
+                .ToList();
+
+            foreach (var lantern in CrewLanternService.FindCurrentVesselLanterns())
+            {
+                if (!CrewLanternService.NeedsRefill(lantern) || HasPendingLanternRefillRequest(lantern))
+                    continue;
+
+                var fuel = CrewLanternService.FindFuelFor(lantern, usedFuel);
+                if (!fuel)
+                    continue;
+
+                usedFuel.Add(fuel);
+                AddLanternRefillRequest(new LanternRefillRequest(lantern, fuel));
+            }
+        }
+
+        private static bool WantsLanternsLit(float localTime)
+        {
+            localTime = NormalizeHour(localTime);
+            return localTime >= LanternDuskHour || localTime < LanternDawnHour;
+        }
+
         public void CancelSquareTrimRequest(SquareTrimRequest request)
         {
             if (request.AssignedCrewman  != null) request.AssignedCrewman.CurrentTask  = null;
@@ -3733,7 +3895,7 @@ namespace SailwindVirtualCrew
             {
                 _lastFirstOfficerTrimGameHours = currentGameHours;
             }
-            else if (!FirstOfficerAutoTrimEnabled)
+            else if (!FirstOfficerAutoTrimEnabled || IsFirstOfficerAutoTrimSuppressed())
             {
                 _lastFirstOfficerTrimGameHours = currentGameHours;
             }
@@ -3746,6 +3908,13 @@ namespace SailwindVirtualCrew
             TickFirstOfficerStandingOrders(currentGameHours);
 
             _lastFirstOfficerLocalTime = currentLocalTime;
+        }
+
+        private static bool IsFirstOfficerAutoTrimSuppressed()
+        {
+            return PlayerWaitingState.IsActive
+                || GameState.sleeping
+                || Time.timeScale > 1.1f;
         }
 
         private void TickFirstOfficerStandingOrders(float currentGameHours)
@@ -4251,6 +4420,11 @@ namespace SailwindVirtualCrew
 
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.QuartermasterBailing"))
                 TickQuartermasterBailing();
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.LanternAutomation"))
+            {
+                TickLanternAutomation();
+                TickLanternRefillScan();
+            }
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.Steward"))
                 TickSteward();
 
@@ -4555,6 +4729,46 @@ namespace SailwindVirtualCrew
                 }
             }
 
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.LanternRequests"))
+            {
+                foreach (var lantern in LanternRequests)
+                {
+                    if (lantern.Status == WorkRequestStatus.Open && lantern.IsDone())
+                        lantern.Cancel();
+                    else if (lantern.Status == WorkRequestStatus.Positioning
+                        && (lantern.IsPositioningComplete() || lantern.IsPositioningTimedOut()))
+                        lantern.Begin();
+                    else if (lantern.Status == WorkRequestStatus.InProgress)
+                        lantern.Tick();
+                }
+
+                LanternRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.LanternRefillRequests"))
+            {
+                foreach (var refill in LanternRefillRequests)
+                {
+                    if (refill.Status == WorkRequestStatus.Open && refill.IsDone())
+                        refill.Cancel();
+                    else if (refill.Status == WorkRequestStatus.Positioning)
+                        refill.Tick();
+                }
+
+                LanternRefillRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+
+                foreach (var refill in LanternRefillRequests)
+                {
+                    if (refill.Status != WorkRequestStatus.Open) continue;
+                    var quartermaster = Crew
+                        .Where(c => c.Role == ShipRole.Quartermaster && IsCrewAssignable(c))
+                        .OrderByDescending(c => (float)c.CurrentStamina / c.MaxStamina)
+                        .FirstOrDefault();
+                    if (quartermaster == null) break;
+                    refill.Begin(quartermaster);
+                }
+            }
+
             // Sleep requests: tick active ones, advance positioning completions, assign beds to waiting ones.
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SleepRequests"))
             {
@@ -4654,6 +4868,14 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.CommandName + " " + request.ItemName,
                     EstimateDistanceToHaulSellRequest(crewman, request),
+                    c => request.BeginPositioning(c));
+            }
+
+            foreach (var request in LanternRequests.Where(r => r.Status == WorkRequestStatus.Open))
+            {
+                yield return new DeckhandTaskCandidate(
+                    request.CommandName + " " + request.LanternName,
+                    CrewLanternService.EstimateDistanceToLantern(crewman, request.Lantern),
                     c => request.BeginPositioning(c));
             }
         }
@@ -4777,6 +4999,12 @@ namespace SailwindVirtualCrew
             {
                 foreach (var food in StewardFoodRequests)
                     food.UpdateFrame();
+            }
+
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.LanternRefillRequests"))
+            {
+                foreach (var refill in LanternRefillRequests)
+                    refill.UpdateFrame();
             }
 
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.StewardPhilosophyRequest"))

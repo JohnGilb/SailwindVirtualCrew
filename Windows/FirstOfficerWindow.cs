@@ -39,8 +39,8 @@ namespace SailwindVirtualCrew
             GUILayout.Space(4);
 
             var manager = VirtualCrewManager.Instance;
-            var firstOfficer = manager.FirstOfficer;
-            if (firstOfficer == null)
+            var firstOfficers = manager.FirstOfficers;
+            if (firstOfficers.Count == 0)
             {
                 GUILayout.Label("No First Officer aboard.");
                 GUI.enabled = false;
@@ -50,7 +50,9 @@ namespace SailwindVirtualCrew
             }
             else
             {
-                GUILayout.Label($"First Officer: {firstOfficer.Name}  [{firstOfficer.FatigueTag}]");
+                foreach (var firstOfficer in firstOfficers)
+                    GUILayout.Label($"First Officer: {firstOfficer.Name}  [{firstOfficer.FatigueTag}]");
+
                 bool enabled = GUILayout.Toggle(manager.FirstOfficerAutoTrimEnabled, "Enable auto-trim");
                 if (enabled != manager.FirstOfficerAutoTrimEnabled)
                     manager.SetFirstOfficerAutoTrimEnabled(enabled);

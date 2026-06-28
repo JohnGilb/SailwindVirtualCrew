@@ -65,7 +65,8 @@ namespace SailwindVirtualCrew
                                 + ButtonHeight  // bail button
                                 + ButtonHeight  // swab button
                                 + ButtonHeight  // auto-bailing label
-                                + ButtonHeight * 6; // threshold labels + sliders
+                                + ButtonHeight * 6 // threshold labels + sliders
+                                + ButtonHeight * 3; // lantern toggles
 
             if (DeveloperMode.IsEnabled)
                 contentHeight += 4f + ButtonHeight; // dev button
@@ -131,6 +132,16 @@ namespace SailwindVirtualCrew
                 "All Deckhands",
                 manager.MaintenanceBailAllDeckhandsThresholdPercent,
                 manager.SetMaintenanceBailAllDeckhandsThreshold);
+
+            GUILayout.Space(4);
+            GUILayout.Label("Lanterns");
+            bool autoLanterns = GUILayout.Toggle(manager.MaintenanceLanternAutoEnabled, "Automatic light/extinguish");
+            if (autoLanterns != manager.MaintenanceLanternAutoEnabled)
+                manager.SetMaintenanceLanternAutoEnabled(autoLanterns);
+
+            bool refillLanterns = GUILayout.Toggle(manager.MaintenanceLanternRefillEnabled, "Quartermaster refills lanterns");
+            if (refillLanterns != manager.MaintenanceLanternRefillEnabled)
+                manager.SetMaintenanceLanternRefillEnabled(refillLanterns);
 
             if (DeveloperMode.IsEnabled)
             {

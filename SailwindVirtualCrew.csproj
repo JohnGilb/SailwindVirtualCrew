@@ -110,6 +110,7 @@
     <Compile Include="Core\VirtualCrewManager.cs" />
     <Compile Include="Core\VirtualCrewSaveData.cs" />
     <Compile Include="Crew\CrewAgent.cs" />
+    <Compile Include="Crew\CrewLanternService.cs" />
     <Compile Include="Crew\Crewman.cs" />
     <Compile Include="Crew\CrewSoundPlayer.cs" />
     <Compile Include="Crew\CrewVisualFactory.cs" />
@@ -191,6 +192,8 @@
     <Compile Include="Sails\SimpleSail.cs" />
     <Compile Include="Requests\TrimRequest.cs" />
     <Compile Include="Requests\JibTrimRequest.cs" />
+    <Compile Include="Requests\LanternRefillRequest.cs" />
+    <Compile Include="Requests\LanternRequest.cs" />
     <Compile Include="Requests\SquareTrimRequest.cs" />
     <Compile Include="Patches\SaveLoadPatches.cs" />
     <Compile Include="Requests\WorkRequest.cs" />

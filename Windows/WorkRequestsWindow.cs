@@ -45,6 +45,8 @@ namespace SailwindVirtualCrew
             var haulSellRequests   = manager.HaulSellRequests;
             var bailRequests       = manager.BailRequests;
             var swabDecksRequests  = manager.SwabDecksRequests;
+            var lanternRequests    = manager.LanternRequests;
+            var lanternRefillRequests = manager.LanternRefillRequests;
             var sleepRequests      = manager.SleepRequests;
             var pilotTask          = manager.ActivePilotTask;
             var lookoutTask        = manager.ActiveLookoutTask;
@@ -52,6 +54,7 @@ namespace SailwindVirtualCrew
             int totalTasks = requests.Count + trimRequests.Count
                            + jibTrimRequests.Count + squareTrimRequests.Count
                            + navigateRequests.Count + mooringRequests.Count + haulSellRequests.Count + bailRequests.Count + swabDecksRequests.Count + sleepRequests.Count
+                           + lanternRequests.Count + lanternRefillRequests.Count
                            + (pilotTask   != null ? 1 : 0)
                            + (lookoutTask != null ? 1 : 0);
 
@@ -92,6 +95,12 @@ namespace SailwindVirtualCrew
                 foreach (var r in swabDecksRequests)
                     taskListHeight += r.Status == WorkRequestStatus.InProgress
                         ? InProgressTaskHeight : OpenTaskHeight;
+                foreach (var r in lanternRequests)
+                    taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
+                        ? InProgressTaskHeight : OpenTaskHeight;
+                foreach (var r in lanternRefillRequests)
+                    taskListHeight += r.Status == WorkRequestStatus.Positioning
+                        ? InProgressTaskHeight : OpenTaskHeight;
                 foreach (var r in sleepRequests)
                     taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
                         ? InProgressTaskHeight : OpenTaskHeight;
@@ -119,6 +128,8 @@ namespace SailwindVirtualCrew
             var haulSellRequests   = manager.HaulSellRequests;
             var bailRequests       = manager.BailRequests;
             var swabDecksRequests  = manager.SwabDecksRequests;
+            var lanternRequests    = manager.LanternRequests;
+            var lanternRefillRequests = manager.LanternRefillRequests;
             var sleepRequests      = manager.SleepRequests;
             var pilotTask          = manager.ActivePilotTask;
             var lookoutTask        = manager.ActiveLookoutTask;
@@ -128,6 +139,7 @@ namespace SailwindVirtualCrew
             if (requests.Count == 0 && trimRequests.Count == 0
              && jibTrimRequests.Count == 0 && squareTrimRequests.Count == 0
              && navigateRequests.Count == 0 && mooringRequests.Count == 0 && haulSellRequests.Count == 0 && bailRequests.Count == 0 && swabDecksRequests.Count == 0 && sleepRequests.Count == 0
+             && lanternRequests.Count == 0 && lanternRefillRequests.Count == 0
              && pilotTask == null && lookoutTask == null)
             {
                 GUILayout.Label("No tasks queued.");
@@ -376,6 +388,56 @@ namespace SailwindVirtualCrew
                 }
             }
             if (swabToCancel != null) manager.CancelSwabDecksRequest(swabToCancel);
+
+            LanternRequest lanternToCancel = null;
+            foreach (var lantern in lanternRequests)
+            {
+                if (lantern.Status == WorkRequestStatus.Open)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[Waiting] " + lantern.CommandName + " - " + lantern.LanternName);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) lanternToCancel = lantern;
+                    GUILayout.EndHorizontal();
+                }
+                else if (lantern.Status == WorkRequestStatus.Positioning)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + lantern.AssignedCrewman.Name + "] (moving) " + lantern.CommandName + " - " + lantern.LanternName);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) lanternToCancel = lantern;
+                    GUILayout.EndHorizontal();
+                    DrawPositioningBar(lantern.GetPositioningProgress());
+                }
+                else if (lantern.Status == WorkRequestStatus.InProgress)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + lantern.AssignedCrewman.Name + "] " + lantern.CommandName + " - " + lantern.LanternName);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) lanternToCancel = lantern;
+                    GUILayout.EndHorizontal();
+                    DrawProgressBar(lantern.GetProgress());
+                }
+            }
+            if (lanternToCancel != null) manager.CancelLanternRequest(lanternToCancel);
+
+            LanternRefillRequest lanternRefillToCancel = null;
+            foreach (var refill in lanternRefillRequests)
+            {
+                if (refill.Status == WorkRequestStatus.Open)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[Waiting] Refill Lantern - " + refill.LanternName);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) lanternRefillToCancel = refill;
+                    GUILayout.EndHorizontal();
+                }
+                else if (refill.Status == WorkRequestStatus.Positioning)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + refill.AssignedCrewman.Name + "] Refill Lantern - " + refill.LanternName);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) lanternRefillToCancel = refill;
+                    GUILayout.EndHorizontal();
+                    DrawPositioningBar(refill.GetPositioningProgress());
+                }
+            }
+            if (lanternRefillToCancel != null) manager.CancelLanternRefillRequest(lanternRefillToCancel);
 
             SleepRequest sleepToCancel = null;
             foreach (var sleep in sleepRequests)
