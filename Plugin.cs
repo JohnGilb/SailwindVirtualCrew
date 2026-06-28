@@ -406,6 +406,7 @@ namespace SailwindVirtualCrew
 
 	            CrewNavigationCoordinator.Instance.RebuildWorkstations();
 	            CrewNavigationCoordinator.Instance.RefreshActorsForCurrentVessel();
+                VirtualCrewManager.Instance.FinishVesselMapScan();
                 _lastScannedVesselKey = vesselKey;
             }
 
@@ -437,6 +438,11 @@ namespace SailwindVirtualCrew
             string vesselKey = context.WorldBoat.name.Replace("(Clone)", "").Trim();
             if (!string.IsNullOrEmpty(vesselKey) && vesselKey != _lastScannedVesselKey)
                 _vesselScanRequested = true;
+        }
+
+        internal void RequestVesselScan()
+        {
+            _vesselScanRequested = true;
         }
 
         private static Sail FindPrimarySquare(Sail topsail)

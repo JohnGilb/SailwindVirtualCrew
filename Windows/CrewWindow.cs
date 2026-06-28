@@ -43,6 +43,7 @@ namespace SailwindVirtualCrew
         private readonly HashSet<object> _pendingRopes = new HashSet<object>();
         private readonly Dictionary<ICommonSailActions, SailButtonBinding> _sailButtons = new Dictionary<ICommonSailActions, SailButtonBinding>();
         private readonly List<WinchButtonBinding> _winchButtons = new List<WinchButtonBinding>();
+        private readonly List<SailStorageButtonBinding> _sailStorageButtons = new List<SailStorageButtonBinding>();
         private readonly List<MooringButtonBinding> _mooringButtons = new List<MooringButtonBinding>();
         private Button _dropAnchorButton;
         private Button _raiseAnchorButton;
@@ -398,6 +399,33 @@ namespace SailwindVirtualCrew
                     }));
                 }
 
+                if (selectedSail is StowedSail stowed)
+                {
+                    var restoreObject = CreateButton("Restore Sail from Locker", () =>
+                    {
+                        manager.AddSailStorageRequest(new SailStorageRequest(stowed.Data));
+                        RequestRebuild();
+                    });
+                    var restoreButton = restoreObject.GetComponent<Button>();
+                    _sailStorageButtons.Add(new SailStorageButtonBinding(restoreButton, stowed, true));
+                    SetButtonInteractable(restoreButton, IsStorageButtonAvailable(manager, stowed, true));
+                    AddRow(restoreObject);
+                    return;
+                }
+
+                if (SailStorageService.IsAttachedStaysail(selectedSail))
+                {
+                    var storeObject = CreateButton("Store Sail in Locker", () =>
+                    {
+                        manager.AddSailStorageRequest(new SailStorageRequest(selectedSail));
+                        RequestRebuild();
+                    });
+                    var storeButton = storeObject.GetComponent<Button>();
+                    _sailStorageButtons.Add(new SailStorageButtonBinding(storeButton, selectedSail, false));
+                    SetButtonInteractable(storeButton, IsStorageButtonAvailable(manager, selectedSail, false));
+                    AddRow(storeObject);
+                }
+
                 AddLabel("Halyard:");
                 AddRow(
                     WinchButton(manager, "Reef", selectedSail.getHalyardWinch(), () => manager.AddWorkRequest(new WorkRequest(selectedSail, "Halyard Reef", new WinchTarget(selectedSail.getHalyardWinch(), 0.00f)))),
@@ -528,6 +556,13 @@ namespace SailwindVirtualCrew
                             SetButtonInteractable(binding.Button, !IsWinchPending(manager, binding.Primary) && !IsWinchPending(manager, binding.Secondary));
                 }
 
+                using (PerformanceInstrumentation.MeasureUGui("Deck Orders.RefreshState.SailStorageButtons"))
+                {
+                    foreach (var binding in _sailStorageButtons)
+                        if (binding.Button)
+                            SetButtonInteractable(binding.Button, IsStorageButtonAvailable(manager, binding.Sail, binding.Restore));
+                }
+
                 using (PerformanceInstrumentation.MeasureUGui("Deck Orders.RefreshState.SailButtons"))
                 {
                     foreach (var kv in _sailButtons)
@@ -545,6 +580,7 @@ namespace SailwindVirtualCrew
             using (PerformanceInstrumentation.MeasureUGui("Deck Orders.ClearContent"))
             {
                 _winchButtons.Clear();
+                _sailStorageButtons.Clear();
                 _mooringButtons.Clear();
                 _sailButtons.Clear();
                 _dropAnchorButton = null;
@@ -1046,6 +1082,18 @@ namespace SailwindVirtualCrew
                 _pendingRopes.Add(winch.rope);
         }
 
+        private static bool IsStorageButtonAvailable(VirtualCrewManager manager, ICommonSailActions sail, bool restore)
+        {
+            if (sail == null)
+                return false;
+
+            if (restore)
+                return sail is StowedSail
+                    && !manager.HasPendingRequestForSailIdentifier(sail.getDefaultIdentifier());
+
+            return SailStorageService.CanStore(sail);
+        }
+
         private struct WinchButtonBinding
         {
             internal readonly Button Button;
@@ -1069,6 +1117,20 @@ namespace SailwindVirtualCrew
             {
                 Button = button;
                 Side = side;
+            }
+        }
+
+        private struct SailStorageButtonBinding
+        {
+            internal readonly Button Button;
+            internal readonly ICommonSailActions Sail;
+            internal readonly bool Restore;
+
+            internal SailStorageButtonBinding(Button button, ICommonSailActions sail, bool restore)
+            {
+                Button = button;
+                Sail = sail;
+                Restore = restore;
             }
         }
 

@@ -26,6 +26,23 @@ namespace SailwindVirtualCrew
     }
 
     [Serializable]
+    public class StowedSailSaveData
+    {
+        public string sailIdentifier;
+        public string mastName;
+        public int mastIndex;
+        public int prefabIndex;
+        public float installHeight;
+        public float minAngle;
+        public float maxAngle;
+        public int sailColor;
+        public float scaleY;
+        public float scaleZ;
+        public string sailName;
+        public string friendlyName;
+    }
+
+    [Serializable]
     public class StandingOrderSailSaveData
     {
         public string sailIdentifier;
@@ -139,6 +156,7 @@ namespace SailwindVirtualCrew
     {
         public string friendlyName;
         public Dictionary<string, string> sailFriendlyNames = new Dictionary<string, string>();
+        public List<StowedSailSaveData> stowedSails = new List<StowedSailSaveData>();
         public List<SailGroupSaveData> sailGroups = new List<SailGroupSaveData>();
         public List<StandingOrderConditionSaveData> standingOrders = new List<StandingOrderConditionSaveData>();
         public Dictionary<string, CrewRestLocationSaveData> crewRestLocations = new Dictionary<string, CrewRestLocationSaveData>();

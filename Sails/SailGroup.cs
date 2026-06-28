@@ -41,7 +41,7 @@ namespace SailwindVirtualCrew
 
         public SailCapability GetCommonCapabilities(IReadOnlyList<ICommonSailActions> allSails)
         {
-            var members = GetMembers(allSails).ToList();
+            var members = GetMembers(allSails).Where(s => s.getRealSail() != null).ToList();
             if (members.Count == 0) return SailCapability.None;
             var result = SailCapability.All;
             foreach (var sail in members)

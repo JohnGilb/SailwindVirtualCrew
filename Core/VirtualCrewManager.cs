@@ -17,6 +17,7 @@ namespace SailwindVirtualCrew
 
         public List<Crewman> Crew { get; private set; }
         public List<WorkRequest> WorkRequests { get; private set; }
+        public List<SailStorageRequest> SailStorageRequests { get; private set; }
         public List<TrimRequest> TrimRequests { get; private set; }
         public List<JibTrimRequest> JibTrimRequests { get; private set; }
         public List<SquareTrimRequest> SquareTrimRequests { get; private set; }
@@ -565,6 +566,32 @@ namespace SailwindVirtualCrew
             RebuildAllSailsGroup();
         }
 
+        public void FinishVesselMapScan()
+        {
+            AddStowedSailsForCurrentVessel();
+            RebuildAllSailsGroup();
+        }
+
+        private void AddStowedSailsForCurrentVessel()
+        {
+            var vesselData = GetCurrentVesselData();
+            if (vesselData?.stowedSails == null)
+                return;
+
+            foreach (var data in vesselData.stowedSails.ToList())
+            {
+                if (data == null || string.IsNullOrEmpty(data.sailIdentifier))
+                    continue;
+
+                if (allSails.Any(s => s.getDefaultIdentifier() == data.sailIdentifier))
+                    continue;
+
+                var stowed = new StowedSail(data);
+                RestoreFriendlyName(stowed);
+                allSails.Add(stowed);
+            }
+        }
+
         public bool HasAnyRestLocationOnCurrentVessel()
         {
             if (CurrentVesselKey == null)
@@ -795,25 +822,35 @@ namespace SailwindVirtualCrew
             if (command.hasHalyard)
             {
                 foreach (var sail in group.GetMembers(AllSails))
+                {
+                    if (!IsSailAvailableForLiveWork(sail) || sail.getHalyardWinch() == null)
+                        continue;
                     AddWorkRequest(new WorkRequest(sail, "Halyard " + FormatFavoriteTarget(command.halyard),
                         new WinchTarget(sail.getHalyardWinch(), command.halyard)));
+                }
             }
 
             if (command.hasSimpleSheet)
             {
                 foreach (var sail in group.GetMembers(AllSails).OfType<SimpleSail>())
+                {
+                    if (!IsSailAvailableForLiveWork(sail) || sail.getSheetWinch() == null)
+                        continue;
                     AddWorkRequest(new WorkRequest(sail, "Sheet " + FormatFavoriteTarget(command.simpleSheet),
                         new WinchTarget(sail.getSheetWinch(), command.simpleSheet)));
+                }
             }
 
             if (command.hasPortSheet || command.hasStarboardSheet)
             {
                 foreach (var sail in group.GetMembers(AllSails).OfType<DualSheetSail>())
                 {
-                    if (command.hasPortSheet)
+                    if (!IsSailAvailableForLiveWork(sail))
+                        continue;
+                    if (command.hasPortSheet && sail.getPortSheetWinch() != null)
                         AddWorkRequest(new WorkRequest(sail, "Port Sheet " + FormatFavoriteTarget(command.portSheet),
                             new WinchTarget(sail.getPortSheetWinch(), command.portSheet)));
-                    if (command.hasStarboardSheet)
+                    if (command.hasStarboardSheet && sail.getStarboardSheetWinch() != null)
                         AddWorkRequest(new WorkRequest(sail, "Starboard Sheet " + FormatFavoriteTarget(command.starboardSheet),
                             new WinchTarget(sail.getStarboardSheetWinch(), command.starboardSheet)));
                 }
@@ -871,19 +908,29 @@ namespace SailwindVirtualCrew
             {
                 case FavoriteActionKind.Halyard:
                     foreach (var sail in group.GetMembers(AllSails))
+                    {
+                        if (!IsSailAvailableForLiveWork(sail) || sail.getHalyardWinch() == null)
+                            continue;
                         AddWorkRequest(new WorkRequest(sail, "Halyard " + action.label,
                             new WinchTarget(sail.getHalyardWinch(), action.target)));
+                    }
                     break;
 
                 case FavoriteActionKind.SimpleSheet:
                     foreach (var sail in group.GetMembers(AllSails).OfType<SimpleSail>())
+                    {
+                        if (!IsSailAvailableForLiveWork(sail) || sail.getSheetWinch() == null)
+                            continue;
                         AddWorkRequest(new WorkRequest(sail, "Sheet " + action.label,
                             new WinchTarget(sail.getSheetWinch(), action.target)));
+                    }
                     break;
 
                 case FavoriteActionKind.RelativeSheet:
                     foreach (var sail in group.GetMembers(AllSails).OfType<SimpleSail>())
                     {
+                        if (!IsSailAvailableForLiveWork(sail) || sail.getSheetWinch() == null || sail.getSheetWinch().rope == null)
+                            continue;
                         var winch = sail.getSheetWinch();
                         float target = Mathf.Clamp01(winch.rope.currentLength + action.delta);
                         AddWorkRequest(new WorkRequest(sail, "Sheet " + action.label,
@@ -895,9 +942,13 @@ namespace SailwindVirtualCrew
                     foreach (var sail in group.GetMembers(AllSails).OfType<DualSheetSail>()
                                              .Where(s => s.getSubtype() == action.dualSheetSubtype))
                     {
-                        AddWorkRequest(new WorkRequest(sail, "Port Sheet " + action.label,
+                        if (!IsSailAvailableForLiveWork(sail))
+                            continue;
+                        if (sail.getPortSheetWinch() != null)
+                            AddWorkRequest(new WorkRequest(sail, "Port Sheet " + action.label,
                             new WinchTarget(sail.getPortSheetWinch(), action.portTarget)));
-                        AddWorkRequest(new WorkRequest(sail, "Starboard Sheet " + action.label,
+                        if (sail.getStarboardSheetWinch() != null)
+                            AddWorkRequest(new WorkRequest(sail, "Starboard Sheet " + action.label,
                             new WinchTarget(sail.getStarboardSheetWinch(), action.starboardTarget)));
                     }
                     break;
@@ -1300,6 +1351,7 @@ namespace SailwindVirtualCrew
             squareSails = new List<DualSheetSail>();
             allSails = new List<ICommonSailActions>();
             winchInstructions = new Dictionary<GPButtonRopeWinch, float>();
+            SailStorageRequests = new List<SailStorageRequest>();
             WorkRequests = new List<WorkRequest>();
             TrimRequests = new List<TrimRequest>();
             JibTrimRequests = new List<JibTrimRequest>();
@@ -2650,7 +2702,9 @@ namespace SailwindVirtualCrew
                 return false;
 
             return WorkRequests.Any(r => r.Status != WorkRequestStatus.Complete
-                                     && r.Targets.Any(t => t.Winch.rope == winch.rope))
+                                     && r.Targets.Any(t => t.Winch != null
+                                                        && t.Winch.rope != null
+                                                        && t.Winch.rope == winch.rope))
                 || TrimRequests.Any(r => r.Status != WorkRequestStatus.Complete
                                      && r.Sail.getSheetWinch().rope == winch.rope)
                 || JibTrimRequests.Any(r => r.Status != WorkRequestStatus.Complete
@@ -2659,6 +2713,28 @@ namespace SailwindVirtualCrew
                 || SquareTrimRequests.Any(r => r.Status != WorkRequestStatus.Complete
                                      && (r.Sail.getPortSheetWinch().rope == winch.rope
                                       || r.Sail.getStarboardSheetWinch().rope == winch.rope));
+        }
+
+        public bool HasPendingRequestForSail(ICommonSailActions sail)
+        {
+            return sail != null && HasPendingRequestForSailIdentifier(sail.getDefaultIdentifier());
+        }
+
+        public bool HasPendingRequestForSailIdentifier(string sailIdentifier)
+        {
+            if (string.IsNullOrEmpty(sailIdentifier))
+                return false;
+
+            return SailStorageRequests.Any(r => r.Status != WorkRequestStatus.Complete
+                && r.SailIdentifier == sailIdentifier)
+                || WorkRequests.Any(r => r.Status != WorkRequestStatus.Complete
+                    && r.Sail != null && r.Sail.getDefaultIdentifier() == sailIdentifier)
+                || TrimRequests.Any(r => r.Status != WorkRequestStatus.Complete
+                    && r.Sail.getDefaultIdentifier() == sailIdentifier)
+                || JibTrimRequests.Any(r => r.Status != WorkRequestStatus.Complete
+                    && r.Sail.getDefaultIdentifier() == sailIdentifier)
+                || SquareTrimRequests.Any(r => r.Status != WorkRequestStatus.Complete
+                    && r.Sail.getDefaultIdentifier() == sailIdentifier);
         }
 
         public bool HasPendingRequestForAnyWinch(IEnumerable<GPButtonRopeWinch> winches)
@@ -2675,11 +2751,17 @@ namespace SailwindVirtualCrew
 
         public void AddWorkRequest(WorkRequest request)
         {
+            if (request == null || request.Targets == null)
+                return;
+
             if (IsNoOpSailWorkRequest(request))
                 return;
 
+            if (!IsSailAvailableForLiveWork(request?.Sail))
+                return;
+
             // Reject if any of this request's target winches are already claimed.
-            if (request.Targets.Any(t => HasPendingRequestForWinch(t.Winch)))
+            if (request.Targets.Any(t => t.Winch == null || t.Winch.rope == null || HasPendingRequestForWinch(t.Winch)))
                 return;
             WorkRequests.Add(request);
         }
@@ -2712,6 +2794,8 @@ namespace SailwindVirtualCrew
 
         public void AddTrimRequest(TrimRequest request)
         {
+            if (!IsSailAvailableForLiveWork(request?.Sail))
+                return;
             if (HasPendingRequestForWinch(request.Sail.getSheetWinch()))
                 return;
             TrimRequests.Add(request);
@@ -2728,6 +2812,8 @@ namespace SailwindVirtualCrew
 
         public void AddJibTrimRequest(JibTrimRequest request)
         {
+            if (!IsSailAvailableForLiveWork(request?.Sail))
+                return;
             var port = request.Sail.getPortSheetWinch();
             var star = request.Sail.getStarboardSheetWinch();
             if (HasPendingRequestForWinch(port) || HasPendingRequestForWinch(star))
@@ -2749,11 +2835,111 @@ namespace SailwindVirtualCrew
 
         public void AddSquareTrimRequest(SquareTrimRequest request)
         {
+            if (!IsSailAvailableForLiveWork(request?.Sail))
+                return;
             var port = request.Sail.getPortSheetWinch();
             var star = request.Sail.getStarboardSheetWinch();
             if (HasPendingRequestForWinch(port) || HasPendingRequestForWinch(star))
                 return;
             SquareTrimRequests.Add(request);
+        }
+
+        private bool IsSailAvailableForLiveWork(ICommonSailActions sail)
+        {
+            if (sail == null)
+                return true;
+
+            return sail.getRealSail() != null
+                && !HasPendingRequestForSail(sail);
+        }
+
+        public void AddSailStorageRequest(SailStorageRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(request.SailIdentifier))
+                return;
+
+            if (HasPendingRequestForSailIdentifier(request.SailIdentifier))
+                return;
+
+            if (request.Kind == SailStorageRequestKind.Store && !SailStorageService.CanStore(request.Sail))
+                return;
+
+            if (request.Kind == SailStorageRequestKind.Restore && request.StowedData == null)
+                return;
+
+            SailStorageRequests.Add(request);
+        }
+
+        public void CancelSailStorageRequest(SailStorageRequest request)
+        {
+            request.CancelPositioning();
+            if (request.AssignedCrewman != null)
+                request.AssignedCrewman.CurrentTask = null;
+            CrewNavigationCoordinator.Instance.Cancel(request);
+            SailStorageRequests.Remove(request);
+        }
+
+        private void CompleteSailStorageRequest(SailStorageRequest request)
+        {
+            bool changed = false;
+            if (request.Kind == SailStorageRequestKind.Store)
+            {
+                if (SailStorageService.Store(request.Sail, out StowedSailSaveData stored))
+                {
+                    AddStowedSailData(stored);
+                    changed = true;
+                }
+            }
+            else if (request.Kind == SailStorageRequestKind.Restore)
+            {
+                if (SailStorageService.Restore(request.StowedData))
+                {
+                    RemoveStowedSailData(request.StowedData?.sailIdentifier);
+                    changed = true;
+                }
+            }
+
+            request.Status = WorkRequestStatus.Complete;
+            if (request.AssignedCrewman != null)
+                request.AssignedCrewman.CurrentTask = null;
+
+            if (changed)
+                Plugin.Instance?.RequestVesselScan();
+        }
+
+        private void AddStowedSailData(StowedSailSaveData data)
+        {
+            if (data == null || string.IsNullOrEmpty(data.sailIdentifier))
+                return;
+
+            var vesselData = GetCurrentVesselData();
+            if (vesselData == null)
+                return;
+
+            if (vesselData.stowedSails == null)
+                vesselData.stowedSails = new List<StowedSailSaveData>();
+
+            vesselData.stowedSails.RemoveAll(s => s == null || s.sailIdentifier == data.sailIdentifier);
+            vesselData.stowedSails.Add(data);
+
+            if (!string.IsNullOrEmpty(data.friendlyName))
+            {
+                if (vesselData.sailFriendlyNames == null)
+                    vesselData.sailFriendlyNames = new Dictionary<string, string>();
+                vesselData.sailFriendlyNames[data.sailIdentifier] = data.friendlyName;
+            }
+        }
+
+        private void RemoveStowedSailData(string sailIdentifier)
+        {
+            if (string.IsNullOrEmpty(sailIdentifier))
+                return;
+
+            var vesselData = GetCurrentVesselData();
+            if (vesselData?.stowedSails == null)
+                return;
+
+            vesselData.stowedSails.RemoveAll(s => s == null || s.sailIdentifier == sailIdentifier);
         }
 
         public void AddNavigateRequest(NavigateRequest request)
@@ -4457,6 +4643,24 @@ namespace SailwindVirtualCrew
                 WorkRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
             }
 
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SailStorageRequests"))
+            {
+                foreach (var req in SailStorageRequests.ToList())
+                {
+                    if (req.Status == WorkRequestStatus.InProgress && req.IsComplete())
+                    {
+                        CompleteSailStorageRequest(req);
+                    }
+                    else if (req.Status == WorkRequestStatus.Positioning)
+                    {
+                        if (req.IsPositioningComplete())
+                            req.Begin();
+                    }
+                }
+
+                SailStorageRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+            }
+
             var navCoord = CrewNavigationCoordinator.Instance;
 
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.TrimRequests"))
@@ -4855,6 +5059,14 @@ namespace SailwindVirtualCrew
                     });
             }
 
+            foreach (var request in SailStorageRequests.Where(r => r.Status == WorkRequestStatus.Open))
+            {
+                yield return new DeckhandTaskCandidate(
+                    request.DisplayLabel,
+                    EstimateDistanceToSailStorageRequest(crewman, request),
+                    c => request.BeginPositioning(c));
+            }
+
             foreach (var request in MooringRequests.Where(r => r.Status == WorkRequestStatus.Open))
             {
                 yield return new DeckhandTaskCandidate(
@@ -4883,6 +5095,17 @@ namespace SailwindVirtualCrew
         private static float EstimateDistanceToWorkRequest(Crewman crewman, WorkRequest request)
         {
             var winch = GetPrimaryWinch(request);
+            return winch
+                ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(crewman, winch)
+                : float.MaxValue;
+        }
+
+        private static float EstimateDistanceToSailStorageRequest(Crewman crewman, SailStorageRequest request)
+        {
+            var winch = request?.HalyardWinch;
+            if (winch == null && request != null && request.Kind == SailStorageRequestKind.Restore)
+                winch = SailStorageService.FindHalyardWinch(request.StowedData);
+
             return winch
                 ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(crewman, winch)
                 : float.MaxValue;

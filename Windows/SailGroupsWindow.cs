@@ -153,6 +153,8 @@ namespace SailwindVirtualCrew
         private void DrawGroupCommandPanel(VirtualCrewManager manager, SailGroup group,
                                            IReadOnlyList<ICommonSailActions> allSails)
         {
+            DrawGroupStorageActions(manager, group, allSails);
+
             var caps = group.GetCommonCapabilities(allSails);
             if (caps == SailCapability.None) return;
 
@@ -244,6 +246,35 @@ namespace SailwindVirtualCrew
 
         // ── Group button helpers ────────────────────────────────────────────
 
+        private void DrawGroupStorageActions(VirtualCrewManager manager, SailGroup group,
+                                             IReadOnlyList<ICommonSailActions> allSails)
+        {
+            var members = group.GetMembers(allSails).ToList();
+            if (members.Count == 0)
+                return;
+
+            bool canStoreAll = members.All(SailStorageService.CanStore);
+            bool canRestoreAll = members.All(s => s is StowedSail
+                && !manager.HasPendingRequestForSailIdentifier(s.getDefaultIdentifier()));
+
+            if (!canStoreAll && !canRestoreAll)
+                return;
+
+            GUILayout.Label("Locker:");
+            GUILayout.BeginHorizontal();
+            if (canStoreAll && GUILayout.Button("Store Sails"))
+            {
+                foreach (var sail in members)
+                    manager.AddSailStorageRequest(new SailStorageRequest(sail));
+            }
+            if (canRestoreAll && GUILayout.Button("Restore Sails"))
+            {
+                foreach (var stowed in members.OfType<StowedSail>())
+                    manager.AddSailStorageRequest(new SailStorageRequest(stowed.Data));
+            }
+            GUILayout.EndHorizontal();
+        }
+
         private void DrawGroupHalyardButton(VirtualCrewManager manager, string label,
                                             SailGroup group, IReadOnlyList<ICommonSailActions> allSails,
                                             float target)
@@ -251,8 +282,12 @@ namespace SailwindVirtualCrew
             if (GUILayout.Button(label))
             {
                 foreach (var sail in group.GetMembers(allSails))
+                {
+                    if (sail.getRealSail() == null || sail.getHalyardWinch() == null)
+                        continue;
                     manager.AddWorkRequest(new WorkRequest(sail, "Halyard " + label,
                         new WinchTarget(sail.getHalyardWinch(), target)));
+                }
             }
         }
 
@@ -263,8 +298,12 @@ namespace SailwindVirtualCrew
             if (GUILayout.Button(label))
             {
                 foreach (var sail in group.GetMembers(allSails).OfType<SimpleSail>())
+                {
+                    if (sail.getRealSail() == null || sail.getSheetWinch() == null)
+                        continue;
                     manager.AddWorkRequest(new WorkRequest(sail, "Sheet " + label,
                         new WinchTarget(sail.getSheetWinch(), target)));
+                }
             }
         }
 
@@ -277,6 +316,8 @@ namespace SailwindVirtualCrew
                 foreach (var sail in group.GetMembers(allSails).OfType<SimpleSail>())
                 {
                     var winch  = sail.getSheetWinch();
+                    if (sail.getRealSail() == null || winch == null || winch.rope == null)
+                        continue;
                     float target = Mathf.Clamp01(winch.rope.currentLength + delta);
                     manager.AddWorkRequest(new WorkRequest(sail, "Sheet " + label,
                         new WinchTarget(winch, target)));
@@ -294,9 +335,13 @@ namespace SailwindVirtualCrew
                 foreach (var sail in group.GetMembers(allSails).OfType<DualSheetSail>()
                                           .Where(s => s.getSubtype() == subtype))
                 {
-                    manager.AddWorkRequest(new WorkRequest(sail, "Port Sheet " + label,
+                    if (sail.getRealSail() == null)
+                        continue;
+                    if (sail.getPortSheetWinch() != null)
+                        manager.AddWorkRequest(new WorkRequest(sail, "Port Sheet " + label,
                         new WinchTarget(sail.getPortSheetWinch(), portTarget)));
-                    manager.AddWorkRequest(new WorkRequest(sail, "Starboard Sheet " + label,
+                    if (sail.getStarboardSheetWinch() != null)
+                        manager.AddWorkRequest(new WorkRequest(sail, "Starboard Sheet " + label,
                         new WinchTarget(sail.getStarboardSheetWinch(), starboardTarget)));
                 }
             }

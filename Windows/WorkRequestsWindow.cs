@@ -37,6 +37,7 @@ namespace SailwindVirtualCrew
 
             var manager            = VirtualCrewManager.Instance;
             var requests           = manager.WorkRequests;
+            var sailStorageRequests = manager.SailStorageRequests;
             var trimRequests       = manager.TrimRequests;
             var jibTrimRequests    = manager.JibTrimRequests;
             var squareTrimRequests = manager.SquareTrimRequests;
@@ -51,7 +52,7 @@ namespace SailwindVirtualCrew
             var pilotTask          = manager.ActivePilotTask;
             var lookoutTask        = manager.ActiveLookoutTask;
 
-            int totalTasks = requests.Count + trimRequests.Count
+            int totalTasks = requests.Count + sailStorageRequests.Count + trimRequests.Count
                            + jibTrimRequests.Count + squareTrimRequests.Count
                            + navigateRequests.Count + mooringRequests.Count + haulSellRequests.Count + bailRequests.Count + swabDecksRequests.Count + sleepRequests.Count
                            + lanternRequests.Count + lanternRefillRequests.Count
@@ -67,6 +68,9 @@ namespace SailwindVirtualCrew
             {
                 taskListHeight = 0f;
                 foreach (var r in requests)
+                    taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
+                        ? InProgressTaskHeight : OpenTaskHeight;
+                foreach (var r in sailStorageRequests)
                     taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
                         ? InProgressTaskHeight : OpenTaskHeight;
                 foreach (var r in trimRequests)
@@ -120,6 +124,7 @@ namespace SailwindVirtualCrew
 
             var manager            = VirtualCrewManager.Instance;
             var requests           = manager.WorkRequests;
+            var sailStorageRequests = manager.SailStorageRequests;
             var trimRequests       = manager.TrimRequests;
             var jibTrimRequests    = manager.JibTrimRequests;
             var squareTrimRequests = manager.SquareTrimRequests;
@@ -136,7 +141,7 @@ namespace SailwindVirtualCrew
 
             GUILayout.Label("Tasks");
 
-            if (requests.Count == 0 && trimRequests.Count == 0
+            if (requests.Count == 0 && sailStorageRequests.Count == 0 && trimRequests.Count == 0
              && jibTrimRequests.Count == 0 && squareTrimRequests.Count == 0
              && navigateRequests.Count == 0 && mooringRequests.Count == 0 && haulSellRequests.Count == 0 && bailRequests.Count == 0 && swabDecksRequests.Count == 0 && sleepRequests.Count == 0
              && lanternRequests.Count == 0 && lanternRefillRequests.Count == 0
@@ -176,6 +181,35 @@ namespace SailwindVirtualCrew
                 }
             }
             if (toCancel != null) manager.CancelWorkRequest(toCancel);
+
+            SailStorageRequest storageToCancel = null;
+            foreach (var req in sailStorageRequests)
+            {
+                if (req.Status == WorkRequestStatus.Open)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[Waiting] " + req.DisplayLabel);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) storageToCancel = req;
+                    GUILayout.EndHorizontal();
+                }
+                else if (req.Status == WorkRequestStatus.Positioning)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + req.AssignedCrewman.Name + "] (moving) " + req.DisplayLabel);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) storageToCancel = req;
+                    GUILayout.EndHorizontal();
+                    DrawPositioningBar(req.GetPositioningProgress());
+                }
+                else if (req.Status == WorkRequestStatus.InProgress)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + req.AssignedCrewman.Name + "] " + req.DisplayLabel);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) storageToCancel = req;
+                    GUILayout.EndHorizontal();
+                    DrawProgressBar(req.GetProgress());
+                }
+            }
+            if (storageToCancel != null) manager.CancelSailStorageRequest(storageToCancel);
 
             TrimRequest trimToCancel = null;
             foreach (var trim in trimRequests)

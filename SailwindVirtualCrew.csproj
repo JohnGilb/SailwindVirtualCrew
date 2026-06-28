@@ -160,6 +160,7 @@
     <Compile Include="Windows\DeveloperWindow.cs" />
     <Compile Include="Requests\NavigateRequest.cs" />
     <Compile Include="Requests\NavigationResult.cs" />
+    <Compile Include="Requests\SailStorageRequest.cs" />
     <Compile Include="Windows\MaintenanceWindow.cs" />
     <Compile Include="Windows\SupercargoWindow.cs" />
     <Compile Include="Windows\StewardWindow.cs" />
@@ -183,6 +184,8 @@
     <Compile Include="Windows\FavoriteActionsWindow.cs" />
     <Compile Include="Sails\DualSheetSail.cs" />
     <Compile Include="Sails\ICommonSailActions.cs" />
+    <Compile Include="Sails\SailStorageService.cs" />
+    <Compile Include="Sails\StowedSail.cs" />
     <Compile Include="Patches\GPButtonRopeWinchPatches.cs" />
     <Compile Include="Patches\RudderPatches.cs" />
     <Compile Include="Plugin.cs" />
