@@ -38,6 +38,7 @@ namespace SailwindVirtualCrew
         public bool IsDone()
         {
             return !CrewLanternService.NeedsRefill(lantern)
+                || !CrewLanternService.IsServiceableLanternTarget(lantern)
                 || !CrewLanternService.CanAcceptFuel(lantern, fuel);
         }
 

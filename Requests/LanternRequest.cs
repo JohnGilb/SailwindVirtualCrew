@@ -30,7 +30,7 @@ namespace SailwindVirtualCrew
         {
             return !lantern
                 || !lantern.sold
-                || !CrewLanternService.IsOnCurrentBoat(lantern)
+                || !CrewLanternService.IsServiceableLanternTarget(lantern)
                 || (lightState && lantern.health <= 0f)
                 || CrewLanternService.IsLanternLit(lantern) == lightState;
         }

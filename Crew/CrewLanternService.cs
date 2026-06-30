@@ -15,7 +15,7 @@ namespace SailwindVirtualCrew
         internal static IEnumerable<ShipItemLight> FindCurrentVesselLanterns()
         {
             foreach (var light in UnityEngine.Object.FindObjectsOfType<ShipItemLight>())
-                if (light && light.sold && IsOnCurrentBoat(light))
+                if (IsServiceableLanternTarget(light))
                     yield return light;
         }
 
@@ -166,6 +166,16 @@ namespace SailwindVirtualCrew
                 || item.GetCurrentInventorySlot() >= 0;
         }
 
+        internal static bool IsServiceableLanternTarget(ShipItemLight light)
+        {
+            return light
+                && light.sold
+                && IsDirectlyOnCurrentBoat(light)
+                && !FindContainingCrate(light)
+                && !IsInCargoCarrier(light)
+                && light.GetCurrentInventorySlot() < 0;
+        }
+
         internal static CrateInventory FindContainingCrate(ShipItem item)
         {
             foreach (var crate in UnityEngine.Object.FindObjectsOfType<CrateInventory>())
@@ -241,6 +251,15 @@ namespace SailwindVirtualCrew
                 if (carrierItem && IsDirectlyOnCurrentBoat(carrierItem))
                     return true;
             }
+
+            return false;
+        }
+
+        private static bool IsInCargoCarrier(ShipItem item)
+        {
+            foreach (var carrier in UnityEngine.Object.FindObjectsOfType<CargoCarrier>())
+                if (carrier && carrier.cargo != null && carrier.cargo.Contains(item))
+                    return true;
 
             return false;
         }

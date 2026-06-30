@@ -48,7 +48,7 @@ namespace SailwindVirtualCrew
         private const float NavigatorMapIslandRangeMeters = 500f;
         private const float StewardSourceScanCooldownSeconds = 10f;
         private const float LanternAutoScanIntervalSeconds = 30f;
-        private const float LanternRefillScanIntervalSeconds = 60f;
+        private const float LanternRefillScanIntervalGameHours = 1f;
         private const float LanternDuskHour = 18f;
         private const float LanternDawnHour = 6f;
         private const int MaxNavigationResults = 3;
@@ -64,7 +64,7 @@ namespace SailwindVirtualCrew
         private float _nextStewardWaterSourceScanRealtime;
         private float _nextStewardFoodSourceScanRealtime;
         private float _nextLanternAutoScanRealtime;
-        private float _nextLanternRefillScanRealtime;
+        private float _lastLanternRefillScanGameHours = -1f;
         private bool? _lastLanternWantedLit;
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownEnd = new Dictionary<NavigationMethod, float>();
         private readonly Dictionary<NavigationMethod, float> navigationToolCooldownTotal = new Dictionary<NavigationMethod, float>();
@@ -1380,7 +1380,7 @@ namespace SailwindVirtualCrew
             _nextStewardWaterSourceScanRealtime = 0f;
             _nextStewardFoodSourceScanRealtime = 0f;
             _nextLanternAutoScanRealtime = 0f;
-            _nextLanternRefillScanRealtime = 0f;
+            _lastLanternRefillScanGameHours = -1f;
             _lastLanternWantedLit = null;
             LookoutGroundingRisk.ResetRuntimeState();
             if (PlayerWaitingState.IsActive)
@@ -2166,7 +2166,7 @@ namespace SailwindVirtualCrew
         public void SetMaintenanceLanternRefillEnabled(bool enabled)
         {
             MaintenanceLanternRefillEnabled = enabled;
-            _nextLanternRefillScanRealtime = 0f;
+            _lastLanternRefillScanGameHours = -1f;
         }
 
         public void RestoreMaintenanceSettings(
@@ -4048,13 +4048,21 @@ namespace SailwindVirtualCrew
 
         private void TickLanternRefillScan()
         {
-            if (!MaintenanceLanternRefillEnabled
-                || Time.realtimeSinceStartup < _nextLanternRefillScanRealtime)
+            if (!MaintenanceLanternRefillEnabled || Sun.sun == null)
                 return;
 
-            _nextLanternRefillScanRealtime = Time.realtimeSinceStartup + LanternRefillScanIntervalSeconds;
             if (!Crew.Any(c => c.Role == ShipRole.Quartermaster && IsCrewAvailable(c)))
+            {
+                _lastLanternRefillScanGameHours = -1f;
                 return;
+            }
+
+            float currentGameHours = GetCurrentGameHours();
+            if (_lastLanternRefillScanGameHours >= 0f
+                && currentGameHours - _lastLanternRefillScanGameHours < LanternRefillScanIntervalGameHours)
+                return;
+
+            _lastLanternRefillScanGameHours = currentGameHours;
 
             var usedFuel = LanternRefillRequests
                 .Where(r => r.Status != WorkRequestStatus.Complete && r.Fuel)
