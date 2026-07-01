@@ -4319,6 +4319,12 @@ namespace SailwindVirtualCrew
             if (dual == null)
                 return;
 
+            if (dual.getSubtype() == DualSheetSail.DualSheetSailSubtype.Square)
+            {
+                QueueStandingOrderSquareSheet(dual, targets);
+                return;
+            }
+
             if (targets.HasPortSheet)
                 QueueStandingOrderWinch(sail, "Standing Order Port Sheet",
                     dual.getPortSheetWinch(), targets.PortSheet);
@@ -4326,6 +4332,32 @@ namespace SailwindVirtualCrew
             if (targets.HasStarboardSheet)
                 QueueStandingOrderWinch(sail, "Standing Order Starboard Sheet",
                     dual.getStarboardSheetWinch(), targets.StarboardSheet);
+        }
+
+        private void QueueStandingOrderSquareSheet(DualSheetSail sail, StandingOrderTargets targets)
+        {
+            if (sail == null || targets == null || (!targets.HasPortSheet && !targets.HasStarboardSheet))
+                return;
+
+            var requestTargets = new List<WinchTarget>();
+            AddStandingOrderTarget(requestTargets, sail.getPortSheetWinch(), targets.HasPortSheet, targets.PortSheet);
+            AddStandingOrderTarget(requestTargets, sail.getStarboardSheetWinch(), targets.HasStarboardSheet, targets.StarboardSheet);
+
+            if (requestTargets.Count == 0)
+                return;
+
+            AddWorkRequest(new WorkRequest(sail, "Standing Order Square Sheet", requestTargets.ToArray()));
+        }
+
+        private static void AddStandingOrderTarget(List<WinchTarget> requestTargets, GPButtonRopeWinch winch,
+                                                   bool hasTarget, float target)
+        {
+            if (!hasTarget || winch == null || winch.rope == null)
+                return;
+
+            var winchTarget = new WinchTarget(winch, target);
+            if (!winchTarget.IsAtTarget())
+                requestTargets.Add(winchTarget);
         }
 
         private void QueueStandingOrderWinch(ICommonSailActions sail, string commandName,
