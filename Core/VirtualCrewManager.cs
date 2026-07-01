@@ -803,9 +803,9 @@ namespace SailwindVirtualCrew
             if (action.raiseAnchor)
                 AddAnchorWorkRequest("Raise Anchor", 0f);
             if (action.moorPort)
-                AddMooringRequests(MooringSide.Port);
+                AddMooringOrUnmooringRequests(MooringSide.Port);
             if (action.moorStarboard)
-                AddMooringRequests(MooringSide.Starboard);
+                AddMooringOrUnmooringRequests(MooringSide.Starboard);
         }
 
         private void AddAnchorWorkRequest(string commandName, float target)
@@ -3344,6 +3344,13 @@ namespace SailwindVirtualCrew
                 return;
 
             LanternRefillRequests.Add(request);
+            CrewLanternService.TraceRefill("Queued request lantern='" + request.LanternName + "' fuel='" + request.FuelName + "'.");
+        }
+
+        public int ForceLanternRefillScan()
+        {
+            CrewLanternService.TraceRefill("Developer force scan requested.");
+            return QueueLanternRefillRequests(requireAwakeQuartermaster: false, trace: true);
         }
 
         private bool HasPendingLanternRequest(ShipItemLight lantern)
@@ -3413,6 +3420,11 @@ namespace SailwindVirtualCrew
             return !HasPendingMooringRequest(side) && MooringLocator.HasAvailableTargets(side);
         }
 
+        public bool CanAddUnmooringRequest(MooringSide side)
+        {
+            return !HasPendingMooringRequest(side) && MooringLocator.HasMooredTargets(side);
+        }
+
         public void AddMooringRequests(MooringSide side)
         {
             if (HasPendingMooringRequest(side))
@@ -3427,7 +3439,32 @@ namespace SailwindVirtualCrew
                 return;
 
             foreach (var rope in ropes)
-                MooringRequests.Add(new MooringRequest(side, rope.Rope));
+                MooringRequests.Add(new MooringRequest(side, rope.Rope, MooringRequestKind.Moor));
+        }
+
+        public void AddUnmooringRequests(MooringSide side)
+        {
+            if (HasPendingMooringRequest(side))
+                return;
+
+            var excluded = MooringRequests
+                .Where(r => r.Status != WorkRequestStatus.Complete && r.TargetRope != null)
+                .Select(r => r.TargetRope)
+                .ToList();
+
+            if (!MooringLocator.TryFindMooredRopes(side, excluded, out var ropes))
+                return;
+
+            foreach (var rope in ropes)
+                MooringRequests.Add(new MooringRequest(side, rope.Rope, MooringRequestKind.Unmoor));
+        }
+
+        public void AddMooringOrUnmooringRequests(MooringSide side)
+        {
+            if (CanAddUnmooringRequest(side))
+                AddUnmooringRequests(side);
+            else
+                AddMooringRequests(side);
         }
 
         public void CancelMooringRequest(MooringRequest request)
@@ -4051,36 +4088,75 @@ namespace SailwindVirtualCrew
             if (!MaintenanceLanternRefillEnabled || Sun.sun == null)
                 return;
 
-            if (!Crew.Any(c => c.Role == ShipRole.Quartermaster && IsCrewAvailable(c)))
-            {
-                _lastLanternRefillScanGameHours = -1f;
-                return;
-            }
-
             float currentGameHours = GetCurrentGameHours();
             if (_lastLanternRefillScanGameHours >= 0f
                 && currentGameHours - _lastLanternRefillScanGameHours < LanternRefillScanIntervalGameHours)
                 return;
 
-            _lastLanternRefillScanGameHours = currentGameHours;
+            if (QueueLanternRefillRequests(requireAwakeQuartermaster: true, trace: false) >= 0)
+                _lastLanternRefillScanGameHours = currentGameHours;
+        }
+
+        private int QueueLanternRefillRequests(bool requireAwakeQuartermaster, bool trace)
+        {
+            bool hasQuartermaster = Crew.Any(c => c.Role == ShipRole.Quartermaster);
+            bool hasAwakeQuartermaster = Crew.Any(c => c.Role == ShipRole.Quartermaster && IsCrewAvailable(c));
+            if (requireAwakeQuartermaster && !hasAwakeQuartermaster)
+            {
+                _lastLanternRefillScanGameHours = -1f;
+                if (trace || DeveloperMode.IsEnabled)
+                    CrewLanternService.TraceRefill("Scan skipped: no awake quartermaster. hasQuartermaster=" + hasQuartermaster + ".");
+                return -1;
+            }
+
+            if (trace || DeveloperMode.IsEnabled)
+            {
+                CrewLanternService.TraceRefill(
+                    "Scan started. requireAwakeQuartermaster=" + requireAwakeQuartermaster
+                    + " hasQuartermaster=" + hasQuartermaster
+                    + " hasAwakeQuartermaster=" + hasAwakeQuartermaster
+                    + " openRequests=" + LanternRefillRequests.Count(r => r.Status != WorkRequestStatus.Complete) + ".");
+            }
 
             var usedFuel = LanternRefillRequests
                 .Where(r => r.Status != WorkRequestStatus.Complete && r.Fuel)
                 .Select(r => r.Fuel)
                 .ToList();
 
+            int scanned = 0;
+            int needsRefill = 0;
+            int queued = 0;
             foreach (var lantern in CrewLanternService.FindCurrentVesselLanterns())
             {
-                if (!CrewLanternService.NeedsRefill(lantern) || HasPendingLanternRefillRequest(lantern))
+                scanned++;
+                if (!CrewLanternService.NeedsRefill(lantern))
                     continue;
+
+                needsRefill++;
+                if (HasPendingLanternRefillRequest(lantern))
+                {
+                    if (trace || DeveloperMode.IsEnabled)
+                        CrewLanternService.TraceRefill("Skipping lantern='" + CrewLanternService.GetObjectName(lantern) + "': pending request already exists.");
+                    continue;
+                }
 
                 var fuel = CrewLanternService.FindFuelFor(lantern, usedFuel);
                 if (!fuel)
+                {
+                    if (trace || DeveloperMode.IsEnabled)
+                        CrewLanternService.TraceRefill("No fuel found for lantern='" + CrewLanternService.GetObjectName(lantern) + "' usesOil=" + lantern.usesOil + ".");
                     continue;
+                }
 
                 usedFuel.Add(fuel);
                 AddLanternRefillRequest(new LanternRefillRequest(lantern, fuel));
+                queued++;
             }
+
+            if (trace || DeveloperMode.IsEnabled)
+                CrewLanternService.TraceRefill("Scan finished. scanned=" + scanned + " needsRefill=" + needsRefill + " queued=" + queued + ".");
+
+            return queued;
         }
 
         private static bool WantsLanternsLit(float localTime)
@@ -5036,7 +5112,12 @@ namespace SailwindVirtualCrew
                         .Where(c => c.Role == ShipRole.Quartermaster && IsCrewAssignable(c))
                         .OrderByDescending(c => (float)c.CurrentStamina / c.MaxStamina)
                         .FirstOrDefault();
-                    if (quartermaster == null) break;
+                    if (quartermaster == null)
+                    {
+                        CrewLanternService.TraceRefill("Assignment paused: no assignable quartermaster for lantern='" + refill.LanternName + "' fuel='" + refill.FuelName + "'.");
+                        break;
+                    }
+                    CrewLanternService.TraceRefill("Assigning quartermaster='" + quartermaster.Name + "' to lantern='" + refill.LanternName + "' fuel='" + refill.FuelName + "'.");
                     refill.Begin(quartermaster);
                 }
             }

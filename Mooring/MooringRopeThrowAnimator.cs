@@ -39,6 +39,26 @@ namespace SailwindVirtualCrew
             Plugin.Instance.StartCoroutine(ThrowRoutine(rope, dock, isCancelled, onComplete));
         }
 
+        internal static void ThrowBackToVessel(
+            PickupableBoatMooringRope rope,
+            Func<bool> isCancelled,
+            Action<bool> onComplete)
+        {
+            if (!rope)
+            {
+                onComplete?.Invoke(false);
+                return;
+            }
+
+            if (Plugin.Instance == null)
+            {
+                onComplete?.Invoke(TryUnmoorNow(rope));
+                return;
+            }
+
+            Plugin.Instance.StartCoroutine(ThrowBackRoutine(rope, isCancelled, onComplete));
+        }
+
         private static IEnumerator ThrowRoutine(
             PickupableBoatMooringRope rope,
             GPButtonDockMooring dock,
@@ -96,12 +116,67 @@ namespace SailwindVirtualCrew
             onComplete?.Invoke(moored);
         }
 
+        private static IEnumerator ThrowBackRoutine(
+            PickupableBoatMooringRope rope,
+            Func<bool> isCancelled,
+            Action<bool> onComplete)
+        {
+            Vector3 startWorldPosition = rope.transform.position;
+            Quaternion startWorldRotation = rope.transform.rotation;
+            Vector3 endWorldPosition = MooringLocator.GetRopeAnchorWorld(rope);
+            Quaternion endWorldRotation = rope.transform.rotation;
+
+            float distance = Vector3.Distance(startWorldPosition, endWorldPosition);
+            float duration = EstimateDuration(startWorldPosition, endWorldPosition);
+            float arcHeight = Mathf.Max(MinArcHeight, distance * ArcHeightPerMeter);
+
+            var colliderStates = DisableColliders(rope);
+            bool unmoored = TryUnmoorNow(rope);
+            float startTime = Time.time;
+
+            while (rope)
+            {
+                if (isCancelled != null && isCancelled())
+                    break;
+
+                float elapsed = Time.time - startTime;
+                float normalized = Mathf.Clamp01(elapsed / duration);
+                float eased = Mathf.SmoothStep(0f, 1f, normalized);
+                Vector3 currentEnd = MooringLocator.GetRopeAnchorWorld(rope);
+                Vector3 arcOffset = Vector3.up * (Mathf.Sin(eased * Mathf.PI) * arcHeight);
+
+                rope.transform.position = Vector3.Lerp(startWorldPosition, currentEnd, eased) + arcOffset;
+                rope.transform.rotation = Quaternion.Slerp(startWorldRotation, endWorldRotation, eased);
+
+                if (normalized >= 1f)
+                    break;
+
+                yield return new WaitForEndOfFrame();
+            }
+
+            bool cancelled = isCancelled != null && isCancelled();
+            if (rope)
+                rope.ResetRopePos();
+
+            RestoreColliders(colliderStates);
+            onComplete?.Invoke(unmoored && !cancelled);
+        }
+
         private static bool TryMoorNow(PickupableBoatMooringRope rope, GPButtonDockMooring dock)
         {
             if (!rope || !dock || rope.IsMoored() || dock.spring == null || dock.spring.connectedBody != null)
                 return false;
 
             rope.MoorTo(dock);
+            return true;
+        }
+
+        private static bool TryUnmoorNow(PickupableBoatMooringRope rope)
+        {
+            if (!rope || !rope.IsMoored())
+                return false;
+
+            rope.Unmoor();
             return true;
         }
 

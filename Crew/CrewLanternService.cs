@@ -8,6 +8,12 @@ namespace SailwindVirtualCrew
 {
     internal static class CrewLanternService
     {
+        internal struct FuelBoxRepairResult
+        {
+            internal int BoxesRefilled;
+            internal int OilBottlesRefilled;
+        }
+
         internal const float RefillThreshold = 0.15f;
         private const float ServiceSearchRadius = 4f;
         private const float PreferredStandDistance = 1.2f;
@@ -17,6 +23,12 @@ namespace SailwindVirtualCrew
             foreach (var light in UnityEngine.Object.FindObjectsOfType<ShipItemLight>())
                 if (IsServiceableLanternTarget(light))
                     yield return light;
+        }
+
+        internal static void TraceRefill(string message)
+        {
+            if (DeveloperMode.IsEnabled)
+                Debug.Log("[VirtualCrew][LanternRefill] " + message);
         }
 
         internal static bool IsLanternLit(ShipItemLight light)
@@ -32,9 +44,14 @@ namespace SailwindVirtualCrew
 
         internal static bool CanAcceptFuel(ShipItemLight light, ShipItemLanternFuel fuel)
         {
-            return light && fuel && fuel.sold && fuel.oilBottle == light.usesOil
-                && (!fuel.oilBottle || fuel.health > 0f)
+            return IsCompatibleFuel(light, fuel)
                 && IsOnCurrentBoat(fuel);
+        }
+
+        internal static bool IsCompatibleFuel(ShipItemLight light, ShipItemLanternFuel fuel)
+        {
+            return light && fuel && fuel.sold && fuel.oilBottle == light.usesOil
+                && (!fuel.oilBottle || fuel.health > 0f);
         }
 
         internal static ShipItemLanternFuel FindFuelFor(ShipItemLight light, IEnumerable<ShipItemLanternFuel> excluded = null)
@@ -126,10 +143,13 @@ namespace SailwindVirtualCrew
             }
         }
 
-        internal static void LoadFuel(ShipItemLight light, ShipItemLanternFuel fuel)
+        internal static bool LoadFuel(ShipItemLight light, ShipItemLanternFuel fuel)
         {
-            if (!CanAcceptFuel(light, fuel))
-                return;
+            if (!IsCompatibleFuel(light, fuel))
+            {
+                TraceRefill("LoadFuel rejected lantern='" + GetObjectName(light) + "' fuel='" + GetObjectName(fuel) + "'.");
+                return false;
+            }
 
             try
             {
@@ -141,10 +161,13 @@ namespace SailwindVirtualCrew
                 if (fuel && light.health <= before + 0.001f)
                     ConsumeFuelDirectly(light, fuel);
                 light.UpdateLookText();
+                TraceRefill("LoadFuel completed lantern='" + GetObjectName(light) + "' fuel='" + GetObjectName(fuel) + "' health " + before.ToString("0.###") + " -> " + light.health.ToString("0.###") + ".");
+                return true;
             }
             catch (Exception ex)
             {
                 Debug.LogWarning("[VirtualCrew] Failed to load lantern fuel: " + ex.Message);
+                return false;
             }
         }
 
@@ -176,6 +199,54 @@ namespace SailwindVirtualCrew
                 && light.GetCurrentInventorySlot() < 0;
         }
 
+        internal static FuelBoxRepairResult RefillLanternFuelBoxesOnCurrentVessel()
+        {
+            var result = new FuelBoxRepairResult();
+
+            foreach (var crate in UnityEngine.Object.FindObjectsOfType<CrateInventory>())
+            {
+                if (!IsLanternFuelCrateOnCurrentBoat(crate, out var shipCrate, out var prefabFuel))
+                    continue;
+
+                int capacity = GetCrateCapacity(shipCrate);
+                if (capacity <= 0)
+                    continue;
+
+                int containedCount = crate.containedItems != null
+                    ? crate.containedItems.Count(item =>
+                    {
+                        var fuel = item ? item.GetComponent<ShipItemLanternFuel>() : null;
+                        return fuel && fuel.oilBottle == prefabFuel.oilBottle;
+                    })
+                    : 0;
+                int targetSealedCount = Mathf.Max(0, capacity - containedCount);
+                int currentSealedCount = Mathf.Max(0, Mathf.RoundToInt(shipCrate.amount));
+
+                if (currentSealedCount != targetSealedCount)
+                {
+                    shipCrate.amount = targetSealedCount;
+                    shipCrate.UpdateLookText();
+                    if (shipCrate.itemRigidbodyC != null)
+                        shipCrate.itemRigidbodyC.UpdateMass();
+                    result.BoxesRefilled++;
+                }
+            }
+
+            foreach (var fuel in UnityEngine.Object.FindObjectsOfType<ShipItemLanternFuel>())
+            {
+                if (!fuel || !fuel.oilBottle || !fuel.sold || !IsOnCurrentBoat(fuel))
+                    continue;
+
+                if (RefillOilBottle(fuel))
+                    result.OilBottlesRefilled++;
+            }
+
+            if (CrateInventoryUI.instance && CrateInventoryUI.instance.showingUI)
+                CrateInventoryUI.instance.RefreshButtons();
+
+            return result;
+        }
+
         internal static CrateInventory FindContainingCrate(ShipItem item)
         {
             foreach (var crate in UnityEngine.Object.FindObjectsOfType<CrateInventory>())
@@ -185,9 +256,14 @@ namespace SailwindVirtualCrew
             return null;
         }
 
+        internal static string GetObjectName(UnityEngine.Object obj)
+        {
+            return obj ? obj.name : "<null>";
+        }
+
         private static void ConsumeFuelDirectly(ShipItemLight light, ShipItemLanternFuel fuel)
         {
-            if (!CanAcceptFuel(light, fuel))
+            if (!IsCompatibleFuel(light, fuel))
                 return;
 
             float initialHealth = GetInitialHealth(light);
@@ -218,6 +294,60 @@ namespace SailwindVirtualCrew
                 && CrateInventoryUI.instance.showingUI
                 && CrateInventoryUI.instance.currentCrate == crate)
                 CrateInventoryUI.instance.RefreshButtons();
+        }
+
+        private static bool IsLanternFuelCrateOnCurrentBoat(
+            CrateInventory crate,
+            out ShipItemCrate shipCrate,
+            out ShipItemLanternFuel prefabFuel)
+        {
+            shipCrate = null;
+            prefabFuel = null;
+
+            if (!crate)
+                return false;
+
+            shipCrate = crate.GetComponent<ShipItemCrate>();
+            if (!shipCrate || !shipCrate.sold || !IsOnCurrentBoat(shipCrate))
+                return false;
+
+            var containedPrefab = shipCrate.GetContainedPrefab();
+            prefabFuel = containedPrefab ? containedPrefab.GetComponent<ShipItemLanternFuel>() : null;
+            return prefabFuel != null;
+        }
+
+        private static int GetCrateCapacity(ShipItemCrate shipCrate)
+        {
+            if (!shipCrate)
+                return 0;
+
+            var saveable = shipCrate.GetComponent<SaveablePrefab>();
+            if (saveable != null
+                && PrefabsDirectory.instance != null
+                && PrefabsDirectory.instance.directory != null
+                && saveable.prefabIndex >= 0
+                && saveable.prefabIndex < PrefabsDirectory.instance.directory.Length)
+            {
+                var prefab = PrefabsDirectory.instance.directory[saveable.prefabIndex];
+                var prefabCrate = prefab ? prefab.GetComponent<ShipItemCrate>() : null;
+                if (prefabCrate)
+                    return Mathf.Max(0, Mathf.RoundToInt(prefabCrate.amount));
+            }
+
+            return Mathf.Max(0, Mathf.RoundToInt(shipCrate.amount));
+        }
+
+        private static bool RefillOilBottle(ShipItemLanternFuel fuel)
+        {
+            float initialHealth = GetInitialHealth(fuel);
+            if (initialHealth <= 0f || fuel.health >= initialHealth)
+                return false;
+
+            fuel.health = initialHealth;
+            fuel.UpdateLookText();
+            if (fuel.itemRigidbodyC != null)
+                fuel.itemRigidbodyC.UpdateMass();
+            return true;
         }
 
         private static Transform GetCurrentBoatRoot()
@@ -281,6 +411,21 @@ namespace SailwindVirtualCrew
             try
             {
                 return Traverse.Create(light).Field("initialHealth").GetValue<float>();
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+
+        private static float GetInitialHealth(ShipItemLanternFuel fuel)
+        {
+            if (!fuel)
+                return 0f;
+
+            try
+            {
+                return Traverse.Create(fuel).Field("initialHealth").GetValue<float>();
             }
             catch
             {

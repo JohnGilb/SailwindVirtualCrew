@@ -28,7 +28,7 @@ namespace SailwindVirtualCrew
         private bool _panning;
         private Vector2 _lastPanMouse;
 
-        private const float MinViewSpanDegrees = 4f;
+        private const float DefaultViewSpanDegrees = 4f;
         private const float ZoomFactorPerWheelStep = 1.2f;
         private const float GridStepDegrees = 1f;
 
@@ -217,11 +217,11 @@ namespace SailwindVirtualCrew
         private static void ExpandRange(ref float min, ref float max)
         {
             float span = max - min;
-            if (span < MinViewSpanDegrees)
+            if (span < DefaultViewSpanDegrees)
             {
                 float mid = (min + max) * 0.5f;
-                min = mid - MinViewSpanDegrees * 0.5f;
-                max = mid + MinViewSpanDegrees * 0.5f;
+                min = mid - DefaultViewSpanDegrees * 0.5f;
+                max = mid + DefaultViewSpanDegrees * 0.5f;
             }
             else
             {
@@ -285,7 +285,7 @@ namespace SailwindVirtualCrew
             if (!_hasCustomView)
                 SetViewFromBounds(dataBounds);
 
-            float span = Mathf.Max(MinViewSpanDegrees, _viewSpanLon, _viewSpanLat);
+            float span = Mathf.Max(float.Epsilon, _viewSpanLon, _viewSpanLat);
             _viewSpanLon = span;
             _viewSpanLat = span;
             return BoundsFromCenter(_viewCenterLon, _viewCenterLat, span);
@@ -295,7 +295,7 @@ namespace SailwindVirtualCrew
         {
             _viewCenterLon = (bounds.MinLon + bounds.MaxLon) * 0.5f;
             _viewCenterLat = (bounds.MinLat + bounds.MaxLat) * 0.5f;
-            float span = Mathf.Max(MinViewSpanDegrees, bounds.LonSpan, bounds.LatSpan);
+            float span = Mathf.Max(DefaultViewSpanDegrees, bounds.LonSpan, bounds.LatSpan);
             _viewSpanLon = span;
             _viewSpanLat = span;
         }
@@ -308,8 +308,8 @@ namespace SailwindVirtualCrew
             _hasCustomView = true;
             _viewCenterLon = fix.Longitude;
             _viewCenterLat = fix.Latitude;
-            _viewSpanLon = MinViewSpanDegrees;
-            _viewSpanLat = MinViewSpanDegrees;
+            _viewSpanLon = DefaultViewSpanDegrees;
+            _viewSpanLat = DefaultViewSpanDegrees;
         }
 
         private void HandleMapInput(Rect plot, MapBounds bounds)
@@ -323,7 +323,7 @@ namespace SailwindVirtualCrew
                 Vector2 before = Unproject(plot, bounds, e.mousePosition);
                 float zoomFactor = Mathf.Pow(ZoomFactorPerWheelStep, e.delta.y);
                 _hasCustomView = true;
-                float span = Mathf.Max(MinViewSpanDegrees, bounds.LonSpan * zoomFactor);
+                float span = Mathf.Max(float.Epsilon, bounds.LonSpan * zoomFactor);
                 _viewSpanLon = span;
                 _viewSpanLat = span;
 
@@ -366,7 +366,7 @@ namespace SailwindVirtualCrew
 
         private static MapBounds BoundsFromCenter(float centerLon, float centerLat, float span)
         {
-            span = Mathf.Max(MinViewSpanDegrees, span);
+            span = Mathf.Max(float.Epsilon, span);
             return new MapBounds(
                 centerLon - span * 0.5f,
                 centerLon + span * 0.5f,

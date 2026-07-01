@@ -69,7 +69,7 @@ namespace SailwindVirtualCrew
                                 + ButtonHeight * 3; // lantern toggles
 
             if (DeveloperMode.IsEnabled)
-                contentHeight += 4f + ButtonHeight; // dev button
+                contentHeight += 4f + ButtonHeight * 2; // dev buttons
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : contentHeight + 300f;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Maintenance");
@@ -146,6 +146,14 @@ namespace SailwindVirtualCrew
             if (DeveloperMode.IsEnabled)
             {
                 GUILayout.Space(4);
+                if (GUILayout.Button("Force Lantern Refill Scan"))
+                {
+                    int queued = manager.ForceLanternRefillScan();
+                    NotificationUi.instance?.ShowNotification(
+                        queued >= 0
+                            ? "Lantern refill scan queued " + queued + " request" + (queued == 1 ? "" : "s")
+                            : "Lantern refill scan skipped");
+                }
                 if (GUILayout.Button("Set Half-Flooded"))
                 {
                     var freshBd = GetBoatDamage();

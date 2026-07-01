@@ -49,6 +49,8 @@ namespace SailwindVirtualCrew
         private Button _raiseAnchorButton;
         private bool _canMoorPort;
         private bool _canMoorStarboard;
+        private bool _isMooringPortUnmoor;
+        private bool _isMooringStarboardUnmoor;
         private float _nextMooringAvailabilityRefresh;
         private int _lastMooringRequestCount = -1;
 
@@ -302,16 +304,16 @@ namespace SailwindVirtualCrew
         {
             var port = CreateButton("Moor Port", () =>
             {
-                manager.AddMooringRequests(MooringSide.Port);
+                manager.AddMooringOrUnmooringRequests(MooringSide.Port);
                 InvalidateMooringAvailability();
             }).GetComponent<Button>();
             var starboard = CreateButton("Moor Starboard", () =>
             {
-                manager.AddMooringRequests(MooringSide.Starboard);
+                manager.AddMooringOrUnmooringRequests(MooringSide.Starboard);
                 InvalidateMooringAvailability();
             }).GetComponent<Button>();
-            _mooringButtons.Add(new MooringButtonBinding(port, MooringSide.Port));
-            _mooringButtons.Add(new MooringButtonBinding(starboard, MooringSide.Starboard));
+            _mooringButtons.Add(new MooringButtonBinding(port, port.GetComponentInChildren<Text>(), MooringSide.Port));
+            _mooringButtons.Add(new MooringButtonBinding(starboard, starboard.GetComponentInChildren<Text>(), MooringSide.Starboard));
             InvalidateMooringAvailability();
             AddRow(port.gameObject, starboard.gameObject);
         }
@@ -977,11 +979,18 @@ namespace SailwindVirtualCrew
                 {
                     int portCount;
                     int starboardCount;
+                    int portMooredCount;
+                    int starboardMooredCount;
                     using (PerformanceInstrumentation.MeasureUGui("Deck Orders.RefreshState.MooringButtons.Scan.AvailabilityCounts"))
                         MooringLocator.GetAvailableRopeCounts(null, out portCount, out starboardCount);
+                    MooringLocator.GetMooredRopeCounts(null, out portMooredCount, out starboardMooredCount);
 
-                    _canMoorPort = !manager.HasPendingMooringRequest(MooringSide.Port) && portCount > 0;
-                    _canMoorStarboard = !manager.HasPendingMooringRequest(MooringSide.Starboard) && starboardCount > 0;
+                    _isMooringPortUnmoor = portMooredCount > 0;
+                    _isMooringStarboardUnmoor = starboardMooredCount > 0;
+                    _canMoorPort = !manager.HasPendingMooringRequest(MooringSide.Port)
+                        && (_isMooringPortUnmoor ? portMooredCount > 0 : portCount > 0);
+                    _canMoorStarboard = !manager.HasPendingMooringRequest(MooringSide.Starboard)
+                        && (_isMooringStarboardUnmoor ? starboardMooredCount > 0 : starboardCount > 0);
 
                     _lastMooringRequestCount = requestCount;
                     _nextMooringAvailabilityRefresh = Time.realtimeSinceStartup + MooringAvailabilityRefreshSeconds;
@@ -994,6 +1003,12 @@ namespace SailwindVirtualCrew
                 {
                     if (!binding.Button)
                         continue;
+
+                    bool isUnmoor = binding.Side == MooringSide.Port
+                        ? _isMooringPortUnmoor
+                        : _isMooringStarboardUnmoor;
+                    if (binding.Text)
+                        binding.Text.text = (isUnmoor ? "Unmoor " : "Moor ") + binding.Side;
 
                     SetButtonInteractable(binding.Button, binding.Side == MooringSide.Port
                         ? _canMoorPort
@@ -1111,11 +1126,13 @@ namespace SailwindVirtualCrew
         private struct MooringButtonBinding
         {
             internal readonly Button Button;
+            internal readonly Text Text;
             internal readonly MooringSide Side;
 
-            internal MooringButtonBinding(Button button, MooringSide side)
+            internal MooringButtonBinding(Button button, Text text, MooringSide side)
             {
                 Button = button;
+                Text = text;
                 Side = side;
             }
         }

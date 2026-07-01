@@ -136,6 +136,11 @@ namespace SailwindVirtualCrew
             return GetAvailableRopeCount(side, null) > 0;
         }
 
+        internal static bool HasMooredTargets(MooringSide side)
+        {
+            return GetMooredRopeCount(side, null) > 0;
+        }
+
         internal static int GetAvailableRopeCount(MooringSide side, IEnumerable<PickupableBoatMooringRope> excludedRopes)
         {
             if (!TryScan(out var scan))
@@ -188,6 +193,28 @@ namespace SailwindVirtualCrew
             }
         }
 
+        internal static void GetMooredRopeCounts(
+            IEnumerable<PickupableBoatMooringRope> excludedRopes,
+            out int portCount,
+            out int starboardCount)
+        {
+            portCount = 0;
+            starboardCount = 0;
+
+            if (!TryScan(out var scan))
+                return;
+
+            var excluded = new HashSet<PickupableBoatMooringRope>(excludedRopes ?? Enumerable.Empty<PickupableBoatMooringRope>());
+            foreach (var rope in scan.Ropes)
+            {
+                if (!rope.IsMoored || rope.Rope == null || excluded.Contains(rope.Rope))
+                    continue;
+
+                if (rope.Side == MooringSide.Port) portCount++;
+                else starboardCount++;
+            }
+        }
+
         internal static bool TryFindAvailableRopes(MooringSide side, IEnumerable<PickupableBoatMooringRope> excludedRopes, out List<MooringRopeInfo> ropes)
         {
             ropes = new List<MooringRopeInfo>();
@@ -204,6 +231,22 @@ namespace SailwindVirtualCrew
                 .OrderBy(r => r.AnchorLocal.x)
                 .ThenBy(r => r.AnchorLocal.z)
                 .Take(freeDockCount)
+                .ToList();
+
+            return ropes.Count > 0;
+        }
+
+        internal static bool TryFindMooredRopes(MooringSide side, IEnumerable<PickupableBoatMooringRope> excludedRopes, out List<MooringRopeInfo> ropes)
+        {
+            ropes = new List<MooringRopeInfo>();
+            if (!TryScan(out var scan))
+                return false;
+
+            var excluded = new HashSet<PickupableBoatMooringRope>(excludedRopes ?? Enumerable.Empty<PickupableBoatMooringRope>());
+            ropes = scan.Ropes
+                .Where(r => r.Side == side && r.IsMoored && r.Rope != null && !excluded.Contains(r.Rope))
+                .OrderBy(r => r.AnchorLocal.x)
+                .ThenBy(r => r.AnchorLocal.z)
                 .ToList();
 
             return ropes.Count > 0;
@@ -335,6 +378,36 @@ namespace SailwindVirtualCrew
                 .FirstOrDefault();
 
             return route != null;
+        }
+
+        internal static bool TryFindActiveRoute(PickupableBoatMooringRope targetRope, out ActiveMooringRoute route)
+        {
+            route = null;
+            if (!targetRope || !TryScan(out var scan))
+                return false;
+
+            var rope = scan.Ropes.FirstOrDefault(r => r.Rope == targetRope && r.IsMoored);
+            if (rope == null)
+                return false;
+
+            var dock = scan.Docks
+                .Where(d => d.IsOccupied && d.Mooring != null)
+                .OrderBy(d => Vector3.Distance(targetRope.transform.position, d.Mooring.transform.position))
+                .FirstOrDefault();
+            if (dock == null)
+                return false;
+
+            route = new ActiveMooringRoute { Rope = rope, Dock = dock };
+            return true;
+        }
+
+        private static int GetMooredRopeCount(MooringSide side, IEnumerable<PickupableBoatMooringRope> excludedRopes)
+        {
+            if (!TryScan(out var scan))
+                return 0;
+
+            var excluded = new HashSet<PickupableBoatMooringRope>(excludedRopes ?? Enumerable.Empty<PickupableBoatMooringRope>());
+            return scan.Ropes.Count(r => r.Side == side && r.IsMoored && r.Rope != null && !excluded.Contains(r.Rope));
         }
 
         private static List<MooringRopeInfo> BuildRopeInfos(CrewBoatContext context, BoatMooringRopes mooringRopes)
@@ -493,7 +566,7 @@ namespace SailwindVirtualCrew
             return axis == MooringBeamAxis.LocalX ? local.x : local.z;
         }
 
-        private static Vector3 GetRopeAnchorWorld(PickupableBoatMooringRope rope)
+        internal static Vector3 GetRopeAnchorWorld(PickupableBoatMooringRope rope)
         {
             var boatRigidbody = rope.GetBoatRigidbody();
             if (boatRigidbody != null && SpringAnchorField != null)

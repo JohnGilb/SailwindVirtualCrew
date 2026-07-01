@@ -33,7 +33,7 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 30f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 30f * 16; // developer actions plus instrumentation controls
+                height += 30f * 17; // developer actions plus instrumentation controls
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Developer Tools");
@@ -77,6 +77,16 @@ namespace SailwindVirtualCrew
                         refilled > 0
                             ? "Filled " + refilled + " water barrel" + (refilled == 1 ? "" : "s")
                             : "No empty water barrels found");
+                }
+                if (GUILayout.Button("Refill Lantern Fuel Boxes"))
+                {
+                    var result = CrewLanternService.RefillLanternFuelBoxesOnCurrentVessel();
+                    int total = result.BoxesRefilled + result.OilBottlesRefilled;
+                    NotificationUi.instance?.ShowNotification(
+                        total > 0
+                            ? "Refilled " + result.BoxesRefilled + " fuel box" + (result.BoxesRefilled == 1 ? "" : "es")
+                                + " and " + result.OilBottlesRefilled + " oil bottle" + (result.OilBottlesRefilled == 1 ? "" : "s")
+                            : "No lantern fuel boxes needed refilling");
                 }
                 if (GUILayout.Button("Drain 60 Stamina (All Crew)"))
                     foreach (var c in VirtualCrewManager.Instance.Crew)
