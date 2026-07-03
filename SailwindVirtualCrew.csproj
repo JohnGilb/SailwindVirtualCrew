@@ -145,6 +145,7 @@
     <Compile Include="Requests\SkullingRequest.cs" />
     <Compile Include="Requests\SwabDecksRequest.cs" />
     <Compile Include="UI\IWindowPosition.cs" />
+    <Compile Include="UI\TextInputHotkeySuppressor.cs" />
     <Compile Include="UI\WindowVisibilityUtility.cs" />
     <Compile Include="UI\WindowLayoutUtility.cs" />
     <Compile Include="UI\SailGroupCommandPalette.cs" />

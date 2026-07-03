@@ -16,6 +16,9 @@ namespace SailwindVirtualCrew
         private SailGroup _selectedGroup;
         private string _newActionName = "New Favorite";
         private string _selectedActionNameBuffer = "";
+        private const string TextInputHotkeySuppressContext = "FavoriteActions.TextInput";
+        private const string NewActionNameControl = "FavoriteActions.NewActionName";
+        private const string SelectedActionNameControl = "FavoriteActions.SelectedActionName";
 
         public string WindowKey => "FavoriteActionsWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
@@ -27,7 +30,12 @@ namespace SailwindVirtualCrew
             if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
 
+            SyncTextInputHotkeySuppression();
+
             if (!string.IsNullOrEmpty(_captureActionId))
+                return;
+
+            if (TextInputHotkeySuppressor.ShouldSuppressFavoriteActionHotkeys)
                 return;
 
             var mgr = VirtualCrewManager.Instance;
@@ -40,11 +48,21 @@ namespace SailwindVirtualCrew
 
         private void OnGUI()
         {
-            if (!showWindow) return;
+            if (!showWindow)
+            {
+                SyncTextInputHotkeySuppression();
+                return;
+            }
             SailwindGuiStyle.Apply();
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : 560f;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Favorite Actions");
+            SyncTextInputHotkeySuppression();
+        }
+
+        private void OnDestroy()
+        {
+            TextInputHotkeySuppressor.SetActive(TextInputHotkeySuppressContext, false);
         }
 
         private void DrawWindow(int id)
@@ -105,6 +123,7 @@ namespace SailwindVirtualCrew
         private void DrawCreateControls(VirtualCrewManager mgr)
         {
             GUILayout.BeginHorizontal();
+            GUI.SetNextControlName(TextInputHotkeySuppressor.ControlName(NewActionNameControl));
             _newActionName = GUILayout.TextField(_newActionName);
             if (GUILayout.Button("Create", GUILayout.Width(80)))
             {
@@ -143,6 +162,7 @@ namespace SailwindVirtualCrew
         {
             GUILayout.Label("Editing Favorite");
             GUILayout.BeginHorizontal();
+            GUI.SetNextControlName(TextInputHotkeySuppressor.ControlName(SelectedActionNameControl));
             _selectedActionNameBuffer = GUILayout.TextField(_selectedActionNameBuffer);
             if (GUILayout.Button("Rename", GUILayout.Width(80)))
                 mgr.SetFavoriteActionName(_selectedAction, _selectedActionNameBuffer);
@@ -306,6 +326,15 @@ namespace SailwindVirtualCrew
         private static string FormatPercent(float target)
         {
             return Mathf.RoundToInt(Mathf.Clamp01(target) * 100f) + "%";
+        }
+
+        private void SyncTextInputHotkeySuppression()
+        {
+            TextInputHotkeySuppressor.SetActive(TextInputHotkeySuppressContext,
+                showWindow
+                && WindowLayoutUtility.ModLayerVisible
+                && (TextInputHotkeySuppressor.IsFocusedControl(NewActionNameControl)
+                    || TextInputHotkeySuppressor.IsFocusedControl(SelectedActionNameControl)));
         }
     }
 }

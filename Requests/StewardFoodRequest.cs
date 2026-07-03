@@ -178,12 +178,12 @@ namespace SailwindVirtualCrew
         {
             itemCollider = food ? food.GetComponent<Collider>() : null;
             if (itemCollider != null)
-            {
                 itemColliderWasEnabled = itemCollider.enabled;
-                itemCollider.enabled = false;
-            }
 
             CaptureAndDisableItemChildColliders();
+
+            if (itemCollider != null)
+                itemCollider.enabled = false;
 
             itemRigidbody = food ? food.GetItemRigidbody() : null;
             if (itemRigidbody != null)

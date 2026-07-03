@@ -52,6 +52,22 @@ namespace SailwindVirtualCrew
 
                 harmony.Patch(setVisible, prefix: new HarmonyMethod(
                     typeof(CargoControllerGate), nameof(CargoControllerGate.SetVisiblePrefix)));
+
+                var pickupGood = AccessTools.Method(uiType, "PickupGood");
+                var doGoodsUi = AccessTools.Method(uiType, "DoGoodsUI");
+                if (pickupGood != null && doGoodsUi != null)
+                {
+                    harmony.Patch(pickupGood, prefix: new HarmonyMethod(
+                        typeof(CargoControllerBoatGoodsSellHook), nameof(CargoControllerBoatGoodsSellHook.PickupGoodPrefix)));
+                    harmony.Patch(doGoodsUi, transpiler: new HarmonyMethod(
+                        typeof(CargoControllerBoatGoodsSellHook), nameof(CargoControllerBoatGoodsSellHook.DoGoodsUiTranspiler)));
+                    Debug.Log("[VirtualCrew] CargoController goods right-click Supercargo sales enabled.");
+                }
+                else
+                {
+                    Debug.LogWarning("[VirtualCrew] CargoController goods right-click setup skipped: expected UI methods were not found.");
+                }
+
                 Debug.Log("[VirtualCrew] CargoController gated: awake Quartermaster required.");
             }
             catch (Exception ex)
@@ -85,6 +101,54 @@ namespace SailwindVirtualCrew
             {
                 Debug.LogWarning($"[VirtualCrew] ProfitPercent gate setup failed: {ex.Message}");
             }
+        }
+    }
+
+    internal static class CargoControllerBoatGoodsSellHook
+    {
+        private static bool rightClickRequested;
+
+        public static IEnumerable<CodeInstruction> DoGoodsUiTranspiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var target = AccessTools.Method(typeof(GUILayout), nameof(GUILayout.Button), new[] { typeof(string), typeof(GUILayoutOption[]) });
+            var replacement = AccessTools.Method(typeof(CargoControllerBoatGoodsSellHook), nameof(GoodsRowButton));
+
+            foreach (var instruction in instructions)
+            {
+                if (instruction.Calls(target))
+                    yield return new CodeInstruction(System.Reflection.Emit.OpCodes.Call, replacement);
+                else
+                    yield return instruction;
+            }
+        }
+
+        public static bool GoodsRowButton(string text, params GUILayoutOption[] options)
+        {
+            var content = new GUIContent(text);
+            Rect rect = GUILayoutUtility.GetRect(content, GUI.skin.button, options);
+            var e = Event.current;
+            if (e != null && e.type == EventType.MouseUp && e.button == 1 && rect.Contains(e.mousePosition))
+            {
+                rightClickRequested = true;
+                e.Use();
+                return true;
+            }
+
+            return GUI.Button(rect, content);
+        }
+
+        public static bool PickupGoodPrefix(Good good)
+        {
+            if (!rightClickRequested)
+                return true;
+
+            rightClickRequested = false;
+            int queued = SupercargoTradeService.MarkCargoTypeForSale(good);
+            NotificationUi.instance?.ShowNotification(
+                queued > 0
+                    ? "Queued " + queued + " cargo for port sale"
+                    : "No matching cargo available to sell");
+            return false;
         }
     }
 

@@ -301,12 +301,12 @@ namespace SailwindVirtualCrew
         {
             itemCollider = item ? item.GetComponent<Collider>() : null;
             if (itemCollider != null)
-            {
                 itemColliderWasEnabled = itemCollider.enabled;
-                itemCollider.enabled = false;
-            }
 
             CaptureAndDisableItemChildColliders();
+
+            if (itemCollider != null)
+                itemCollider.enabled = false;
 
             itemRigidbody = item ? item.GetItemRigidbody() : null;
             if (itemRigidbody != null)

@@ -109,6 +109,37 @@ namespace SailwindVirtualCrew
             return queued;
         }
 
+        internal static int MarkCargoTypeForSale(Good sampleGood)
+        {
+            if (!sampleGood)
+                return 0;
+
+            var sampleItem = sampleGood.GetComponent<ShipItem>();
+            if (!TryGetSellContext(sampleItem, out _, out _))
+                return 0;
+
+            var sampleSaveable = sampleGood.GetComponent<SaveablePrefab>();
+            if (!sampleSaveable)
+                return 0;
+
+            int queued = 0;
+            int prefabIndex = sampleSaveable.prefabIndex;
+            foreach (var item in FindCurrentVesselCargo())
+            {
+                if (IsMarkedKeep(item) || IsMarkedForHaulSell(item))
+                    continue;
+
+                var saveable = item.GetComponent<SaveablePrefab>();
+                if (!saveable || saveable.prefabIndex != prefabIndex)
+                    continue;
+
+                if (TryQueueSellAtPort(item))
+                    queued++;
+            }
+
+            return queued;
+        }
+
         internal static int CountKeptCargoOnCurrentVessel()
         {
             return FindCurrentVesselCargo().Count(IsMarkedKeep);

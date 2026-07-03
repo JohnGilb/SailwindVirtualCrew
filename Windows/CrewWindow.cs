@@ -28,6 +28,7 @@ namespace SailwindVirtualCrew
         private bool _renamingSail;
         private bool _renamingVessel;
         private float _userHeight;
+        private const string RenameHotkeySuppressContext = "DeckOrders.Rename";
 
         private GameObject _rootObject;
         private Canvas _canvas;
@@ -86,6 +87,7 @@ namespace SailwindVirtualCrew
 
         private void OnDestroy()
         {
+            TextInputHotkeySuppressor.SetActive(RenameHotkeySuppressContext, false);
             if (_rootObject)
                 Destroy(_rootObject);
         }
@@ -97,6 +99,7 @@ namespace SailwindVirtualCrew
 
             EnsureUi();
             UpdateVisibility();
+            SyncTextInputHotkeySuppression();
             if (!_rootObject.activeSelf)
                 return;
 
@@ -114,6 +117,7 @@ namespace SailwindVirtualCrew
                     RequestRebuild();
                 }
 
+                SyncTextInputHotkeySuppression();
                 RebuildIfNeeded(manager);
                 RefreshState(manager);
                 using (PerformanceInstrumentation.MeasureUGui("Deck Orders.ApplyWindowRect"))
@@ -970,6 +974,12 @@ namespace SailwindVirtualCrew
         private void RequestRebuild()
         {
             _rebuildRequested = true;
+        }
+
+        private void SyncTextInputHotkeySuppression()
+        {
+            TextInputHotkeySuppressor.SetActive(RenameHotkeySuppressContext,
+                showWindow && WindowLayoutUtility.ModLayerVisible && (_renamingSail || _renamingVessel));
         }
 
         private void InvalidateMooringAvailability()

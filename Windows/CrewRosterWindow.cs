@@ -22,6 +22,8 @@ namespace SailwindVirtualCrew
         private Crewman selectedAvailable = null;
         private string  crewRenameBuffer  = "";
         private bool    _renamingShipCrew = false;
+        private const string RenameHotkeySuppressContext = "CrewRoster.RenameCrew";
+        private const string CrewRenameControl = "CrewRoster.CrewRename";
 
         private int? bedCount = null;
 
@@ -32,12 +34,20 @@ namespace SailwindVirtualCrew
         {
             if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
+
+            SyncTextInputHotkeySuppression();
+        }
+
+        private void OnDestroy()
+        {
+            TextInputHotkeySuppressor.SetActive(RenameHotkeySuppressContext, false);
         }
 
         private void OnGUI()
         {
             if (!showWindow) return;
             SailwindGuiStyle.Apply();
+            SyncTextInputHotkeySuppression();
             EnsureStyles();
             var mgr = VirtualCrewManager.Instance;
 
@@ -110,6 +120,7 @@ namespace SailwindVirtualCrew
                 else
                 {
                     GUILayout.BeginHorizontal();
+                    GUI.SetNextControlName(TextInputHotkeySuppressor.ControlName(CrewRenameControl));
                     crewRenameBuffer = GUILayout.TextField(crewRenameBuffer, GUILayout.MinWidth(120));
                     if (GUILayout.Button("Set", GUILayout.Width(64)) && crewRenameBuffer.Trim().Length > 0)
                     {
@@ -218,6 +229,12 @@ namespace SailwindVirtualCrew
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        private void SyncTextInputHotkeySuppression()
+        {
+            TextInputHotkeySuppressor.SetActive(RenameHotkeySuppressContext,
+                showWindow && WindowLayoutUtility.ModLayerVisible && _renamingShipCrew);
         }
 
         private void EnsureStyles()

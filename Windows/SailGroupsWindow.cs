@@ -20,6 +20,8 @@ namespace SailwindVirtualCrew
 
         private string groupNameBuffer = "";
         private bool   _renamingGroup  = false;
+        private const string RenameHotkeySuppressContext = "SailGroups.RenameGroup";
+        private const string GroupRenameControl = "SailGroups.GroupRename";
 
         private const float ButtonHeight      = 28f;
         private const float BaseContentHeight = 300f;
@@ -28,12 +30,20 @@ namespace SailwindVirtualCrew
         {
             if (WindowLayoutUtility.ShouldToggleWindowsThisFrame())
                 showWindow = !showWindow;
+
+            SyncTextInputHotkeySuppression();
+        }
+
+        private void OnDestroy()
+        {
+            TextInputHotkeySuppressor.SetActive(RenameHotkeySuppressContext, false);
         }
 
         private void OnGUI()
         {
             if (!showWindow) return;
             SailwindGuiStyle.Apply();
+            SyncTextInputHotkeySuppression();
 
             var manager       = VirtualCrewManager.Instance;
             var sails         = manager.AllSails;
@@ -132,6 +142,7 @@ namespace SailwindVirtualCrew
                 else
                 {
                     GUILayout.BeginHorizontal();
+                    GUI.SetNextControlName(TextInputHotkeySuppressor.ControlName(GroupRenameControl));
                     groupNameBuffer = GUILayout.TextField(groupNameBuffer);
                     if (GUILayout.Button("Set", GUILayout.Width(46)) && groupNameBuffer.Trim().Length > 0)
                     {
@@ -383,6 +394,12 @@ namespace SailwindVirtualCrew
             if (_membersWindow == null)
                 _membersWindow = GetComponent<SailGroupMembersWindow>();
             return _membersWindow;
+        }
+
+        private void SyncTextInputHotkeySuppression()
+        {
+            TextInputHotkeySuppressor.SetActive(RenameHotkeySuppressContext,
+                showWindow && WindowLayoutUtility.ModLayerVisible && _renamingGroup);
         }
     }
 }
