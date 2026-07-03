@@ -337,6 +337,17 @@ namespace SailwindVirtualCrew
                 {
                     if (sail.getRealSail() == null)
                         continue;
+                    if (sail.getSubtype() == DualSheetSail.DualSheetSailSubtype.Square)
+                    {
+                        if (sail.getPortSheetWinch() != null && sail.getStarboardSheetWinch() != null)
+                            manager.AddWorkRequest(new WorkRequest(sail, "Square Sheet " + label,
+                                new WinchTarget(sail.getPortSheetWinch(), portTarget),
+                                new WinchTarget(sail.getStarboardSheetWinch(), starboardTarget))
+                            {
+                                RequiresTwoDeckhands = true
+                            });
+                        continue;
+                    }
                     if (sail.getPortSheetWinch() != null)
                         manager.AddWorkRequest(new WorkRequest(sail, "Port Sheet " + label,
                         new WinchTarget(sail.getPortSheetWinch(), portTarget)));

@@ -497,6 +497,17 @@ namespace SailwindVirtualCrew
 
         private static void AddDualSheetWork(VirtualCrewManager manager, DualSheetSail sail, string label, float portTarget, float starboardTarget)
         {
+            if (sail.getSubtype() == DualSheetSail.DualSheetSailSubtype.Square)
+            {
+                manager.AddWorkRequest(new WorkRequest(sail, "Square Sheet " + label,
+                    new WinchTarget(sail.getPortSheetWinch(), portTarget),
+                    new WinchTarget(sail.getStarboardSheetWinch(), starboardTarget))
+                {
+                    RequiresTwoDeckhands = true
+                });
+                return;
+            }
+
             manager.AddWorkRequest(new WorkRequest(sail, "Port Sheet " + label, new WinchTarget(sail.getPortSheetWinch(), portTarget)));
             manager.AddWorkRequest(new WorkRequest(sail, "Starboard Sheet " + label, new WinchTarget(sail.getStarboardSheetWinch(), starboardTarget)));
         }

@@ -848,6 +848,19 @@ namespace SailwindVirtualCrew
                 {
                     if (!CanQueueLiveSailWork(sail))
                         continue;
+                    if (sail.getSubtype() == DualSheetSail.DualSheetSailSubtype.Square
+                        && command.hasPortSheet && command.hasStarboardSheet
+                        && sail.getPortSheetWinch() != null && sail.getStarboardSheetWinch() != null)
+                    {
+                        AddWorkRequest(new WorkRequest(sail, "Square Sheet " + FormatFavoriteTarget(command.portSheet)
+                            + "/" + FormatFavoriteTarget(command.starboardSheet),
+                            new WinchTarget(sail.getPortSheetWinch(), command.portSheet),
+                            new WinchTarget(sail.getStarboardSheetWinch(), command.starboardSheet))
+                        {
+                            RequiresTwoDeckhands = true
+                        });
+                        continue;
+                    }
                     if (command.hasPortSheet && sail.getPortSheetWinch() != null)
                         AddWorkRequest(new WorkRequest(sail, "Port Sheet " + FormatFavoriteTarget(command.portSheet),
                             new WinchTarget(sail.getPortSheetWinch(), command.portSheet)));
@@ -945,6 +958,17 @@ namespace SailwindVirtualCrew
                     {
                         if (!CanQueueLiveSailWork(sail))
                             continue;
+                        if (sail.getSubtype() == DualSheetSail.DualSheetSailSubtype.Square
+                            && sail.getPortSheetWinch() != null && sail.getStarboardSheetWinch() != null)
+                        {
+                            AddWorkRequest(new WorkRequest(sail, "Square Sheet " + action.label,
+                                new WinchTarget(sail.getPortSheetWinch(), action.portTarget),
+                                new WinchTarget(sail.getStarboardSheetWinch(), action.starboardTarget))
+                            {
+                                RequiresTwoDeckhands = true
+                            });
+                            continue;
+                        }
                         if (sail.getPortSheetWinch() != null)
                             AddWorkRequest(new WorkRequest(sail, "Port Sheet " + action.label,
                             new WinchTarget(sail.getPortSheetWinch(), action.portTarget)));
@@ -2850,6 +2874,8 @@ namespace SailwindVirtualCrew
             request.CancelPositioning();
             if (request.AssignedCrewman != null)
                 request.AssignedCrewman.CurrentTask = null;
+            if (request.AssignedCrewman2 != null)
+                request.AssignedCrewman2.CurrentTask = null;
             foreach (var t in request.Targets)
                 crewWinchInstructions.Remove(t.Winch);
             WorkRequests.Remove(request);
@@ -4530,7 +4556,10 @@ namespace SailwindVirtualCrew
             if (requestTargets.Count == 0)
                 return;
 
-            AddWorkRequest(new WorkRequest(sail, "Standing Order Square Sheet", requestTargets.ToArray()));
+            AddWorkRequest(new WorkRequest(sail, "Standing Order Square Sheet", requestTargets.ToArray())
+            {
+                RequiresTwoDeckhands = true
+            });
         }
 
         private static void AddStandingOrderTarget(List<WinchTarget> requestTargets, ICommonSailActions sail,
@@ -5002,6 +5031,8 @@ namespace SailwindVirtualCrew
                         req.Status = WorkRequestStatus.Complete;
                         if (req.AssignedCrewman != null)
                             req.AssignedCrewman.CurrentTask = null;
+                        if (req.AssignedCrewman2 != null)
+                            req.AssignedCrewman2.CurrentTask = null;
                         foreach (var t in req.Targets)
                             crewWinchInstructions.Remove(t.Winch);
                     }
@@ -5009,9 +5040,15 @@ namespace SailwindVirtualCrew
                     {
                         if (req.IsPositioningComplete())
                         {
-                            foreach (var t in req.Targets)
+                            for (int i = 0; i < req.Targets.Length; i++)
                             {
-                                t.MaxPower = req.AssignedCrewman.Strength * 5f;
+                                var t = req.Targets[i];
+                                var targetCrew = req.RequiresTwoDeckhands && i == 1 && req.AssignedCrewman2 != null
+                                    ? req.AssignedCrewman2
+                                    : req.AssignedCrewman;
+                                if (targetCrew == null)
+                                    continue;
+                                t.MaxPower = targetCrew.Strength * 5f;
                                 crewWinchInstructions[t.Winch] = t;
                             }
                             req.Begin();
@@ -5413,6 +5450,9 @@ namespace SailwindVirtualCrew
         {
             foreach (var crewman in Crew.Where(c => !c.IsOccupied && c.Role == ShipRole.Deckhand).ToList())
             {
+                if (crewman.IsOccupied)
+                    continue;
+
                 var ranked = GetOpenDeckhandTaskCandidates(crewman)
                     .OrderByDescending(c => c.Priority)
                     .ThenBy(c => c.Distance)
@@ -5434,6 +5474,9 @@ namespace SailwindVirtualCrew
         {
             foreach (var request in WorkRequests.Where(r => r.Status == WorkRequestStatus.Open))
             {
+                if (request.RequiresTwoDeckhands && CountFreeDeckhands() < 2)
+                    continue;
+
                 yield return new DeckhandTaskCandidate(
                     GetWorkRequestLabel(request),
                     EstimateDistanceToWorkRequest(crewman, request),
@@ -5442,6 +5485,22 @@ namespace SailwindVirtualCrew
                     {
                         c.CurrentTask = request;
                         request.AssignedCrewman = c;
+                        if (request.RequiresTwoDeckhands)
+                        {
+                            var second = FindSecondDeckhandForWorkRequest(request, c);
+                            if (second == null)
+                            {
+                                c.CurrentTask = null;
+                                request.AssignedCrewman = null;
+                                return;
+                            }
+
+                            second.CurrentTask = request;
+                            request.AssignedCrewman2 = second;
+                            request.BeginPositioning(c, second);
+                            return;
+                        }
+
                         request.BeginPositioning(c);
                     });
             }
@@ -5495,6 +5554,24 @@ namespace SailwindVirtualCrew
                 return 0;
 
             return 5;
+        }
+
+        private int CountFreeDeckhands()
+        {
+            return Crew.Count(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
+        }
+
+        private Crewman FindSecondDeckhandForWorkRequest(WorkRequest request, Crewman first)
+        {
+            var secondWinch = request != null && request.Targets != null && request.Targets.Length > 1
+                ? request.Targets[1].Winch
+                : null;
+
+            return Crew.Where(c => c != first && !c.IsOccupied && c.Role == ShipRole.Deckhand)
+                .OrderBy(c => secondWinch
+                    ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(c, secondWinch)
+                    : 0f)
+                .FirstOrDefault();
         }
 
         private static bool IsLooseningTarget(WinchTarget target)

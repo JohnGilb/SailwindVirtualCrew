@@ -62,10 +62,13 @@ namespace SailwindVirtualCrew
         public WinchTarget[]      Targets         { get; }
         public WorkRequestStatus  Status          { get; set; }
         public Crewman            AssignedCrewman { get; set; }
+        public Crewman            AssignedCrewman2 { get; set; }
+        public bool               RequiresTwoDeckhands { get; set; }
 
         public float PositioningTimeTotal { get; private set; }
         private float positioningStartTime;
         private bool concretePositioning;
+        private bool concretePositioning2;
 
         public WorkRequest(ICommonSailActions sail, string commandName, params WinchTarget[] targets)
         {
@@ -77,27 +80,48 @@ namespace SailwindVirtualCrew
 
         public void BeginPositioning(Crewman crewman)
         {
+            BeginPositioning(crewman, null);
+        }
+
+        public void BeginPositioning(Crewman crewman, Crewman crewman2)
+        {
+            AssignedCrewman = crewman;
+            AssignedCrewman2 = crewman2;
             PositioningTimeTotal = 7 - crewman.Dexterity;
+            if (RequiresTwoDeckhands && crewman2 != null)
+                PositioningTimeTotal = Mathf.Max(PositioningTimeTotal, 7 - crewman2.Dexterity);
             positioningStartTime = Time.time;
             concretePositioning = Targets.Length > 0
                 && CrewNavigationCoordinator.Instance.TryBeginWinchPositioning(this, crewman, Targets[0].Winch);
+            concretePositioning2 = RequiresTwoDeckhands
+                && crewman2 != null
+                && Targets.Length > 1
+                && CrewNavigationCoordinator.Instance.TryBeginWinchPositioning((this, 1), crewman2, Targets[1].Winch);
             Status = WorkRequestStatus.Positioning;
         }
 
         public bool IsPositioningComplete()
         {
-            if (concretePositioning)
-                return CrewNavigationCoordinator.Instance.IsPositioningComplete(this);
+            bool firstComplete = concretePositioning
+                ? CrewNavigationCoordinator.Instance.IsPositioningComplete(this)
+                : Time.time >= positioningStartTime + PositioningTimeTotal;
 
-            return Time.time >= positioningStartTime + PositioningTimeTotal;
+            if (!RequiresTwoDeckhands)
+                return firstComplete;
+
+            bool secondComplete = concretePositioning2
+                ? CrewNavigationCoordinator.Instance.IsPositioningComplete((this, 1))
+                : Time.time >= positioningStartTime + PositioningTimeTotal;
+
+            return firstComplete && secondComplete;
         }
 
         // 100 = just started (full bar), 0 = arrived (empty bar) — drains continuously.
         public float GetPositioningProgress() =>
-            concretePositioning
-                ? CrewNavigationCoordinator.Instance.GetPositioningProgress(this)
-                : PositioningTimeTotal <= 0f ? 0f
-                    : Mathf.Clamp01(1f - (Time.time - positioningStartTime) / PositioningTimeTotal) * 100f;
+            RequiresTwoDeckhands
+                ? (GetSinglePositioningProgress(this, concretePositioning)
+                   + GetSinglePositioningProgress((this, 1), concretePositioning2)) * 0.5f
+                : GetSinglePositioningProgress(this, concretePositioning);
 
         public void Begin()
         {
@@ -105,6 +129,11 @@ namespace SailwindVirtualCrew
             {
                 CrewNavigationCoordinator.Instance.Complete(this);
                 concretePositioning = false;
+            }
+            if (concretePositioning2)
+            {
+                CrewNavigationCoordinator.Instance.Complete((this, 1));
+                concretePositioning2 = false;
             }
 
             foreach (var t in Targets)
@@ -115,10 +144,29 @@ namespace SailwindVirtualCrew
         public void CancelPositioning()
         {
             if (!concretePositioning)
-                return;
+            {
+                if (!concretePositioning2)
+                    return;
+            }
+            else
+            {
+                CrewNavigationCoordinator.Instance.Cancel(this);
+                concretePositioning = false;
+            }
 
-            CrewNavigationCoordinator.Instance.Cancel(this);
-            concretePositioning = false;
+            if (concretePositioning2)
+            {
+                CrewNavigationCoordinator.Instance.Cancel((this, 1));
+                concretePositioning2 = false;
+            }
+        }
+
+        private float GetSinglePositioningProgress(object owner, bool concrete)
+        {
+            return concrete
+                ? CrewNavigationCoordinator.Instance.GetPositioningProgress(owner)
+                : PositioningTimeTotal <= 0f ? 0f
+                    : Mathf.Clamp01(1f - (Time.time - positioningStartTime) / PositioningTimeTotal) * 100f;
         }
 
         public string DisplayLabel => Sail != null ? $"{CommandName} — {Sail.getSailName()}" : CommandName;
