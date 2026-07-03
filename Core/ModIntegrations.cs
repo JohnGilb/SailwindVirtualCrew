@@ -122,6 +122,7 @@ namespace SailwindVirtualCrew
         private static PropertyInfo enabledProperty;
         private static bool initialized;
         private static bool failed;
+        private static bool isLegacyVersion;
 
         public static void Tick()
         {
@@ -155,7 +156,7 @@ namespace SailwindVirtualCrew
             if (!IsPortCargoListAvailable(ui))
                 return;
 
-            var good = GetTopPortGood();
+            var good = GetTopPortGood(ui);
             if (good == null)
                 return;
 
@@ -186,7 +187,6 @@ namespace SailwindVirtualCrew
             {
                 cargoControllerType = AccessTools.TypeByName("CargoController.CargoController");
                 cargoControllerUiType = AccessTools.TypeByName("CargoController.CargoControllerUI");
-                warehouseTrackerType = AccessTools.TypeByName("CargoController.IslandMarketWarehouseAreaTracker");
 
                 uiInstanceField = AccessTools.Field(cargoControllerUiType, "Instance");
                 pointerField = AccessTools.Field(cargoControllerUiType, "pointer");
@@ -194,22 +194,39 @@ namespace SailwindVirtualCrew
                 maximumPortDistanceField = AccessTools.Field(cargoControllerUiType, "maximumPortDistance");
                 pickupGoodMethod = AccessTools.Method(cargoControllerUiType, "PickupGood");
                 enabledProperty = AccessTools.Property(cargoControllerType, "Enabled");
-                missionGoodsField = AccessTools.Field(warehouseTrackerType, "missionGoodsInArea");
-                nonMissionGoodsField = AccessTools.Field(warehouseTrackerType, "nonMissionGoodsInArea");
 
                 if (cargoControllerType == null
                     || cargoControllerUiType == null
-                    || warehouseTrackerType == null
                     || uiInstanceField == null
                     || pointerField == null
                     || nearestPortDistanceField == null
                     || maximumPortDistanceField == null
                     || pickupGoodMethod == null
-                    || enabledProperty == null
-                    || missionGoodsField == null
-                    || nonMissionGoodsField == null)
+                    || enabledProperty == null)
                 {
                     Debug.LogWarning("[VirtualCrew] CargoController hotkey setup failed: expected CargoController members were not found.");
+                    failed = true;
+                    return false;
+                }
+
+                // Support both old and new CargoController
+                warehouseTrackerType = AccessTools.TypeByName("CargoController.IslandMarketWarehouseAreaTracker");
+                if (warehouseTrackerType != null)
+                {
+                    isLegacyVersion = true;
+                    missionGoodsField = AccessTools.Field(warehouseTrackerType, "missionGoodsInArea");
+                    nonMissionGoodsField = AccessTools.Field(warehouseTrackerType, "nonMissionGoodsInArea");
+                }
+                else
+                {
+                    isLegacyVersion = false;
+                    missionGoodsField = AccessTools.Field(cargoControllerUiType, "portMissionGoods");
+                    nonMissionGoodsField = AccessTools.Field(cargoControllerUiType, "portNonMissionGoods");
+                }
+
+                if (missionGoodsField == null || nonMissionGoodsField == null)
+                {
+                    Debug.LogWarning("[VirtualCrew] CargoController hotkey setup failed: expected cargo lists were not found.");
                     failed = true;
                     return false;
                 }
@@ -251,10 +268,10 @@ namespace SailwindVirtualCrew
             return distance <= maximumDistance;
         }
 
-        private static Good GetTopPortGood()
+        private static Good GetTopPortGood(object ui)
         {
-            var missionGoods = GetGoods(missionGoodsField);
-            var nonMissionGoods = GetGoods(nonMissionGoodsField);
+            var missionGoods = GetGoods(missionGoodsField, ui);
+            var nonMissionGoods = GetGoods(nonMissionGoodsField, ui);
 
             if (PlayerMissions.missions != null)
             {
@@ -275,9 +292,9 @@ namespace SailwindVirtualCrew
             return firstNonMission;
         }
 
-        private static List<Good> GetGoods(FieldInfo field)
+        private static List<Good> GetGoods(FieldInfo field, object ui)
         {
-            var goods = field.GetValue(null) as IEnumerable<Good>;
+            var goods = field.GetValue(isLegacyVersion ? null : ui) as IEnumerable<Good>;
             if (goods == null)
                 return new List<Good>();
             return goods.Where(good => good != null).ToList();

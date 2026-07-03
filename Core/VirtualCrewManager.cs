@@ -58,6 +58,7 @@ namespace SailwindVirtualCrew
         private StandingOrderWindState _lastStandingOrdersIssuedState = StandingOrderWindState.None;
         private StandingOrderWindState _previousStandingOrdersIssuedState = StandingOrderWindState.None;
         private StandingOrderWindState _pendingStandingOrdersReturnState = StandingOrderWindState.None;
+        private StandingOrderWindState _lastStandingOrdersObservedState = StandingOrderWindState.None;
         private float _standingOrdersReturnStartedGameHours = -1f;
         private float _lastShiftLocalTime = -1f;
         private PilotTask _pilotShiftHandoffTask;
@@ -823,7 +824,7 @@ namespace SailwindVirtualCrew
             {
                 foreach (var sail in group.GetMembers(AllSails))
                 {
-                    if (!IsSailAvailableForLiveWork(sail) || sail.getHalyardWinch() == null)
+                    if (!CanQueueLiveSailWork(sail) || sail.getHalyardWinch() == null)
                         continue;
                     AddWorkRequest(new WorkRequest(sail, "Halyard " + FormatFavoriteTarget(command.halyard),
                         new WinchTarget(sail.getHalyardWinch(), command.halyard)));
@@ -834,7 +835,7 @@ namespace SailwindVirtualCrew
             {
                 foreach (var sail in group.GetMembers(AllSails).OfType<SimpleSail>())
                 {
-                    if (!IsSailAvailableForLiveWork(sail) || sail.getSheetWinch() == null)
+                    if (!CanQueueLiveSailWork(sail) || sail.getSheetWinch() == null)
                         continue;
                     AddWorkRequest(new WorkRequest(sail, "Sheet " + FormatFavoriteTarget(command.simpleSheet),
                         new WinchTarget(sail.getSheetWinch(), command.simpleSheet)));
@@ -845,7 +846,7 @@ namespace SailwindVirtualCrew
             {
                 foreach (var sail in group.GetMembers(AllSails).OfType<DualSheetSail>())
                 {
-                    if (!IsSailAvailableForLiveWork(sail))
+                    if (!CanQueueLiveSailWork(sail))
                         continue;
                     if (command.hasPortSheet && sail.getPortSheetWinch() != null)
                         AddWorkRequest(new WorkRequest(sail, "Port Sheet " + FormatFavoriteTarget(command.portSheet),
@@ -909,7 +910,7 @@ namespace SailwindVirtualCrew
                 case FavoriteActionKind.Halyard:
                     foreach (var sail in group.GetMembers(AllSails))
                     {
-                        if (!IsSailAvailableForLiveWork(sail) || sail.getHalyardWinch() == null)
+                        if (!CanQueueLiveSailWork(sail) || sail.getHalyardWinch() == null)
                             continue;
                         AddWorkRequest(new WorkRequest(sail, "Halyard " + action.label,
                             new WinchTarget(sail.getHalyardWinch(), action.target)));
@@ -919,7 +920,7 @@ namespace SailwindVirtualCrew
                 case FavoriteActionKind.SimpleSheet:
                     foreach (var sail in group.GetMembers(AllSails).OfType<SimpleSail>())
                     {
-                        if (!IsSailAvailableForLiveWork(sail) || sail.getSheetWinch() == null)
+                        if (!CanQueueLiveSailWork(sail) || sail.getSheetWinch() == null)
                             continue;
                         AddWorkRequest(new WorkRequest(sail, "Sheet " + action.label,
                             new WinchTarget(sail.getSheetWinch(), action.target)));
@@ -929,7 +930,7 @@ namespace SailwindVirtualCrew
                 case FavoriteActionKind.RelativeSheet:
                     foreach (var sail in group.GetMembers(AllSails).OfType<SimpleSail>())
                     {
-                        if (!IsSailAvailableForLiveWork(sail) || sail.getSheetWinch() == null || sail.getSheetWinch().rope == null)
+                        if (!CanQueueLiveSailWork(sail) || sail.getSheetWinch() == null || sail.getSheetWinch().rope == null)
                             continue;
                         var winch = sail.getSheetWinch();
                         float target = Mathf.Clamp01(winch.rope.currentLength + action.delta);
@@ -942,7 +943,7 @@ namespace SailwindVirtualCrew
                     foreach (var sail in group.GetMembers(AllSails).OfType<DualSheetSail>()
                                              .Where(s => s.getSubtype() == action.dualSheetSubtype))
                     {
-                        if (!IsSailAvailableForLiveWork(sail))
+                        if (!CanQueueLiveSailWork(sail))
                             continue;
                         if (sail.getPortSheetWinch() != null)
                             AddWorkRequest(new WorkRequest(sail, "Port Sheet " + action.label,
@@ -2805,15 +2806,27 @@ namespace SailwindVirtualCrew
                 return;
 
             if (IsNoOpSailWorkRequest(request))
+            {
+                LogStandingOrderSuppressed(request, "already at target");
                 return;
+            }
 
-            if (!IsSailAvailableForLiveWork(request?.Sail))
+            if (!CanQueueLiveSailWork(request?.Sail))
+            {
+                LogStandingOrderSuppressed(request, GetLiveSailWorkBlockedReason(request?.Sail));
                 return;
+            }
 
             // Reject if any of this request's target winches are already claimed.
-            if (request.Targets.Any(t => t.Winch == null || t.Winch.rope == null || HasPendingRequestForWinch(t.Winch)))
+            string blockedTargetReason = GetBlockedTargetReason(request.Targets);
+            if (blockedTargetReason != null)
+            {
+                LogStandingOrderSuppressed(request, blockedTargetReason);
                 return;
+            }
+
             WorkRequests.Add(request);
+            LogStandingOrderQueued(request);
         }
 
         private static bool IsNoOpSailWorkRequest(WorkRequest request)
@@ -2844,7 +2857,7 @@ namespace SailwindVirtualCrew
 
         public void AddTrimRequest(TrimRequest request)
         {
-            if (!IsSailAvailableForLiveWork(request?.Sail))
+            if (!CanQueueLiveSailWork(request?.Sail))
                 return;
             if (HasPendingRequestForWinch(request.Sail.getSheetWinch()))
                 return;
@@ -2862,7 +2875,7 @@ namespace SailwindVirtualCrew
 
         public void AddJibTrimRequest(JibTrimRequest request)
         {
-            if (!IsSailAvailableForLiveWork(request?.Sail))
+            if (!CanQueueLiveSailWork(request?.Sail))
                 return;
             var port = request.Sail.getPortSheetWinch();
             var star = request.Sail.getStarboardSheetWinch();
@@ -2885,7 +2898,7 @@ namespace SailwindVirtualCrew
 
         public void AddSquareTrimRequest(SquareTrimRequest request)
         {
-            if (!IsSailAvailableForLiveWork(request?.Sail))
+            if (!CanQueueLiveSailWork(request?.Sail))
                 return;
             var port = request.Sail.getPortSheetWinch();
             var star = request.Sail.getStarboardSheetWinch();
@@ -2894,13 +2907,157 @@ namespace SailwindVirtualCrew
             SquareTrimRequests.Add(request);
         }
 
-        private bool IsSailAvailableForLiveWork(ICommonSailActions sail)
+        private bool CanQueueLiveSailWork(ICommonSailActions sail)
         {
             if (sail == null)
                 return true;
 
             return sail.getRealSail() != null
-                && !HasPendingRequestForSail(sail);
+                && !HasPendingSailStorageRequestForSail(sail);
+        }
+
+        private string GetLiveSailWorkBlockedReason(ICommonSailActions sail)
+        {
+            if (sail == null)
+                return null;
+
+            if (sail.getRealSail() == null)
+                return "sail unavailable";
+
+            if (HasPendingSailStorageRequestForSail(sail))
+                return "sail storage request pending";
+
+            return "live sail work unavailable";
+        }
+
+        private bool HasPendingSailStorageRequestForSail(ICommonSailActions sail)
+        {
+            if (sail == null)
+                return false;
+
+            string identifier = sail.getDefaultIdentifier();
+            if (string.IsNullOrEmpty(identifier))
+                return false;
+
+            return SailStorageRequests.Any(r => r.Status != WorkRequestStatus.Complete
+                && r.SailIdentifier == identifier);
+        }
+
+        private string GetBlockedTargetReason(IEnumerable<WinchTarget> targets)
+        {
+            foreach (var target in targets)
+            {
+                if (target == null || target.Winch == null)
+                    return "target winch missing";
+
+                if (target.Winch.rope == null)
+                    return "target rope missing";
+
+                if (HasPendingRequestForWinch(target.Winch))
+                    return "winch already has pending request: " + target.Winch.name;
+            }
+
+            return null;
+        }
+
+        private static bool IsStandingOrderRequest(WorkRequest request)
+        {
+            return request != null
+                && !string.IsNullOrEmpty(request.CommandName)
+                && request.CommandName.StartsWith("Standing Order", StringComparison.Ordinal);
+        }
+
+        private static void LogStandingOrderQueued(WorkRequest request)
+        {
+            if (!IsStandingOrderRequest(request))
+                return;
+
+            CrewDebugLog.Info("StandingOrders",
+                "Queued " + request.DisplayLabel + " targets=" + FormatWinchTargets(request.Targets));
+        }
+
+        private static void LogStandingOrderSuppressed(WorkRequest request, string reason)
+        {
+            if (!IsStandingOrderRequest(request))
+                return;
+
+            CrewDebugLog.Info("StandingOrders",
+                "Suppressed " + request.DisplayLabel + ": " + reason
+                + " targets=" + FormatWinchTargets(request.Targets));
+        }
+
+        private static void LogStandingOrderSuppressed(ICommonSailActions sail, string commandName,
+                                                       string reason, WinchTarget target)
+        {
+            CrewDebugLog.Info("StandingOrders",
+                "Suppressed " + commandName + " - " + FormatSailName(sail) + ": " + reason
+                + " targets=" + FormatWinchTargets(target == null
+                    ? Enumerable.Empty<WinchTarget>()
+                    : new[] { target }));
+        }
+
+        private static string FormatSailName(ICommonSailActions sail)
+        {
+            return sail != null ? sail.getSailName() : "no sail";
+        }
+
+        private static string FormatStandingOrderTargets(StandingOrderTargets targets)
+        {
+            if (targets == null)
+                return "none";
+
+            var parts = new List<string>();
+            if (targets.HasHalyard)
+                parts.Add("halyard=" + FormatPercent(targets.Halyard));
+            if (targets.HasSimpleSheet)
+                parts.Add("sheet=" + FormatPercent(targets.SimpleSheet));
+            if (targets.HasPortSheet)
+                parts.Add("port=" + FormatPercent(targets.PortSheet));
+            if (targets.HasStarboardSheet)
+                parts.Add("starboard=" + FormatPercent(targets.StarboardSheet));
+            if (targets.HasTrim)
+                parts.Add("trim");
+
+            return parts.Count == 0 ? "none" : string.Join(", ", parts.ToArray());
+        }
+
+        private static string FormatPercent(float value)
+        {
+            return Mathf.Clamp01(value).ToString("P0");
+        }
+
+        private static string FormatWinchTargets(IEnumerable<WinchTarget> targets)
+        {
+            if (targets == null)
+                return "none";
+
+            return string.Join(", ", targets.Select(t =>
+            {
+                if (t == null)
+                    return "null";
+                if (t.Winch == null)
+                    return "missing-winch";
+                if (t.Winch.rope == null)
+                    return t.Winch.name + ":missing-rope";
+
+                return t.Winch.name
+                    + " current=" + t.Winch.rope.currentLength.ToString("0.000")
+                    + " target=" + t.TargetLength.ToString("0.000")
+                    + " action=" + GetWinchTargetActionLabel(t);
+            }).ToArray());
+        }
+
+        private static string GetWinchTargetActionLabel(WinchTarget target)
+        {
+            if (target == null || target.Winch == null || target.Winch.rope == null)
+                return "unknown";
+
+            float delta = target.TargetLength - target.Winch.rope.currentLength;
+            if (delta > WinchTarget.TargetTolerance)
+                return "loosen";
+            if (delta < -WinchTarget.TargetTolerance)
+                return "tighten";
+            return "hold";
         }
 
         public void AddSailStorageRequest(SailStorageRequest request)
@@ -4249,6 +4406,16 @@ namespace SailwindVirtualCrew
                 return;
 
             var state = WindAngleUtils.ClassifyStandingOrderWindState(apparentWindAngle);
+            if (state != _lastStandingOrdersObservedState)
+            {
+                CrewDebugLog.Info("StandingOrders",
+                    "Wind changed from " + WindAngleUtils.GetStateLabel(_lastStandingOrdersObservedState)
+                    + " to " + WindAngleUtils.GetStateLabel(state)
+                    + " angle=" + apparentWindAngle.ToString("0.0")
+                    + " lastIssued=" + WindAngleUtils.GetStateLabel(_lastStandingOrdersIssuedState));
+                _lastStandingOrdersObservedState = state;
+            }
+
             if (state == StandingOrderWindState.None)
                 return;
 
@@ -4272,6 +4439,9 @@ namespace SailwindVirtualCrew
                 {
                     _pendingStandingOrdersReturnState = state;
                     _standingOrdersReturnStartedGameHours = currentGameHours;
+                    CrewDebugLog.Info("StandingOrders",
+                        "Delaying return to " + WindAngleUtils.GetStateLabel(state)
+                        + " for " + FirstOfficerStandingOrderReturnDelayHours.ToString("0.00") + " game hours.");
                     return;
                 }
 
@@ -4289,13 +4459,25 @@ namespace SailwindVirtualCrew
 
         private void IssueStandingOrdersForWindState(StandingOrderWindState state)
         {
+            int orderCount = 0;
+            CrewDebugLog.Info("StandingOrders",
+                "Issuing standing orders for " + WindAngleUtils.GetStateLabel(state) + ".");
+
             foreach (var sail in allSails)
             {
                 if (!TryGetStandingOrderTargets(state, sail, out StandingOrderTargets targets))
                     continue;
 
+                orderCount++;
+                CrewDebugLog.Info("StandingOrders",
+                    "Invoking " + WindAngleUtils.GetStateLabel(state)
+                    + " for sail='" + sail.getSailName() + "' targets=" + FormatStandingOrderTargets(targets));
                 QueueStandingOrderTargets(sail, targets);
             }
+
+            if (orderCount == 0)
+                CrewDebugLog.Info("StandingOrders",
+                    "No saved standing orders for " + WindAngleUtils.GetStateLabel(state) + ".");
         }
 
         private void QueueStandingOrderTargets(ICommonSailActions sail, StandingOrderTargets targets)
@@ -4340,8 +4522,10 @@ namespace SailwindVirtualCrew
                 return;
 
             var requestTargets = new List<WinchTarget>();
-            AddStandingOrderTarget(requestTargets, sail.getPortSheetWinch(), targets.HasPortSheet, targets.PortSheet);
-            AddStandingOrderTarget(requestTargets, sail.getStarboardSheetWinch(), targets.HasStarboardSheet, targets.StarboardSheet);
+            AddStandingOrderTarget(requestTargets, sail, "Standing Order Square Port Sheet",
+                sail.getPortSheetWinch(), targets.HasPortSheet, targets.PortSheet);
+            AddStandingOrderTarget(requestTargets, sail, "Standing Order Square Starboard Sheet",
+                sail.getStarboardSheetWinch(), targets.HasStarboardSheet, targets.StarboardSheet);
 
             if (requestTargets.Count == 0)
                 return;
@@ -4349,26 +4533,44 @@ namespace SailwindVirtualCrew
             AddWorkRequest(new WorkRequest(sail, "Standing Order Square Sheet", requestTargets.ToArray()));
         }
 
-        private static void AddStandingOrderTarget(List<WinchTarget> requestTargets, GPButtonRopeWinch winch,
+        private static void AddStandingOrderTarget(List<WinchTarget> requestTargets, ICommonSailActions sail,
+                                                   string commandName, GPButtonRopeWinch winch,
                                                    bool hasTarget, float target)
         {
-            if (!hasTarget || winch == null || winch.rope == null)
+            if (!hasTarget)
                 return;
 
+            if (winch == null || winch.rope == null)
+            {
+                LogStandingOrderSuppressed(sail, commandName, "target winch or rope missing", null);
+                return;
+            }
+
             var winchTarget = new WinchTarget(winch, target);
-            if (!winchTarget.IsAtTarget())
-                requestTargets.Add(winchTarget);
+            if (winchTarget.IsAtTarget())
+            {
+                LogStandingOrderSuppressed(sail, commandName, "already at target", winchTarget);
+                return;
+            }
+
+            requestTargets.Add(winchTarget);
         }
 
         private void QueueStandingOrderWinch(ICommonSailActions sail, string commandName,
                                              GPButtonRopeWinch winch, float target)
         {
             if (winch == null || winch.rope == null)
+            {
+                LogStandingOrderSuppressed(sail, commandName, "target winch or rope missing", null);
                 return;
+            }
 
             var winchTarget = new WinchTarget(winch, target);
             if (winchTarget.IsAtTarget())
+            {
+                LogStandingOrderSuppressed(sail, commandName, "already at target", winchTarget);
                 return;
+            }
 
             AddWorkRequest(new WorkRequest(sail, commandName, winchTarget));
         }
@@ -4386,6 +4588,7 @@ namespace SailwindVirtualCrew
             _lastStandingOrdersIssuedState = StandingOrderWindState.None;
             _previousStandingOrdersIssuedState = StandingOrderWindState.None;
             _pendingStandingOrdersReturnState = StandingOrderWindState.None;
+            _lastStandingOrdersObservedState = StandingOrderWindState.None;
             _standingOrdersReturnStartedGameHours = -1f;
         }
 
@@ -5211,7 +5414,8 @@ namespace SailwindVirtualCrew
             foreach (var crewman in Crew.Where(c => !c.IsOccupied && c.Role == ShipRole.Deckhand).ToList())
             {
                 var ranked = GetOpenDeckhandTaskCandidates(crewman)
-                    .OrderBy(c => c.Distance)
+                    .OrderByDescending(c => c.Priority)
+                    .ThenBy(c => c.Distance)
                     .ToList();
 
                 if (ranked.Count == 0)
@@ -5219,7 +5423,8 @@ namespace SailwindVirtualCrew
 
                 CrewDebugLog.Ok("RuntimeNav",
                     "Task distance ranking for crew='" + crewman.Name + "': "
-                    + string.Join(", ", ranked.Select(c => c.Label + "=" + FormatDistance(c.Distance)).ToArray()));
+                    + string.Join(", ", ranked.Select(c => c.Label + "=" + FormatDistance(c.Distance)
+                        + " priority=" + c.Priority).ToArray()));
 
                 ranked[0].Begin(crewman);
             }
@@ -5232,6 +5437,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     GetWorkRequestLabel(request),
                     EstimateDistanceToWorkRequest(crewman, request),
+                    GetWorkRequestPriority(request),
                     c =>
                     {
                         c.CurrentTask = request;
@@ -5245,6 +5451,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.DisplayLabel,
                     EstimateDistanceToSailStorageRequest(crewman, request),
+                    5,
                     c => request.BeginPositioning(c));
             }
 
@@ -5253,6 +5460,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.CommandName,
                     EstimateDistanceToMooringRequest(crewman, request),
+                    5,
                     c => request.BeginPositioning(c));
             }
 
@@ -5261,6 +5469,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.CommandName + " " + request.ItemName,
                     EstimateDistanceToHaulSellRequest(crewman, request),
+                    5,
                     c => request.BeginPositioning(c));
             }
 
@@ -5269,8 +5478,39 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.CommandName + " " + request.LanternName,
                     CrewLanternService.EstimateDistanceToLantern(crewman, request.Lantern),
+                    5,
                     c => request.BeginPositioning(c));
             }
+        }
+
+        private static int GetWorkRequestPriority(WorkRequest request)
+        {
+            if (request == null || request.Targets == null || request.Targets.Length == 0)
+                return 5;
+
+            if (request.Targets.Any(IsLooseningTarget))
+                return 10;
+
+            if (request.Targets.Any(IsTighteningTarget))
+                return 0;
+
+            return 5;
+        }
+
+        private static bool IsLooseningTarget(WinchTarget target)
+        {
+            return target != null
+                && target.Winch != null
+                && target.Winch.rope != null
+                && target.TargetLength - target.Winch.rope.currentLength > WinchTarget.TargetTolerance;
+        }
+
+        private static bool IsTighteningTarget(WinchTarget target)
+        {
+            return target != null
+                && target.Winch != null
+                && target.Winch.rope != null
+                && target.Winch.rope.currentLength - target.TargetLength > WinchTarget.TargetTolerance;
         }
 
         private static float EstimateDistanceToWorkRequest(Crewman crewman, WorkRequest request)
@@ -5341,12 +5581,14 @@ namespace SailwindVirtualCrew
         {
             internal string Label { get; }
             internal float Distance { get; }
+            internal int Priority { get; }
             internal Action<Crewman> Begin { get; }
 
-            internal DeckhandTaskCandidate(string label, float distance, Action<Crewman> begin)
+            internal DeckhandTaskCandidate(string label, float distance, int priority, Action<Crewman> begin)
             {
                 Label = label;
                 Distance = distance;
+                Priority = priority;
                 Begin = begin;
             }
         }
@@ -5399,6 +5641,15 @@ namespace SailwindVirtualCrew
                 {
                     if (haul.Status == WorkRequestStatus.InProgress)
                         haul.UpdateFrame();
+                }
+            }
+
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.MooringRequests"))
+            {
+                foreach (var mooring in MooringRequests)
+                {
+                    if (mooring.Status == WorkRequestStatus.InProgress)
+                        mooring.UpdateFrame();
                 }
             }
 

@@ -175,7 +175,6 @@ namespace SailwindVirtualCrew
 
             if (Kind == MooringRequestKind.Unmoor)
             {
-                TickUnmoor();
                 return;
             }
 
@@ -190,6 +189,17 @@ namespace SailwindVirtualCrew
                 + " crew='" + (AssignedCrewman != null ? AssignedCrewman.Name : "none")
                 + "' moored=" + throwSucceeded);
             Complete();
+        }
+
+        public void UpdateFrame()
+        {
+            if (Status != WorkRequestStatus.InProgress || Kind != MooringRequestKind.Unmoor)
+                return;
+
+            if (Time.time < workStartTime + workDuration)
+                return;
+
+            TickUnmoor();
         }
 
         private void TickUnmoor()
