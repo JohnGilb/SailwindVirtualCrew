@@ -19,6 +19,10 @@ namespace SailwindVirtualCrew
         private const float LookoutEyeMarkerDiameter = 0.2f;
         private const float SampleMarkerDiameter = 0.2f;
         private const float MarkerUpdateInterval = 0.25f;
+        private const float RendererDumpNearbyRadius = 5000f;
+        private const int RendererDumpMaxNearbyEntries = 25;
+        private const int RendererDumpMaxLocalRendererEntries = 40;
+        private const int RendererDumpMaxSceneRoots = 12;
 
         // Retained for the old peak debugger helpers below; live visibility uses LookoutVisibility.
         private readonly Dictionary<int, float> _peakCache = new Dictionary<int, float>();
@@ -468,6 +472,9 @@ namespace SailwindVirtualCrew
             foreach (var r in island.GetComponentsInChildren<Renderer>())
                 if (LookoutVisibility.IsPeakCandidateRenderer(r, islandRootY, maxY))
                     maxY = r.bounds.max.y;
+            foreach (var terrain in island.GetComponentsInChildren<Terrain>())
+                if (LookoutVisibility.IsPeakCandidateTerrain(terrain, islandRootY, maxY))
+                    maxY = LookoutVisibility.GetTerrainWorldBounds(terrain).max.y;
 
             // Also scan the additively-loaded island scene directly
             if (island.islandIndex > 0 && island.SceneLoaded())
@@ -475,9 +482,14 @@ namespace SailwindVirtualCrew
                 var scene = SceneManager.GetSceneByBuildIndex(island.islandIndex);
                 if (scene.isLoaded)
                     foreach (var root in scene.GetRootGameObjects())
+                    {
                         foreach (var r in root.GetComponentsInChildren<Renderer>())
                             if (LookoutVisibility.IsPeakCandidateRenderer(r, islandRootY, maxY))
                                 maxY = r.bounds.max.y;
+                        foreach (var terrain in root.GetComponentsInChildren<Terrain>())
+                            if (LookoutVisibility.IsPeakCandidateTerrain(terrain, islandRootY, maxY))
+                                maxY = LookoutVisibility.GetTerrainWorldBounds(terrain).max.y;
+                    }
             }
 
             return maxY;
@@ -486,21 +498,164 @@ namespace SailwindVirtualCrew
         private static void DumpRenderers(IslandHorizon island)
         {
             string name = GetIslandName(island);
+            Vector3 islandPos = island.transform.position;
             Debug.Log($"[Lookout] Renderer dump for {name} (islandIndex={island.islandIndex})");
+            Debug.Log($"  islandGO={island.gameObject.name} activeSelf={island.gameObject.activeSelf} activeInHierarchy={island.gameObject.activeInHierarchy} pos={FormatVector(islandPos)} scene={FormatScene(island.gameObject.scene)} path={GetPath(island.transform)}");
+            Debug.Log($"  SceneLoaded()={island.SceneLoaded()} loadedSceneCount={SceneManager.sceneCount}");
+            DumpSceneList(island);
 
-            foreach (var r in island.GetComponentsInChildren<Renderer>())
-                Debug.Log($"  [child] {r.gameObject.name} ({r.GetType().Name}) maxY={r.bounds.max.y:F1}  path={GetPath(r.transform)}");
+            var childRenderers = island.GetComponentsInChildren<Renderer>(true);
+            var childTerrains = island.GetComponentsInChildren<Terrain>(true);
+            Debug.Log($"  child scan: renderers={childRenderers.Length} activeRenderers={childRenderers.Count(IsActiveRenderer)} terrains={childTerrains.Length}");
+            DumpRendererCollection("child", childRenderers, islandPos, RendererDumpMaxLocalRendererEntries);
+            foreach (var terrain in childTerrains)
+                DumpTerrain("child-terrain", terrain, islandPos);
 
             if (island.islandIndex > 0 && island.SceneLoaded())
             {
                 var scene = SceneManager.GetSceneByBuildIndex(island.islandIndex);
+                Debug.Log($"  build-index scene: {FormatScene(scene)} rootCount={(scene.isLoaded ? scene.rootCount.ToString() : "n/a")}");
                 if (scene.isLoaded)
+                {
                     foreach (var root in scene.GetRootGameObjects())
-                        foreach (var r in root.GetComponentsInChildren<Renderer>())
-                            Debug.Log($"  [scene] {r.gameObject.name} ({r.GetType().Name}) maxY={r.bounds.max.y:F1}  path={GetPath(r.transform)}");
+                    {
+                        Debug.Log($"  [scene-root] {root.name} activeSelf={root.activeSelf} activeInHierarchy={root.activeInHierarchy} children={root.transform.childCount} pos={FormatVector(root.transform.position)}");
+                        DumpRendererCollection("scene", root.GetComponentsInChildren<Renderer>(true), islandPos, RendererDumpMaxLocalRendererEntries);
+                        foreach (var terrain in root.GetComponentsInChildren<Terrain>(true))
+                            DumpTerrain("scene-terrain", terrain, islandPos);
+                    }
+                }
+            }
+            else
+            {
+                Debug.Log($"  build-index scene skipped: islandIndex={island.islandIndex} SceneLoaded()={island.SceneLoaded()}");
             }
 
+            DumpNearbySceneObjects(island);
+
             Debug.Log($"[Lookout] End dump for {name}");
+        }
+
+        private static void DumpSceneList(IslandHorizon island)
+        {
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                string marker = scene.buildIndex == island.islandIndex ? " target-build-index" : "";
+                string roots = "";
+                if (scene.isLoaded)
+                {
+                    var rootNames = scene.GetRootGameObjects()
+                        .Take(RendererDumpMaxSceneRoots)
+                        .Select(root => root.name)
+                        .ToArray();
+                    roots = $" roots=[{string.Join(", ", rootNames)}{(scene.rootCount > RendererDumpMaxSceneRoots ? ", ..." : "")}]";
+                }
+
+                Debug.Log($"  [loaded-scene] slot={i} {FormatScene(scene)} rootCount={(scene.isLoaded ? scene.rootCount.ToString() : "n/a")}{marker}{roots}");
+            }
+        }
+
+        private static void DumpNearbySceneObjects(IslandHorizon island)
+        {
+            Vector3 islandPos = island.transform.position;
+            var nearbyRenderers = Resources.FindObjectsOfTypeAll<Renderer>()
+                .Where(r => r != null && IsSceneObject(r.gameObject))
+                .Select(r => new { Renderer = r, Distance = DistanceXZ(islandPos, r.bounds.center) })
+                .Where(x => x.Distance <= RendererDumpNearbyRadius)
+                .OrderByDescending(x => x.Renderer.bounds.max.y)
+                .Take(RendererDumpMaxNearbyEntries)
+                .ToArray();
+
+            Debug.Log($"  nearby loaded-scene renderers within {RendererDumpNearbyRadius:F0}m of island position: showing {nearbyRenderers.Length}");
+            foreach (var item in nearbyRenderers)
+                DumpRenderer("nearby", item.Renderer, islandPos);
+
+            var nearbyTerrains = Resources.FindObjectsOfTypeAll<Terrain>()
+                .Where(t => t != null && IsSceneObject(t.gameObject))
+                .Select(t => new { Terrain = t, Bounds = GetTerrainWorldBounds(t) })
+                .Select(x => new { x.Terrain, x.Bounds, Distance = DistanceXZ(islandPos, x.Bounds.center) })
+                .Where(x => x.Distance <= RendererDumpNearbyRadius)
+                .OrderByDescending(x => x.Bounds.max.y)
+                .Take(RendererDumpMaxNearbyEntries)
+                .ToArray();
+
+            Debug.Log($"  nearby loaded-scene terrains within {RendererDumpNearbyRadius:F0}m of island position: showing {nearbyTerrains.Length}");
+            foreach (var item in nearbyTerrains)
+                DumpTerrain("nearby-terrain", item.Terrain, islandPos, item.Bounds);
+        }
+
+        private static void DumpRendererCollection(string source, Renderer[] renderers, Vector3 islandPos, int maxEntries)
+        {
+            if (renderers == null || renderers.Length == 0)
+                return;
+
+            int modularNpcSkipped = renderers.Count(IsModularNpcRenderer);
+            var shown = renderers
+                .Where(r => r != null && !IsModularNpcRenderer(r))
+                .OrderByDescending(IsActiveRenderer)
+                .ThenByDescending(r => r.bounds.max.y)
+                .Take(maxEntries)
+                .ToArray();
+
+            Debug.Log($"  [{source}] renderer details: showing {shown.Length}/{renderers.Length} maxY-sorted non-NPC entries; skippedModularNPC={modularNpcSkipped}");
+            foreach (var renderer in shown)
+                DumpRenderer(source, renderer, islandPos);
+        }
+
+        private static void DumpRenderer(string source, Renderer renderer, Vector3 islandPos)
+        {
+            Bounds bounds = renderer.bounds;
+            Debug.Log($"  [{source}] {renderer.gameObject.name} ({renderer.GetType().Name}) enabled={renderer.enabled} activeSelf={renderer.gameObject.activeSelf} activeInHierarchy={renderer.gameObject.activeInHierarchy} scene={FormatScene(renderer.gameObject.scene)} distXZ={DistanceXZ(islandPos, bounds.center):F0} minY={bounds.min.y:F1} maxY={bounds.max.y:F1} center={FormatVector(bounds.center)} path={GetPath(renderer.transform)}");
+        }
+
+        private static void DumpTerrain(string source, Terrain terrain, Vector3 islandPos)
+        {
+            DumpTerrain(source, terrain, islandPos, GetTerrainWorldBounds(terrain));
+        }
+
+        private static void DumpTerrain(string source, Terrain terrain, Vector3 islandPos, Bounds bounds)
+        {
+            Debug.Log($"  [{source}] {terrain.gameObject.name} (Terrain) enabled={terrain.enabled} activeSelf={terrain.gameObject.activeSelf} activeInHierarchy={terrain.gameObject.activeInHierarchy} scene={FormatScene(terrain.gameObject.scene)} distXZ={DistanceXZ(islandPos, bounds.center):F0} minY={bounds.min.y:F1} maxY={bounds.max.y:F1} center={FormatVector(bounds.center)} path={GetPath(terrain.transform)}");
+        }
+
+        private static Bounds GetTerrainWorldBounds(Terrain terrain)
+        {
+            return LookoutVisibility.GetTerrainWorldBounds(terrain);
+        }
+
+        private static bool IsActiveRenderer(Renderer renderer)
+        {
+            return renderer != null && renderer.enabled && renderer.gameObject.activeInHierarchy;
+        }
+
+        private static bool IsModularNpcRenderer(Renderer renderer)
+        {
+            return renderer != null && GetPath(renderer.transform).Contains("/Modular NPC/");
+        }
+
+        private static bool IsSceneObject(GameObject gameObject)
+        {
+            return gameObject != null && gameObject.scene.IsValid() && gameObject.scene.isLoaded;
+        }
+
+        private static float DistanceXZ(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x;
+            float dz = a.z - b.z;
+            return Mathf.Sqrt(dx * dx + dz * dz);
+        }
+
+        private static string FormatVector(Vector3 value)
+        {
+            return $"({value.x:F1}, {value.y:F1}, {value.z:F1})";
+        }
+
+        private static string FormatScene(Scene scene)
+        {
+            return scene.IsValid()
+                ? $"{scene.name}(buildIndex={scene.buildIndex}, loaded={scene.isLoaded})"
+                : "<invalid>";
         }
 
         private static string GetPath(Transform t)

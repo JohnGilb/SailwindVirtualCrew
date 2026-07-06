@@ -132,14 +132,20 @@ namespace SailwindVirtualCrew
 
             foreach (var renderer in island.GetComponentsInChildren<Renderer>())
                 ConsiderRenderer(renderer, islandRootY, ref maxY, ref bestBounds, ref found);
+            foreach (var terrain in island.GetComponentsInChildren<Terrain>())
+                ConsiderTerrain(terrain, islandRootY, ref maxY, ref bestBounds, ref found);
 
             if (island.islandIndex > 0 && island.SceneLoaded())
             {
                 var scene = SceneManager.GetSceneByBuildIndex(island.islandIndex);
                 if (scene.isLoaded)
                     foreach (var root in scene.GetRootGameObjects())
+                    {
                         foreach (var renderer in root.GetComponentsInChildren<Renderer>())
                             ConsiderRenderer(renderer, islandRootY, ref maxY, ref bestBounds, ref found);
+                        foreach (var terrain in root.GetComponentsInChildren<Terrain>())
+                            ConsiderTerrain(terrain, islandRootY, ref maxY, ref bestBounds, ref found);
+                    }
             }
 
             if (!found)
@@ -158,6 +164,33 @@ namespace SailwindVirtualCrew
             return minHeightAboveIsland < MaxRendererBaseHeightAboveIsland;
         }
 
+        internal static bool IsPeakCandidateTerrain(Terrain terrain, float islandRootY, float currentMaxY)
+        {
+            if (terrain == null || terrain.terrainData == null || !terrain.enabled)
+                return false;
+
+            Bounds bounds = GetTerrainWorldBounds(terrain);
+            if (bounds.max.y <= currentMaxY)
+                return false;
+
+            float minHeightAboveIsland = bounds.min.y - islandRootY;
+            return minHeightAboveIsland < MaxRendererBaseHeightAboveIsland;
+        }
+
+        internal static Bounds GetTerrainWorldBounds(Terrain terrain)
+        {
+            if (terrain == null || terrain.terrainData == null)
+                return new Bounds(terrain != null ? terrain.transform.position : Vector3.zero, Vector3.zero);
+
+            Bounds local = terrain.terrainData.bounds;
+            Vector3 scale = terrain.transform.lossyScale;
+            Vector3 size = new Vector3(
+                Mathf.Abs(local.size.x * scale.x),
+                Mathf.Abs(local.size.y * scale.y),
+                Mathf.Abs(local.size.z * scale.z));
+            return new Bounds(terrain.transform.TransformPoint(local.center), size);
+        }
+
         private static void ConsiderRenderer(Renderer renderer, float islandRootY, ref float maxY, ref Bounds bestBounds, ref bool found)
         {
             if (!IsPeakCandidateRenderer(renderer, islandRootY, maxY))
@@ -165,6 +198,17 @@ namespace SailwindVirtualCrew
 
             maxY = renderer.bounds.max.y;
             bestBounds = renderer.bounds;
+            found = true;
+        }
+
+        private static void ConsiderTerrain(Terrain terrain, float islandRootY, ref float maxY, ref Bounds bestBounds, ref bool found)
+        {
+            if (!IsPeakCandidateTerrain(terrain, islandRootY, maxY))
+                return;
+
+            Bounds bounds = GetTerrainWorldBounds(terrain);
+            maxY = bounds.max.y;
+            bestBounds = bounds;
             found = true;
         }
 
