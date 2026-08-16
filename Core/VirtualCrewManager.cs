@@ -5448,25 +5448,28 @@ namespace SailwindVirtualCrew
 
         private void AssignOpenDeckhandTasksByDistance()
         {
+            var allCandidates = new List<DeckhandTaskCandidate>();
             foreach (var crewman in Crew.Where(c => !c.IsOccupied && c.Role == ShipRole.Deckhand).ToList())
+                allCandidates.AddRange(GetOpenDeckhandTaskCandidates(crewman));
+
+            var ranked = allCandidates
+                .OrderByDescending(c => c.Priority)
+                .ThenBy(c => c.Distance)
+                .ToList();
+
+            foreach (var candidate in ranked)
             {
-                if (crewman.IsOccupied)
+                if (candidate.Crewman.IsOccupied)
+                    continue;
+                if (!candidate.IsStillOpen())
                     continue;
 
-                var ranked = GetOpenDeckhandTaskCandidates(crewman)
-                    .OrderByDescending(c => c.Priority)
-                    .ThenBy(c => c.Distance)
-                    .ToList();
-
-                if (ranked.Count == 0)
-                    break;
-
                 CrewDebugLog.Ok("RuntimeNav",
-                    "Task distance ranking for crew='" + crewman.Name + "': "
-                    + string.Join(", ", ranked.Select(c => c.Label + "=" + FormatDistance(c.Distance)
-                        + " priority=" + c.Priority).ToArray()));
+                    "Assigning task '" + candidate.Label + "' to crew='" + candidate.Crewman.Name
+                    + "' distance=" + FormatDistance(candidate.Distance)
+                    + " priority=" + candidate.Priority);
 
-                ranked[0].Begin(crewman);
+                candidate.Begin(candidate.Crewman);
             }
         }
 
@@ -5481,6 +5484,8 @@ namespace SailwindVirtualCrew
                     GetWorkRequestLabel(request),
                     EstimateDistanceToWorkRequest(crewman, request),
                     GetWorkRequestPriority(request),
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c =>
                     {
                         c.CurrentTask = request;
@@ -5511,6 +5516,8 @@ namespace SailwindVirtualCrew
                     request.DisplayLabel,
                     EstimateDistanceToSailStorageRequest(crewman, request),
                     5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
             }
 
@@ -5520,6 +5527,8 @@ namespace SailwindVirtualCrew
                     request.CommandName,
                     EstimateDistanceToMooringRequest(crewman, request),
                     5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
             }
 
@@ -5529,6 +5538,8 @@ namespace SailwindVirtualCrew
                     request.CommandName + " " + request.ItemName,
                     EstimateDistanceToHaulSellRequest(crewman, request),
                     5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
             }
 
@@ -5538,6 +5549,8 @@ namespace SailwindVirtualCrew
                     request.CommandName + " " + request.LanternName,
                     CrewLanternService.EstimateDistanceToLantern(crewman, request.Lantern),
                     5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
             }
         }
@@ -5659,13 +5672,17 @@ namespace SailwindVirtualCrew
             internal string Label { get; }
             internal float Distance { get; }
             internal int Priority { get; }
+            internal Crewman Crewman { get; }
+            internal Func<bool> IsStillOpen { get; }
             internal Action<Crewman> Begin { get; }
 
-            internal DeckhandTaskCandidate(string label, float distance, int priority, Action<Crewman> begin)
+            internal DeckhandTaskCandidate(string label, float distance, int priority, Crewman crewman, Func<bool> isStillOpen, Action<Crewman> begin)
             {
                 Label = label;
                 Distance = distance;
                 Priority = priority;
+                Crewman = crewman;
+                IsStillOpen = isStillOpen;
                 Begin = begin;
             }
         }
