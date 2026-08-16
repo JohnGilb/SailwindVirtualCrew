@@ -196,7 +196,8 @@ namespace SailwindVirtualCrew
                 && IsDirectlyOnCurrentBoat(light)
                 && !FindContainingCrate(light)
                 && !IsInCargoCarrier(light)
-                && light.GetCurrentInventorySlot() < 0;
+                && light.GetCurrentInventorySlot() < 0
+                && light.held == null;
         }
 
         internal static FuelBoxRepairResult RefillLanternFuelBoxesOnCurrentVessel()
