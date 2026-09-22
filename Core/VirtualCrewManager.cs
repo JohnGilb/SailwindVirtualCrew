@@ -5261,7 +5261,7 @@ namespace SailwindVirtualCrew
                 HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
             }
 
-            // Bail requests: tick active ones, then assign free deckhands to open ones.
+            // Bail requests: tick active ones. Open ones are assigned by AssignOpenDeckhandTasksByDistance.
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.BailRequests"))
             {
                 foreach (var bail in BailRequests)
@@ -5271,14 +5271,6 @@ namespace SailwindVirtualCrew
                 }
 
                 BailRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
-
-                foreach (var bail in BailRequests)
-                {
-                    if (bail.Status != WorkRequestStatus.Open) continue;
-                    var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
-                    if (crewman == null) break;
-                    bail.Begin(crewman);
-                }
             }
 
             // Swab Decks requests: roam the deck in five second cycles, cleaning a little each cycle.
@@ -5293,14 +5285,6 @@ namespace SailwindVirtualCrew
                 }
 
                 SwabDecksRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
-
-                foreach (var swab in SwabDecksRequests)
-                {
-                    if (swab.Status != WorkRequestStatus.Open) continue;
-                    var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
-                    if (crewman == null) break;
-                    swab.Begin(crewman);
-                }
             }
 
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.LanternRequests"))
@@ -5469,7 +5453,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.DisplayLabel,
                     EstimateDistanceToSailStorageRequest(crewman, request),
-                    5,
+                    PrioritySailStorage,
                     crewman,
                     () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
@@ -5480,7 +5464,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.CommandName,
                     EstimateDistanceToMooringRequest(crewman, request),
-                    5,
+                    PriorityMooring,
                     crewman,
                     () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
@@ -5491,7 +5475,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.CommandName + " " + request.ItemName,
                     EstimateDistanceToHaulSellRequest(crewman, request),
-                    5,
+                    PriorityHaulSell,
                     crewman,
                     () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
@@ -5502,10 +5486,33 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     request.CommandName + " " + request.LanternName,
                     CrewLanternService.EstimateDistanceToLantern(crewman, request.Lantern),
-                    5,
+                    PriorityLantern,
                     crewman,
                     () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
+            }
+
+            // Bailing and swabbing have no fixed work location, so distance doesn't discriminate.
+            foreach (var request in BailRequests.Where(r => r.Status == WorkRequestStatus.Open))
+            {
+                yield return new DeckhandTaskCandidate(
+                    "Bail (" + request.ToolName + ")",
+                    0f,
+                    PriorityBail,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
+                    c => request.Begin(c));
+            }
+
+            foreach (var request in SwabDecksRequests.Where(r => r.Status == WorkRequestStatus.Open && !r.IsDone()))
+            {
+                yield return new DeckhandTaskCandidate(
+                    "Swab Decks",
+                    0f,
+                    PrioritySwabDecks,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
+                    c => request.Begin(c));
             }
 
             foreach (var request in TrimRequests.Where(r => r.Status == WorkRequestStatus.Open))
@@ -5513,7 +5520,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     "Auto-Trim@" + (request.Sail?.getSailName() ?? "unknown"),
                     EstimateDistanceToTrimRequest(crewman, request),
-                    5,
+                    PriorityAutoTrim,
                     crewman,
                     () => request.Status == WorkRequestStatus.Open,
                     c =>
@@ -5530,7 +5537,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     "Jib Auto-Trim@" + (request.Sail?.getSailName() ?? "unknown"),
                     EstimateDistanceToJibTrimRequest(crewman, request),
-                    5,
+                    PriorityAutoTrim,
                     crewman,
                     () => request.Status == WorkRequestStatus.Open,
                     c =>
@@ -5551,7 +5558,7 @@ namespace SailwindVirtualCrew
                 yield return new DeckhandTaskCandidate(
                     "Square Auto-Trim@" + (request.Sail?.getSailName() ?? "unknown"),
                     EstimateDistanceToSquareTrimRequest(crewman, request),
-                    5,
+                    PriorityAutoTrim,
                     crewman,
                     () => request.Status == WorkRequestStatus.Open,
                     c =>
@@ -5575,18 +5582,30 @@ namespace SailwindVirtualCrew
             }
         }
 
+        // Deckhand task priorities, highest first. Ties are broken by distance.
+        private const int PriorityWorkPayOut     = 100;
+        private const int PriorityWorkHaulIn     = 90;
+        private const int PriorityWorkNeutral    = 80;
+        private const int PriorityBail           = 70;
+        private const int PriorityAutoTrim       = 60;
+        private const int PrioritySailStorage    = 50;
+        private const int PriorityMooring        = 40;
+        private const int PriorityLantern        = 30;
+        private const int PriorityHaulSell       = 20;
+        private const int PrioritySwabDecks      = 10;
+
         private static int GetWorkRequestPriority(WorkRequest request)
         {
             if (request == null || request.Targets == null || request.Targets.Length == 0)
-                return 5;
+                return PriorityWorkNeutral;
 
             if (request.Targets.Any(IsLooseningTarget))
-                return 10;
+                return PriorityWorkPayOut;
 
             if (request.Targets.Any(IsTighteningTarget))
-                return 0;
+                return PriorityWorkHaulIn;
 
-            return 5;
+            return PriorityWorkNeutral;
         }
 
         private int CountFreeDeckhands()
