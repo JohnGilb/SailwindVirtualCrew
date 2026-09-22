@@ -5356,6 +5356,17 @@ namespace SailwindVirtualCrew
 
                 SleepRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
 
+                // Wake crew whose bed has left the boat (e.g. unloaded onto the dock). Auto/shift
+                // sleep will re-queue them if another bed is free.
+                foreach (var sleep in SleepRequests
+                    .Where(r => (r.Status == WorkRequestStatus.Positioning || r.Status == WorkRequestStatus.InProgress)
+                             && !LocatorUtils.IsBedStillOnBoat(r.AssignedBed))
+                    .ToList())
+                {
+                    CrewDebugLog.Warn("Sleep", "Bed no longer on board; waking crew='" + sleep.AssignedCrewman.Name + "'");
+                    CancelSleepRequest(sleep);
+                }
+
                 int bedsInUse = SleepRequests.Count(r => r.Status == WorkRequestStatus.InProgress
                                                        || r.Status == WorkRequestStatus.Positioning);
                 List<Component> availableBeds = null;

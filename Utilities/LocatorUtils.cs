@@ -10,7 +10,7 @@ namespace SailwindVirtualCrew
 {
     internal static class LocatorUtils
     {
-        private const float LegacyBedScanRadius = 20f;
+        private const float LegacyItemScanRadius = 20f;
         private const float DuplicateBedSleepPositionTolerance = 0.25f;
 
         public static int[] findItemCounts(string[] targetItemNames)
@@ -78,7 +78,7 @@ namespace SailwindVirtualCrew
             var oars = new List<ShipItemOar>();
             foreach (ShipItemOar oar in GameObject.FindObjectsOfType<ShipItemOar>())
             {
-                if (oar && oar.sold && IsItemAvailableOnCurrentVessel(oar))
+                if (oar && oar.sold && IsPlacedOnCurrentVessel(oar))
                     oars.Add(oar);
             }
 
@@ -143,6 +143,9 @@ namespace SailwindVirtualCrew
             return Mathf.Max(1f, FindBestSpyglassZoomOnCurrentVessel() / 1f);
         }
 
+        // Lenient: also accepts carried items and items near the boat, so the navigator can
+        // "borrow" a better spyglass from the island. Use IsPlacedOnCurrentVessel for anything
+        // crew must physically use aboard (beds, oars).
         private static bool IsItemAvailableOnCurrentVessel(ShipItem item)
         {
             if (!item)
@@ -157,12 +160,21 @@ namespace SailwindVirtualCrew
             return IsNearCurrentVesselReference(item.transform);
         }
 
+        // True if a bed returned by FindBedsOnBoat is still aboard the current vessel.
+        public static bool IsBedStillOnBoat(UnityEngine.Component bed)
+        {
+            if (bed is ShipItemBed shipBed)
+                return IsBedOnCurrentVessel(shipBed);
+            if (bed is GPButtonBed buttonBed)
+                return IsBedOnCurrentVessel(buttonBed);
+            return false;
+        }
+
+        // Beds deliberately skip the proximity fallback: a bed unloaded onto the dock is still
+        // close to the boat, but must not be slept in. Same applies to oars.
         private static bool IsBedOnCurrentVessel(ShipItemBed bed)
         {
-            if (!bed)
-                return false;
-
-            return IsItemAvailableOnCurrentVessel(bed);
+            return IsPlacedOnCurrentVessel(bed);
         }
 
         private static bool IsBedOnCurrentVessel(GPButtonBed bed)
@@ -173,7 +185,23 @@ namespace SailwindVirtualCrew
             if (bed.GetComponentInParent<ShipItemBed>())
                 return false;
 
-            return IsTransformOnCurrentVessel(bed.transform) || IsNearCurrentVesselReference(bed.transform);
+            // Modded furniture beds are ShipItems carrying a GPButtonBed.
+            var item = bed.GetComponentInParent<ShipItem>();
+            if (item)
+                return IsPlacedOnCurrentVessel(item);
+
+            return IsTransformOnCurrentVessel(bed.transform);
+        }
+
+        private static bool IsPlacedOnCurrentVessel(ShipItem item)
+        {
+            if (!item)
+                return false;
+
+            if (item.held != null || item.GetCurrentInventorySlot() != -1)
+                return false;
+
+            return ShipItemBelongsToCurrentVessel(item);
         }
 
         private static void AddUniqueBed(
@@ -265,7 +293,7 @@ namespace SailwindVirtualCrew
             if (!reference)
                 return false;
 
-            float maxDistSqr = LegacyBedScanRadius * LegacyBedScanRadius;
+            float maxDistSqr = LegacyItemScanRadius * LegacyItemScanRadius;
             return (transform.position - reference.position).sqrMagnitude <= maxDistSqr;
         }
     }
