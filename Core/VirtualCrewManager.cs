@@ -5101,23 +5101,6 @@ namespace SailwindVirtualCrew
                 TrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
             }
 
-            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.AssignOpenDeckhandTasksByDistance"))
-                AssignOpenDeckhandTasksByDistance();
-
-            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.TrimRequestAssignment"))
-            {
-                foreach (var trim in TrimRequests)
-                {
-                    if (trim.Status != WorkRequestStatus.Open) continue;
-                    var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
-                    if (crewman == null) break;
-                    crewman.CurrentTask = trim;
-                    trim.AssignedCrewman = crewman;
-                    trim.BeginPositioning(crewman);
-                    navCoord.TryBeginWinchPositioning(trim, crewman, trim.Sail.getSheetWinch());
-                }
-            }
-
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.JibTrimRequests"))
             {
                 foreach (var jtrim in JibTrimRequests)
@@ -5150,20 +5133,6 @@ namespace SailwindVirtualCrew
                 JibTrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
             }
 
-            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.JibTrimRequestAssignment"))
-            {
-                foreach (var jtrim in JibTrimRequests)
-                {
-                    if (jtrim.Status != WorkRequestStatus.Open) continue;
-                    var crewman = Crew.FirstOrDefault(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
-                    if (crewman == null) break;
-                    crewman.CurrentTask = jtrim;
-                    jtrim.AssignedCrewman = crewman;
-                    jtrim.BeginPositioning(crewman);
-                    navCoord.TryBeginWinchPositioning(jtrim, crewman, jtrim.Sail.getPortSheetWinch());
-                }
-            }
-
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SquareTrimRequests"))
             {
                 foreach (var strim in SquareTrimRequests)
@@ -5192,23 +5161,8 @@ namespace SailwindVirtualCrew
                 SquareTrimRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
             }
 
-            // Square trim requires two simultaneous deckhands; only start when both are free.
-            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.SquareTrimRequestAssignment"))
-            {
-                foreach (var strim in SquareTrimRequests)
-                {
-                    if (strim.Status != WorkRequestStatus.Open) continue;
-                    var free = Crew.Where(c => !c.IsOccupied && c.Role == ShipRole.Deckhand).Take(2).ToList();
-                    if (free.Count < 2) continue;
-                    free[0].CurrentTask = strim;
-                    free[1].CurrentTask = strim;
-                    strim.AssignedCrewman  = free[0];
-                    strim.AssignedCrewman2 = free[1];
-                    strim.BeginPositioning();
-                    navCoord.TryBeginWinchPositioning((strim, 0), free[0], strim.Sail.getPortSheetWinch());
-                    navCoord.TryBeginWinchPositioning((strim, 1), free[1], strim.Sail.getStarboardSheetWinch());
-                }
-            }
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.AssignOpenDeckhandTasksByDistance"))
+                AssignOpenDeckhandTasksByDistance();
 
             // Navigate requests: assign navigator when free, complete when timer expires.
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.NavigateRequests"))
@@ -5448,25 +5402,28 @@ namespace SailwindVirtualCrew
 
         private void AssignOpenDeckhandTasksByDistance()
         {
+            var allCandidates = new List<DeckhandTaskCandidate>();
             foreach (var crewman in Crew.Where(c => !c.IsOccupied && c.Role == ShipRole.Deckhand).ToList())
+                allCandidates.AddRange(GetOpenDeckhandTaskCandidates(crewman));
+
+            var ranked = allCandidates
+                .OrderByDescending(c => c.Priority)
+                .ThenBy(c => c.Distance)
+                .ToList();
+
+            foreach (var candidate in ranked)
             {
-                if (crewman.IsOccupied)
+                if (candidate.Crewman.IsOccupied)
+                    continue;
+                if (!candidate.IsStillOpen())
                     continue;
 
-                var ranked = GetOpenDeckhandTaskCandidates(crewman)
-                    .OrderByDescending(c => c.Priority)
-                    .ThenBy(c => c.Distance)
-                    .ToList();
-
-                if (ranked.Count == 0)
-                    break;
-
                 CrewDebugLog.Ok("RuntimeNav",
-                    "Task distance ranking for crew='" + crewman.Name + "': "
-                    + string.Join(", ", ranked.Select(c => c.Label + "=" + FormatDistance(c.Distance)
-                        + " priority=" + c.Priority).ToArray()));
+                    "Assigning task '" + candidate.Label + "' to crew='" + candidate.Crewman.Name
+                    + "' distance=" + FormatDistance(candidate.Distance)
+                    + " priority=" + candidate.Priority);
 
-                ranked[0].Begin(crewman);
+                candidate.Begin(candidate.Crewman);
             }
         }
 
@@ -5481,6 +5438,8 @@ namespace SailwindVirtualCrew
                     GetWorkRequestLabel(request),
                     EstimateDistanceToWorkRequest(crewman, request),
                     GetWorkRequestPriority(request),
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c =>
                     {
                         c.CurrentTask = request;
@@ -5511,6 +5470,8 @@ namespace SailwindVirtualCrew
                     request.DisplayLabel,
                     EstimateDistanceToSailStorageRequest(crewman, request),
                     5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
             }
 
@@ -5520,6 +5481,8 @@ namespace SailwindVirtualCrew
                     request.CommandName,
                     EstimateDistanceToMooringRequest(crewman, request),
                     5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
             }
 
@@ -5529,6 +5492,8 @@ namespace SailwindVirtualCrew
                     request.CommandName + " " + request.ItemName,
                     EstimateDistanceToHaulSellRequest(crewman, request),
                     5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
             }
 
@@ -5538,7 +5503,75 @@ namespace SailwindVirtualCrew
                     request.CommandName + " " + request.LanternName,
                     CrewLanternService.EstimateDistanceToLantern(crewman, request.Lantern),
                     5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
                     c => request.BeginPositioning(c));
+            }
+
+            foreach (var request in TrimRequests.Where(r => r.Status == WorkRequestStatus.Open))
+            {
+                yield return new DeckhandTaskCandidate(
+                    "Auto-Trim@" + (request.Sail?.getSailName() ?? "unknown"),
+                    EstimateDistanceToTrimRequest(crewman, request),
+                    5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
+                    c =>
+                    {
+                        c.CurrentTask = request;
+                        request.AssignedCrewman = c;
+                        request.BeginPositioning(c);
+                        CrewNavigationCoordinator.Instance.TryBeginWinchPositioning(request, c, request.Sail.getSheetWinch());
+                    });
+            }
+
+            foreach (var request in JibTrimRequests.Where(r => r.Status == WorkRequestStatus.Open))
+            {
+                yield return new DeckhandTaskCandidate(
+                    "Jib Auto-Trim@" + (request.Sail?.getSailName() ?? "unknown"),
+                    EstimateDistanceToJibTrimRequest(crewman, request),
+                    5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
+                    c =>
+                    {
+                        c.CurrentTask = request;
+                        request.AssignedCrewman = c;
+                        request.BeginPositioning(c);
+                        CrewNavigationCoordinator.Instance.TryBeginWinchPositioning(request, c, request.Sail.getPortSheetWinch());
+                    });
+            }
+
+            // Square trim requires two simultaneous deckhands; only start when both are free.
+            foreach (var request in SquareTrimRequests.Where(r => r.Status == WorkRequestStatus.Open))
+            {
+                if (CountFreeDeckhands() < 2)
+                    continue;
+
+                yield return new DeckhandTaskCandidate(
+                    "Square Auto-Trim@" + (request.Sail?.getSailName() ?? "unknown"),
+                    EstimateDistanceToSquareTrimRequest(crewman, request),
+                    5,
+                    crewman,
+                    () => request.Status == WorkRequestStatus.Open,
+                    c =>
+                    {
+                        var second = FindSecondDeckhandForSquareTrimRequest(request, c);
+                        if (second == null)
+                        {
+                            c.CurrentTask = null;
+                            request.AssignedCrewman = null;
+                            return;
+                        }
+
+                        c.CurrentTask = request;
+                        request.AssignedCrewman = c;
+                        second.CurrentTask = request;
+                        request.AssignedCrewman2 = second;
+                        request.BeginPositioning();
+                        CrewNavigationCoordinator.Instance.TryBeginWinchPositioning((request, 0), c, request.Sail.getPortSheetWinch());
+                        CrewNavigationCoordinator.Instance.TryBeginWinchPositioning((request, 1), second, request.Sail.getStarboardSheetWinch());
+                    });
             }
         }
 
@@ -5570,6 +5603,17 @@ namespace SailwindVirtualCrew
             return Crew.Where(c => c != first && !c.IsOccupied && c.Role == ShipRole.Deckhand)
                 .OrderBy(c => secondWinch
                     ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(c, secondWinch)
+                    : 0f)
+                .FirstOrDefault();
+        }
+
+        private Crewman FindSecondDeckhandForSquareTrimRequest(SquareTrimRequest request, Crewman first)
+        {
+            var starboardWinch = request?.Sail?.getStarboardSheetWinch();
+
+            return Crew.Where(c => c != first && !c.IsOccupied && c.Role == ShipRole.Deckhand)
+                .OrderBy(c => starboardWinch
+                    ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(c, starboardWinch)
                     : 0f)
                 .FirstOrDefault();
         }
@@ -5632,6 +5676,37 @@ namespace SailwindVirtualCrew
             return CrewNavigationCoordinator.Instance.EstimateDistanceToLocalPosition(crewman, localPosition);
         }
 
+        private static float EstimateDistanceToTrimRequest(Crewman crewman, TrimRequest request)
+        {
+            var winch = request?.Sail?.getSheetWinch();
+            return winch
+                ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(crewman, winch)
+                : float.MaxValue;
+        }
+
+        private static float EstimateDistanceToJibTrimRequest(Crewman crewman, JibTrimRequest request)
+        {
+            if (request?.Sail == null)
+                return float.MaxValue;
+
+            var port = request.Sail.getPortSheetWinch();
+            var starboard = request.Sail.getStarboardSheetWinch();
+            float distance = float.MaxValue;
+            if (port)
+                distance = Mathf.Min(distance, CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(crewman, port));
+            if (starboard)
+                distance = Mathf.Min(distance, CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(crewman, starboard));
+            return distance;
+        }
+
+        private static float EstimateDistanceToSquareTrimRequest(Crewman crewman, SquareTrimRequest request)
+        {
+            var winch = request?.Sail?.getPortSheetWinch();
+            return winch
+                ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(crewman, winch)
+                : float.MaxValue;
+        }
+
         private static GPButtonRopeWinch GetPrimaryWinch(WorkRequest request)
         {
             return request?.Targets?.FirstOrDefault()?.Winch;
@@ -5659,13 +5734,17 @@ namespace SailwindVirtualCrew
             internal string Label { get; }
             internal float Distance { get; }
             internal int Priority { get; }
+            internal Crewman Crewman { get; }
+            internal Func<bool> IsStillOpen { get; }
             internal Action<Crewman> Begin { get; }
 
-            internal DeckhandTaskCandidate(string label, float distance, int priority, Action<Crewman> begin)
+            internal DeckhandTaskCandidate(string label, float distance, int priority, Crewman crewman, Func<bool> isStillOpen, Action<Crewman> begin)
             {
                 Label = label;
                 Distance = distance;
                 Priority = priority;
+                Crewman = crewman;
+                IsStillOpen = isStillOpen;
                 Begin = begin;
             }
         }
