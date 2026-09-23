@@ -15,6 +15,14 @@ namespace SailwindVirtualCrew
             VirtualCrewManager.Instance.SettleHaulSellRequestsForSave();
         }
 
+        // SaveModData runs after the game has captured item positions, so carried cargo can go back on its way.
+        [HarmonyPostfix]
+        [HarmonyPatch("SaveModData")]
+        static void ResumeHaulsAfterSave()
+        {
+            VirtualCrewManager.Instance.ResumeHaulSellRequestsAfterSave();
+        }
+
         [HarmonyPostfix]
         [HarmonyPatch("SaveModData")]
         static void DoSave()

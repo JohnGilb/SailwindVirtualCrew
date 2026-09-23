@@ -3785,14 +3785,23 @@ namespace SailwindVirtualCrew
             ActiveStewardPhilosophyRequest = null;
         }
 
+        // Frame on which carried haul-sell cargo was put back for a save; -1 when not suspended. The game
+        // captures item state at the end of that frame, so a few frames is ample; after that, hauls resume
+        // on their own even if the save never ran.
+        private int _haulSellSaveSuspendFrame = -1;
+        private const int HaulSellSaveSuspendMaxFrames = 3;
+
+        public bool IsHaulSellSuspendedForSave =>
+            _haulSellSaveSuspendFrame >= 0 && Time.frameCount <= _haulSellSaveSuspendFrame + HaulSellSaveSuspendMaxFrames;
+
         public void SettleHaulSellRequestsForSave()
         {
+            // Only cargo being carried needs settling; queued sales (and their SELL marks) survive the save.
             if (HaulSellRequests != null && HaulSellRequests.Count > 0)
             {
-                foreach (var request in HaulSellRequests.ToList())
-                    request.ForceCompleteForSave();
-
-                HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                _haulSellSaveSuspendFrame = Time.frameCount;
+                foreach (var request in HaulSellRequests)
+                    request.SuspendForSave();
             }
 
             if (StewardFoodRequests != null)
@@ -3810,6 +3819,17 @@ namespace SailwindVirtualCrew
             }
 
             CancelStewardPhilosophy();
+        }
+
+        // Called once the game has captured item state for the save.
+        public void ResumeHaulSellRequestsAfterSave()
+        {
+            _haulSellSaveSuspendFrame = -1;
+            if (HaulSellRequests == null)
+                return;
+
+            foreach (var request in HaulSellRequests)
+                request.ResumeAfterSave();
         }
 
         private void TickSteward()
@@ -5311,19 +5331,23 @@ namespace SailwindVirtualCrew
             // Haul & Sell requests: walk to the cargo, then hand off to the per-frame cargo haul.
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.HaulSellRequests"))
             {
-                foreach (var haul in HaulSellRequests)
-                    haul.AbortIfPlayerLeftOriginBoat();
-
-                foreach (var haul in HaulSellRequests)
+                // Don't pick up new cargo, or abort-and-restore suspended cargo, while a save is capturing items.
+                if (!IsHaulSellSuspendedForSave)
                 {
-                    if (haul.Status == WorkRequestStatus.Positioning
-                        && (haul.IsPositioningComplete() || haul.IsPositioningTimedOut()))
-                    {
-                        haul.BeginHaul();
-                    }
-                }
+                    foreach (var haul in HaulSellRequests)
+                        haul.AbortIfPlayerLeftOriginBoat();
 
-                HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                    foreach (var haul in HaulSellRequests)
+                    {
+                        if (haul.Status == WorkRequestStatus.Positioning
+                            && (haul.IsPositioningComplete() || haul.IsPositioningTimedOut()))
+                        {
+                            haul.BeginHaul();
+                        }
+                    }
+
+                    HaulSellRequests.RemoveAll(r => r.Status == WorkRequestStatus.Complete);
+                }
             }
 
             // Bail requests: tick active ones. Open ones are assigned by AssignOpenDeckhandTasksByDistance.

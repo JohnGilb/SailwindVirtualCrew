@@ -50,6 +50,7 @@ namespace SailwindVirtualCrew
         private ActiveMooringRoute activeRoute;
         private bool navigatingToMooring;
         private float cargoCarryHeightOffset;
+        private bool suspendedForSave;
 
         private enum Phase
         {
@@ -198,6 +199,14 @@ namespace SailwindVirtualCrew
         {
             if (Status != WorkRequestStatus.InProgress)
                 return;
+
+            if (suspendedForSave)
+            {
+                // Fallback if the save never completed (e.g. the game refused to save).
+                if (VirtualCrewManager.Instance.IsHaulSellSuspendedForSave)
+                    return;
+                ResumeAfterSave();
+            }
 
             if (!IsOriginBoatActive())
             {
@@ -695,23 +704,38 @@ namespace SailwindVirtualCrew
             SyncSuspendedItemRigidbody(position, rotation);
         }
 
-        public void ForceCompleteForSave()
+        // True while the cargo is out of its normal state: moved off its resting spot with collision,
+        // physics and boat mass suppressed. Queued and positioning requests leave the cargo untouched.
+        private bool IsCarryingCargo =>
+            Status == WorkRequestStatus.InProgress && item
+            && (phase == Phase.Hauling || restoringCanceledCargo);
+
+        // The game records item positions and physics shortly after SaveGame is called. Put carried cargo
+        // back where it started, with normal physics, so the save never captures it mid-haul (which could
+        // reload strangely, or strand it if the mod is removed). The haul pauses and resumes afterwards.
+        public void SuspendForSave()
         {
-            if (concretePositioning)
-            {
-                CrewNavigationCoordinator.Instance.Cancel(this);
-                concretePositioning = false;
-            }
+            if (suspendedForSave || !IsCarryingCargo)
+                return;
 
-            if (phase != Phase.Waiting)
-            {
-                ReturnCargoToOrigin();
-                RestoreCargoCollision();
-                RestoreCargoToBoatMass();
-            }
+            ReturnCargoToOrigin();
+            RestoreCargoCollision();
+            RestoreCargoToBoatMass();
+            suspendedForSave = true;
+        }
 
-            SupercargoTradeService.RemoveSellStamp(item);
-            Complete();
+        public void ResumeAfterSave()
+        {
+            if (!suspendedForSave)
+                return;
+
+            suspendedForSave = false;
+            if (!IsCarryingCargo)
+                return;
+
+            // The next UpdateFrame puts the cargo back on its route position.
+            DisableCargoCollision();
+            RemoveCargoFromBoatMass();
         }
 
         private bool IsOriginBoatActive()
