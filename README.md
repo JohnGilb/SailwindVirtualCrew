@@ -8,8 +8,10 @@ Depends on:
 - ModSaveBackups (<https://github.com/bryon82/ModSaveBackups>)
 
 Interacts with these optional mods:
+- Player Model [STRONGLY RECOMMENDED] (<https://github.com/DiamondMiner99/sailwind-playermodel>)
 - CargoController (<https://github.com/JakeInABoat/SailwindCargoController>)
 - ProfitPercent (<https://github.com/alesparise/Profit-Percent-Sailwind-Mod>)
+
 
 Strongly inspired by:
 - AutoSail (<https://github.com/kerseb/AutoSails>)
