@@ -163,6 +163,7 @@ namespace SailwindVirtualCrew
             food.transform.position = position;
             food.transform.rotation = crewRotation;
             SyncSuspendedItemRigidbody(position, crewRotation);
+            CrewNavigationCoordinator.Instance.HoldItemThisFrame(this, food);
         }
 
         private bool IsFoodStillUsable()

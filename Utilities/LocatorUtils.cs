@@ -25,6 +25,9 @@ namespace SailwindVirtualCrew
 
             foreach (ShipItem item in allItems)
             {
+                if (CrewTemporaryItems.IsTemporary(item))
+                    continue;
+
                 for (int i = 0; i < targetItemNames.Length; i++)
                 {
                     if (item.name != targetItemNames[i])
@@ -113,6 +116,13 @@ namespace SailwindVirtualCrew
 
         public static float FindBestSpyglassZoomOnCurrentVessel()
         {
+            var spyglass = FindBestSpyglassOnCurrentVessel();
+            return spyglass ? Mathf.Max(1f, GetSpyglassZoom(spyglass)) : 1f;
+        }
+
+        public static ShipItemSpyglass FindBestSpyglassOnCurrentVessel()
+        {
+            ShipItemSpyglass best = null;
             float bestZoom = 1f;
 
             foreach (var spyglass in GameObject.FindObjectsOfType<ShipItemSpyglass>())
@@ -120,21 +130,41 @@ namespace SailwindVirtualCrew
                 if (!IsItemAvailableOnCurrentVessel(spyglass))
                     continue;
 
-                float zoom = Traverse.Create(spyglass).Field("maxZoom").GetValue<float>();
-
-                // Patch for the level 2 spyglass which has a huge zoom for some reason
-                if (zoom > 15)
+                float zoom = GetSpyglassZoom(spyglass);
+                if (best == null || zoom > bestZoom)
                 {
-                    zoom = 4f;
-                }
-
-                if (zoom > bestZoom)
-                {
+                    best = spyglass;
                     bestZoom = zoom;
                 }
             }
 
-            return bestZoom;
+            return best;
+        }
+
+        // First item with this name available on the current vessel (see IsItemAvailableOnCurrentVessel).
+        public static ShipItem FindItemOnCurrentVessel(string itemName)
+        {
+            if (string.IsNullOrEmpty(itemName))
+                return null;
+
+            foreach (ShipItem item in GameObject.FindObjectsOfType<ShipItem>())
+            {
+                if (item.name == itemName && IsItemAvailableOnCurrentVessel(item))
+                    return item;
+            }
+
+            return null;
+        }
+
+        private static float GetSpyglassZoom(ShipItemSpyglass spyglass)
+        {
+            float zoom = Traverse.Create(spyglass).Field("maxZoom").GetValue<float>();
+
+            // Patch for the level 2 spyglass which has a huge zoom for some reason
+            if (zoom > 15)
+                zoom = 4f;
+
+            return zoom;
         }
 
         public static float FindBestLookoutSpyglassZoomOnCurrentVessel()
@@ -148,7 +178,7 @@ namespace SailwindVirtualCrew
         // crew must physically use aboard (beds, oars).
         private static bool IsItemAvailableOnCurrentVessel(ShipItem item)
         {
-            if (!item)
+            if (!item || CrewTemporaryItems.IsTemporary(item))
                 return false;
 
             if (ShipItemBelongsToCurrentVessel(item))

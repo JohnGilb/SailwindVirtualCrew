@@ -18,12 +18,19 @@ namespace SailwindVirtualCrew
 
     /// <summary>
     /// An animated crew body. Callers set the per-frame inputs and then call Tick once the root has been placed.
-    /// Interactions are per-frame: one frame without SetAction lowers the arms.
+    /// Everything but SpeedMps is per-frame: one frame without the call and the body eases out of it.
     /// </summary>
     internal interface ICrewBodyAnimator
     {
         float SpeedMps { set; }
         void SetAction(CrewBodyAction action, Transform target);
+        // Tilts the head and upper body up or down toward a point, within what a neck and back can do.
+        void SetLookTarget(Vector3 worldPoint);
+        // Holds an item in the hands, gripped to suit it. True when the body places the item itself this frame;
+        // otherwise the item stays wherever the caller put it.
+        bool SetHeldItem(Transform item, bool big);
+        // Lies on the back: head at headWorld, feet toward alongWorld, chest toward upWorld.
+        void SetLying(Vector3 headWorld, Vector3 alongWorld, Vector3 upWorld);
         void Tick(float deltaTime);
         void Destroy();
     }
@@ -61,17 +68,21 @@ namespace SailwindVirtualCrew
         }
 
         /// <summary>
-        /// Build a Player Model body under <paramref name="root"/>, whose origin is at the crewman's feet.
-        /// Returns null when the mod is absent, its NPC template has not loaded yet, or the build failed.
+        /// Build a Player Model body under <paramref name="root"/>, whose origin is at the crewman's feet, wearing
+        /// <paramref name="appearance"/> (a PlayerAppearance string). With no appearance, a look is made up from
+        /// <paramref name="appearanceSeed"/>. <paramref name="appearanceUsed"/> is the look the body wears, for the
+        /// caller to keep. Returns null when the mod is absent, its NPC template has not loaded yet, or the build failed.
         /// </summary>
-        internal static ICrewBodyAnimator TryCreate(Transform root, string name, string appearanceSeed)
+        internal static ICrewBodyAnimator TryCreate(Transform root, string name, string appearance, string appearanceSeed,
+            out string appearanceUsed)
         {
+            appearanceUsed = null;
             if (!root || !IsEnabled)
                 return null;
 
             try
             {
-                return PlayerModelCrewBody.TryBuild(root, name, StableSeed(appearanceSeed));
+                return PlayerModelCrewBody.TryBuild(root, name, appearance, StableSeed(appearanceSeed), out appearanceUsed);
             }
             catch (Exception e)
             {
@@ -99,10 +110,20 @@ namespace SailwindVirtualCrew
         // deepens the lower the winch sits, reaching full crouch once it is a full crouch drop below the waist.
         private const float CrankWaistHeightFraction = 0.55f;
         private const float StandingHeightFallback = 1.8f;
+        private const float EyeHeightFraction = 0.93f;
+        // Neck and back together: a crewman can look well up a mast, less far down.
+        private const float MaxLookUpDeg = 60f;
+        private const float MaxLookDownDeg = 45f;
+        // The Player Model mod reads a bottle or food item's distance from the head as how far along a drink or a
+        // bite it is (the game's hold distance is 1.15 m). Held items are reported this far out, in front of the
+        // chest, so a carried cup or loaf stays carried.
+        private const float RestingItemForward = 1.1f;
+        private const float RestingItemHeightFraction = 0.55f;
 
         private readonly SyntyBody _body;
         private readonly Transform _root;
         private float _crouchThisFrame;
+        private float _lookPitchThisFrame;
 
         private PlayerModelCrewBody(SyntyBody body, Transform root)
         {
@@ -111,9 +132,15 @@ namespace SailwindVirtualCrew
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static ICrewBodyAnimator TryBuild(Transform root, string name, ulong seed)
+        internal static ICrewBodyAnimator TryBuild(Transform root, string name, string appearance, ulong seed, out string appearanceUsed)
         {
-            var body = SyntyBody.TryBuild(root, name, PlayerAppearance.DeterministicFor(seed), 0, () => 0f);
+            // The seeded look is the one crew wore before looks were saved, so existing crew keep their faces.
+            var look = string.IsNullOrEmpty(appearance)
+                ? PlayerAppearance.DeterministicFor(seed)
+                : PlayerAppearance.Deserialize(appearance);
+            appearanceUsed = look.Serialize();
+
+            var body = SyntyBody.TryBuild(root, name, look, 0, () => 0f);
             return body != null ? new PlayerModelCrewBody(body, root) : null;
         }
 
@@ -132,13 +159,50 @@ namespace SailwindVirtualCrew
                 _crouchThisFrame = Mathf.Max(_crouchThisFrame, CrouchForLowControl(target));
         }
 
+        public void SetLookTarget(Vector3 worldPoint)
+        {
+            if (!_root)
+                return;
+
+            Vector3 eye = _root.position + _root.up * (StandingHeight() * EyeHeightFraction);
+            Vector3 toTarget = worldPoint - eye;
+            float rise = Vector3.Dot(toTarget, _root.up);
+            float across = Vector3.ProjectOnPlane(toTarget, _root.up).magnitude;
+            float pitch = Mathf.Atan2(rise, Mathf.Max(across, 0.01f)) * Mathf.Rad2Deg;
+            _lookPitchThisFrame = Mathf.Clamp(pitch, -MaxLookDownDeg, MaxLookUpDeg);
+        }
+
+        public bool SetHeldItem(Transform item, bool big)
+        {
+            if (!item || !_root)
+                return false;
+
+            Vector3 restingPosition = _root.position
+                + _root.forward * RestingItemForward
+                + _root.up * (StandingHeight() * RestingItemHeightFraction);
+            _body.SetHeldItemPose(item, null, restingPosition, item.rotation, big);
+            return _body.PlacesHeldItemInHand;
+        }
+
+        public void SetLying(Vector3 headWorld, Vector3 alongWorld, Vector3 upWorld)
+        {
+            _body.SetLying(headWorld, alongWorld, upWorld);
+        }
+
         public void Tick(float deltaTime)
         {
-            // Like the interaction, the crouch lasts only while SetAction keeps asking for it; the body eases
-            // back up once it stops.
+            // Like the interaction, the crouch and the look last only while they are asked for each frame; the
+            // body eases back once they stop.
             _body.Crouch01Target = _crouchThisFrame;
+            _body.LookPitchDegTarget = _lookPitchThisFrame;
             _crouchThisFrame = 0f;
+            _lookPitchThisFrame = 0f;
             _body.Tick(deltaTime);
+        }
+
+        private float StandingHeight()
+        {
+            return _body.MeasuredHeight > 0.5f ? _body.MeasuredHeight : StandingHeightFallback;
         }
 
         private float CrouchForLowControl(Transform target)
@@ -146,8 +210,7 @@ namespace SailwindVirtualCrew
             if (!_root)
                 return 0f;
 
-            float standingHeight = _body.MeasuredHeight > 0.5f ? _body.MeasuredHeight : StandingHeightFallback;
-            float waist = standingHeight * CrankWaistHeightFraction;
+            float waist = StandingHeight() * CrankWaistHeightFraction;
             float controlHeight = Vector3.Dot(target.position - _root.position, _root.up);
             float drop = BodyTuning.CrouchDropMeters != null ? BodyTuning.CrouchDropMeters.Value : 0.6f;
             if (drop <= 0.01f)

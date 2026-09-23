@@ -559,6 +559,7 @@ namespace SailwindVirtualCrew
             item.transform.position = position;
             item.transform.rotation = crewRotation;
             SyncSuspendedItemRigidbody(position, crewRotation);
+            CrewNavigationCoordinator.Instance.HoldItemThisFrame(this, item);
         }
 
         private bool UpdateRoute()
@@ -586,6 +587,7 @@ namespace SailwindVirtualCrew
                 item.transform.rotation = rotation;
                 SyncSuspendedItemRigidbody(position, rotation);
                 MoveDeckhandWithCargo(position, rotation);
+                CrewNavigationCoordinator.Instance.HoldItemThisFrame(this, item);
             }
             else
             {

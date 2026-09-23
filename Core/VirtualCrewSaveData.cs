@@ -16,6 +16,8 @@ namespace SailwindVirtualCrew
         public int modelIndex = -1;
         public CrewShift shift = CrewShift.AdHoc;
         public bool adrenalineCrash;
+        // Sailwind Player Model appearance string; null in saves from before bodies had a stored look.
+        public string appearance;
     }
 
     [Serializable]

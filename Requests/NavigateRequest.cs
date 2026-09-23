@@ -35,6 +35,11 @@ namespace SailwindVirtualCrew
             duration          = 10f - navigator.Dexterity;
             startTime         = Time.time;
             Status            = WorkRequestStatus.InProgress;
+
+            // Take the reading with a copy of the ship's own instrument; it goes when the task does.
+            var tool = LocatorUtils.FindItemOnCurrentVessel(VirtualCrewManager.GetNavigationToolItemName(Method));
+            CrewNavigationCoordinator.Instance.HoldTemporaryItem(
+                navigator, this, CrewTemporaryItems.PrefabFor(tool), VirtualCrewManager.GetNavigationToolItemName(Method));
         }
 
         public bool IsComplete() =>

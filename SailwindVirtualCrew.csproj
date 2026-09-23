@@ -77,6 +77,10 @@
     <Reference Include="UnityEngine.IMGUIModule">
       <HintPath>D:\Program Files (x86)\Steam\steamapps\common\Sailwind\Sailwind_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.ParticleSystemModule">
+      <HintPath>D:\Program Files (x86)\Steam\steamapps\common\Sailwind\Sailwind_Data\Managed\UnityEngine.ParticleSystemModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="UnityEngine.UI">
       <HintPath>D:\Program Files (x86)\Steam\steamapps\common\Sailwind\Sailwind_Data\Managed\UnityEngine.UI.dll</HintPath>
     </Reference>
@@ -119,6 +123,7 @@
     <Compile Include="Crew\CrewLanternService.cs" />
     <Compile Include="Crew\Crewman.cs" />
     <Compile Include="Crew\CrewSoundPlayer.cs" />
+    <Compile Include="Crew\CrewTemporaryItems.cs" />
     <Compile Include="Crew\CrewVisualFactory.cs" />
     <Compile Include="Crew\PlayerModelCrewBodies.cs" />
     <Compile Include="CrewMovement\CrewBoatContext.cs" />
@@ -183,6 +188,7 @@
     <Compile Include="Patches\LookoutVisitPatches.cs" />
     <Compile Include="Patches\PlayerEmbarkPatches.cs" />
     <Compile Include="Patches\PortDudePatches.cs" />
+    <Compile Include="Patches\TemporaryItemPatches.cs" />
     <Compile Include="Patches\SleepPatches.cs" />
     <Compile Include="Patches\SupercargoTradePatches.cs" />
     <Compile Include="Windows\PilotingWindow.cs" />

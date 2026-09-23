@@ -99,6 +99,7 @@ namespace SailwindVirtualCrew
 
             phase = Phase.ToPlayer;
             positioningStartTime = Time.time;
+            CrewNavigationCoordinator.Instance.HoldTemporaryItem(AssignedCrewman, this, CrewTemporaryItems.FindCupPrefab(), "cup");
             if (!StewardRequestNavigation.TryRetargetNearPlayer(this, "steward water player"))
                 Cancel();
         }
@@ -130,6 +131,7 @@ namespace SailwindVirtualCrew
 
         private void Complete()
         {
+            CrewNavigationCoordinator.Instance.ReleaseTemporaryItem(AssignedCrewman, this);
             carryingWater = false;
             Status = WorkRequestStatus.Complete;
             if (AssignedCrewman != null && AssignedCrewman.CurrentTask == this)

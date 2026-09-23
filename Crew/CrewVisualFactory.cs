@@ -9,7 +9,7 @@ namespace SailwindVirtualCrew
         private static readonly Vector3 NpcBodyScale = Vector3.one;
         private static readonly List<GameObject> _cachedTemplates = new List<GameObject>();
 
-        internal static CrewAgent SpawnTestCrewVisual(CrewBoatContext context, Vector3 localPosition, Quaternion localRotation, string id = "test-crew-001", int modelIndex = 0, string appearanceSeed = null)
+        internal static CrewAgent SpawnTestCrewVisual(CrewBoatContext context, Vector3 localPosition, Quaternion localRotation, string id = "test-crew-001", int modelIndex = 0, Crewman crew = null)
         {
             var root = new GameObject("VC_VisualCrew_" + id);
             root.transform.SetParent(context.WorldBoat, false);
@@ -17,7 +17,7 @@ namespace SailwindVirtualCrew
             root.transform.localRotation = localRotation;
             root.transform.localScale = Vector3.one;
 
-            var animatedBody = PlayerModelCrewBodies.TryCreate(root.transform, "VC " + id, appearanceSeed ?? id);
+            var animatedBody = TryCreateAnimatedBody(root.transform, id, crew);
             if (animatedBody == null && !TryCreateNpcBody(root.transform, modelIndex))
                 CreateBody(root.transform);
 
@@ -47,13 +47,13 @@ namespace SailwindVirtualCrew
         /// <summary>
         /// Swap a static body for a Player Model one, for crew spawned before its NPC template had loaded.
         /// </summary>
-        internal static bool TryUpgradeToAnimatedBody(CrewAgent agent, string appearanceSeed)
+        internal static bool TryUpgradeToAnimatedBody(CrewAgent agent, Crewman crew)
         {
             if (agent == null || !agent.VisualRoot || agent.Body != null)
                 return false;
 
             var root = agent.VisualRoot.transform;
-            var animatedBody = PlayerModelCrewBodies.TryCreate(root, "VC " + agent.Id, appearanceSeed ?? agent.Id);
+            var animatedBody = TryCreateAnimatedBody(root, agent.Id, crew);
             if (animatedBody == null)
                 return false;
 
@@ -68,6 +68,19 @@ namespace SailwindVirtualCrew
             agent.AttachBody(animatedBody);
             CrewDebugLog.Ok(Phase, "Upgraded visual crew id='" + agent.Id + "' to a Player Model body");
             return true;
+        }
+
+        // A crewman wears their saved look; one without a look yet gets one, which is kept on them to be saved.
+        private static ICrewBodyAnimator TryCreateAnimatedBody(Transform root, string id, Crewman crew)
+        {
+            string seed = crew != null && !string.IsNullOrEmpty(crew.Id) ? crew.Id : id;
+            var body = PlayerModelCrewBodies.TryCreate(root, "VC " + id, crew?.Appearance, seed, out string appearanceUsed);
+            if (body != null && crew != null && string.IsNullOrEmpty(crew.Appearance))
+            {
+                crew.SetAppearance(appearanceUsed);
+                CrewDebugLog.Ok(Phase, "Assigned appearance to crew='" + crew.Name + "': " + appearanceUsed);
+            }
+            return body;
         }
 
         private static void CreateBody(Transform root)

@@ -263,7 +263,7 @@ namespace SailwindVirtualCrew
             _diagnosticMarkers.Clear();
         }
 
-        internal bool TryBeginWinchPositioning(object owner, Crewman crewman, GPButtonRopeWinch winch)
+        internal bool TryBeginWinchPositioning(object owner, Crewman crewman, GPButtonRopeWinch winch, Transform lookTarget = null)
         {
             if (owner == null || crewman == null || !winch)
                 return false;
@@ -294,7 +294,7 @@ namespace SailwindVirtualCrew
                 return false;
             }
 
-            actor.Begin(owner, station, winch);
+            actor.Begin(owner, station, winch, lookTarget);
             _actorsByOwner[owner] = actor;
             return true;
         }
@@ -355,6 +355,9 @@ namespace SailwindVirtualCrew
             if (actor.BeginLookout(task, startLocal, startRotation, _random, lookoutStation))
             {
                 _actorsByOwner[task] = actor;
+                var spyglass = LocatorUtils.FindBestSpyglassOnCurrentVessel();
+                if (spyglass)
+                    actor.HoldTemporaryItem(task, CrewTemporaryItems.PrefabFor(spyglass), "spyglass");
                 bool isShiftChange = (UnityEngine.Time.realtimeSinceStartup - _lastLookoutStopReal) < ShiftChangeWindow;
                 actor.SetLookoutSuppressFirst(task.SuppressFirstLandBell || (isShiftChange && _landVisibleAtLastStop));
             }
@@ -431,13 +434,32 @@ namespace SailwindVirtualCrew
             }
 
             Transform boat = _context.WorldBoat;
-            GetBedSleepPose(bed, boat.up, out Vector3 feetWorld, out Vector3 walkToWorld, out Quaternion bodyWorldRotation);
+            GetBedSleepPose(bed, boat.up, out Vector3 feetWorld, out Vector3 walkToWorld, out Quaternion bodyWorldRotation,
+                out Vector3 eyesWorld, out Vector3 headDirection);
             Vector3 feetLocal = boat.InverseTransformPoint(feetWorld);
             Vector3 walkToLocal = boat.InverseTransformPoint(walkToWorld);
             Quaternion bodyLocalRotation = Quaternion.Inverse(boat.rotation) * bodyWorldRotation;
+            string label = "sleep bed='" + bed.name + "'";
+
+            if (actor.HasAnimatedBody)
+            {
+                // An animated body lies in the bed on its own, so the actor just walks to the bedside and stands
+                // there, facing up the bed, while the body is laid down; it gets up where it stands.
+                Vector3 alongLocal = boat.InverseTransformDirection(-headDirection);
+                Vector3 headLocal = boat.InverseTransformPoint(eyesWorld - boat.up * SleeperHeadBelowEyes + headDirection * SleeperHeadBehindEyes);
+                Quaternion standLocalRotation = Quaternion.LookRotation(boat.InverseTransformDirection(headDirection), Vector3.up);
+                if (!actor.BeginRole(request, walkToLocal, standLocalRotation, label, 1.5f))
+                {
+                    CrewDebugLog.Warn(Phase, "Bed off NavMesh, teleporting crew='" + crewman.Name + "' to bed='" + bed.name + "'");
+                    actor.TeleportToRole(request, walkToLocal, standLocalRotation, Vector3.zero);
+                }
+                actor.SetBodyLying(headLocal, alongLocal, Vector3.up);
+                _actorsByOwner[request] = actor;
+                return true;
+            }
 
             // Walk to the bedside, then lie in the bed itself.
-            if (!actor.BeginRole(request, walkToLocal, bodyLocalRotation, "sleep bed='" + bed.name + "'", 1.5f,
+            if (!actor.BeginRole(request, walkToLocal, bodyLocalRotation, label, 1.5f,
                     exactArrivalLocalPosition: feetLocal))
             {
                 CrewDebugLog.Warn(Phase, "Bed off NavMesh, teleporting crew='" + crewman.Name + "' to bed='" + bed.name + "'");
@@ -451,20 +473,25 @@ namespace SailwindVirtualCrew
         // head, for the NPC model (feet pivot, scale 1) lying on its back.
         private const float SleeperFeetToEyes = 1.55f;
         private const float SleeperEyesAboveBack = 0.12f;
+        // Where the head bone sits relative to the eyes of a face turned to the sky (as the Player Model mod
+        // places the player in a bed).
+        private const float SleeperHeadBelowEyes = 0.08f;
+        private const float SleeperHeadBehindEyes = 0.03f;
 
         // Every bed the player can use has a sleep-view transform as its first child: Sleep.Update puts the
         // player's view there (position and rotation) while in bed. That tells us where a sleeper's head is
         // and which way their body runs, regardless of how the bed model itself is oriented.
         private static void GetBedSleepPose(Component bed, Vector3 boatUp,
-            out Vector3 feetWorld, out Vector3 walkToWorld, out Quaternion bodyWorldRotation)
+            out Vector3 feetWorld, out Vector3 walkToWorld, out Quaternion bodyWorldRotation,
+            out Vector3 eyes, out Vector3 headDirection)
         {
             Transform view = GetBedSleepView(bed);
-            Vector3 eyes = view.position;
+            eyes = view.position;
 
             // Lying on your back looking up, the view's up vector points toward the top of your head; looking
             // down the bed toward your feet, the head is behind the view. Summing the two flattened vectors
             // gives the head direction for any view pitch between those.
-            Vector3 headDirection = Vector3.ProjectOnPlane(view.up, boatUp) - Vector3.ProjectOnPlane(view.forward, boatUp);
+            headDirection = Vector3.ProjectOnPlane(view.up, boatUp) - Vector3.ProjectOnPlane(view.forward, boatUp);
             if (headDirection.sqrMagnitude < 0.0001f)
                 headDirection = Vector3.ProjectOnPlane(bed.transform.forward, boatUp);
             if (headDirection.sqrMagnitude < 0.0001f)
@@ -547,6 +574,55 @@ namespace SailwindVirtualCrew
             return Vector3.Distance(fromLocal, destinationLocal);
         }
 
+        /// <summary>
+        /// Where a halyard's crewman looks while hauling: the middle of the sail it raises. Null for any other
+        /// winch, or a sail with nothing to look at.
+        /// </summary>
+        internal static Transform GetHalyardLookTarget(ICommonSailActions sail, GPButtonRopeWinch winch)
+        {
+            if (sail == null || !winch || sail.getHalyardWinch() != winch)
+                return null;
+
+            var realSail = sail.getRealSail();
+            if (!realSail)
+                return null;
+
+            return realSail.windcenter ? realSail.windcenter : realSail.transform;
+        }
+
+        /// <summary>
+        /// Show the crewman positioned for <paramref name="owner"/> carrying a real item this frame. Call every frame
+        /// the item is carried, after placing it; an animated body then draws it in the hands.
+        /// </summary>
+        internal void HoldItemThisFrame(object owner, ShipItem item)
+        {
+            if (owner == null || !item || !_actorsByOwner.TryGetValue(owner, out var actor))
+                return;
+
+            actor.HoldItemThisFrame(item.transform, item.big);
+        }
+
+        /// <summary>
+        /// Give a crewman a temporary copy of <paramref name="prefab"/> to hold while they are on
+        /// <paramref name="task"/>. Only animated bodies hold one; the copy is destroyed when the task ends.
+        /// </summary>
+        internal bool HoldTemporaryItem(Crewman crewman, object task, GameObject prefab, string label)
+        {
+            if (crewman == null || task == null || !prefab)
+                return false;
+
+            if (!_actorsByCrew.TryGetValue(crewman, out var actor) || !actor.IsValid)
+                return false;
+
+            return actor.HoldTemporaryItem(task, prefab, label);
+        }
+
+        internal void ReleaseTemporaryItem(Crewman crewman, object task)
+        {
+            if (crewman != null && _actorsByCrew.TryGetValue(crewman, out var actor))
+                actor.ReleaseTemporaryItem(task);
+        }
+
         internal void Complete(object owner)
         {
             if (owner == null || !_actorsByOwner.TryGetValue(owner, out var actor))
@@ -571,6 +647,7 @@ namespace SailwindVirtualCrew
             }
 
             actor.Cancel();
+            actor.ReleaseTemporaryItem(owner);
             _actorsByOwner.Remove(owner);
         }
 
@@ -936,11 +1013,22 @@ namespace SailwindVirtualCrew
             private float _lastAppliedSpeed       = -1f;
             private bool _lookoutSawLand;
             private bool _suppressNextLandDetection;
-            // Player Model body animation: what the hands are on once arrived, and the deck-relative gait speed.
+            // Player Model body animation. The pose (hands on a control, where the head looks, lying in a bed) is
+            // shown once the actor arrives; work that runs on after positioning completes keeps it for as long as
+            // _bodyActionTask stays the crewman's task.
             private CrewBodyAction _bodyAction;
             private Transform _bodyActionTarget;
-            // Winch work runs on after positioning completes, so the hands stay on for as long as this task does.
+            private Transform _bodyLookTarget;
+            private bool _bodyLying;
+            private Vector3 _bodyLieHeadLocal;
+            private Vector3 _bodyLieAlongLocal;
+            private Vector3 _bodyLieUpLocal;
             private object _bodyActionTask;
+            // A real item a request is carrying this frame, or a temporary one held for a task.
+            private Transform _frameHeldItem;
+            private bool _frameHeldItemBig;
+            private int _frameHeldItemFrame = -1;
+            private CrewHeldProp _heldProp;
             private Vector3 _lastBodyLocalPosition;
             private bool _hasLastBodyLocalPosition;
             private float _nextBodyUpgradeTime;
@@ -960,7 +1048,7 @@ namespace SailwindVirtualCrew
                 string id = SafeName(crew.Name);
                 _logicAgent = new ProxyLogicAgent(navMeshProvider.Proxy.Root.transform, startWorld, "VC_LogicAgent_" + id);
                 _logicAgent.SetSpeed(CrewMoveSpeed(crew));
-                _visualAgent = CrewVisualFactory.SpawnTestCrewVisual(context, _logicAgent.CurrentLocalPosition, _logicAgent.CurrentLocalRotation, id, crew.ModelIndex, crew.Id);
+                _visualAgent = CrewVisualFactory.SpawnTestCrewVisual(context, _logicAgent.CurrentLocalPosition, _logicAgent.CurrentLocalRotation, id, crew.ModelIndex, crew);
                 _poseSync = new ProxyToBoatPoseSync(_visualAgent, _logicAgent, context);
                 RefreshRestLocation();
             }
@@ -973,7 +1061,7 @@ namespace SailwindVirtualCrew
             internal Vector3 CurrentLocalPosition => _logicAgent.CurrentLocalPosition;
             internal Quaternion CurrentLocalRotation => _logicAgent.CurrentLocalRotation;
 
-            internal void Begin(object owner, CrewStation station, GPButtonRopeWinch winch)
+            internal void Begin(object owner, CrewStation station, GPButtonRopeWinch winch, Transform lookTarget = null)
             {
                 ActiveOwner = owner;
                 ActiveStation = station;
@@ -987,6 +1075,7 @@ namespace SailwindVirtualCrew
                 _poseSync.ClearPoseOverride();
                 _poseSync.ClearRotationOverride();
                 SetBodyAction(CrewBodyAction.Crank, winch.transform);
+                _bodyLookTarget = lookTarget;
 
                 var destinationWorld = _navMeshProvider.Proxy.Root.transform.TransformPoint(station.ProjectedLocalStand);
                 _initialDistance = Mathf.Max(0.01f, Vector3.Distance(_logicAgent.CurrentLocalPosition, station.ProjectedLocalStand));
@@ -1098,6 +1187,8 @@ namespace SailwindVirtualCrew
                 TickBody();
             }
 
+            internal bool HasAnimatedBody => _visualAgent != null && _visualAgent.Body != null;
+
             internal void SetBodyAction(CrewBodyAction action, Transform target)
             {
                 _bodyAction = target ? action : CrewBodyAction.None;
@@ -1105,16 +1196,63 @@ namespace SailwindVirtualCrew
                 _bodyActionTask = null;
             }
 
+            // Boat-local, so the pose rides with the boat.
+            internal void SetBodyLying(Vector3 headLocal, Vector3 alongLocal, Vector3 upLocal)
+            {
+                _bodyLying = true;
+                _bodyLieHeadLocal = headLocal;
+                _bodyLieAlongLocal = alongLocal;
+                _bodyLieUpLocal = upLocal;
+                _bodyActionTask = null;
+            }
+
             private void ClearBodyAction()
             {
                 _bodyAction = CrewBodyAction.None;
                 _bodyActionTarget = null;
+                _bodyLookTarget = null;
+                _bodyLying = false;
                 _bodyActionTask = null;
             }
 
-            private bool IsBodyActionActive()
+            private bool HasBodyPose => _bodyAction != CrewBodyAction.None || _bodyLying || _bodyLookTarget != null;
+
+            internal void HoldItemThisFrame(Transform item, bool big)
             {
-                if (_bodyAction == CrewBodyAction.None)
+                _frameHeldItem = item;
+                _frameHeldItemBig = big;
+                _frameHeldItemFrame = Time.frameCount;
+            }
+
+            internal bool HoldTemporaryItem(object task, GameObject prefab, string label)
+            {
+                if (!HasAnimatedBody || !prefab || task == null)
+                    return false;
+
+                ReleaseTemporaryItem(null);
+                Transform root = _visualAgent.VisualRoot.transform;
+                _heldProp = CrewHeldProp.Create(prefab, task, root,
+                    root.position + root.forward * 0.45f + root.up * 1f, root.rotation, label + "_" + SafeName(Crew.Name));
+                if (_heldProp == null)
+                    return false;
+
+                CrewDebugLog.Ok(Phase, "Crew='" + Crew.Name + "' holding temporary " + label + " from '" + prefab.name + "'");
+                return true;
+            }
+
+            // Null releases whatever is held; otherwise only a prop made for that task.
+            internal void ReleaseTemporaryItem(object task)
+            {
+                if (_heldProp == null || (task != null && _heldProp.Task != task))
+                    return;
+
+                _heldProp.Destroy();
+                _heldProp = null;
+            }
+
+            private bool IsBodyPoseActive()
+            {
+                if (!HasBodyPose)
                     return false;
 
                 if (ActiveOwner != null)
@@ -1201,11 +1339,43 @@ namespace SailwindVirtualCrew
                     return;
                 }
 
+                if (_heldProp != null && (!_heldProp.Object || Crew.CurrentTask != _heldProp.Task))
+                    ReleaseTemporaryItem(null);
+
                 float deltaTime = Time.deltaTime;
-                body.SpeedMps = MeasureDeckSpeed(_visualAgent.VisualRoot.transform.localPosition, deltaTime);
-                if (IsBodyActionActive())
-                    body.SetAction(_bodyAction, _bodyActionTarget);
+                float speed = MeasureDeckSpeed(_visualAgent.VisualRoot.transform.localPosition, deltaTime);
+                body.SpeedMps = speed;
+                if (IsBodyPoseActive())
+                {
+                    if (_bodyAction != CrewBodyAction.None)
+                        body.SetAction(_bodyAction, _bodyActionTarget);
+                    if (_bodyLookTarget)
+                        body.SetLookTarget(_bodyLookTarget.position);
+                    if (_bodyLying)
+                        body.SetLying(
+                            _context.WorldBoat.TransformPoint(_bodyLieHeadLocal),
+                            _context.WorldBoat.TransformDirection(_bodyLieAlongLocal),
+                            _context.WorldBoat.TransformDirection(_bodyLieUpLocal));
+                }
+
+                bool propPlaced = false;
+                if (_frameHeldItemFrame == Time.frameCount && _frameHeldItem)
+                    body.SetHeldItem(_frameHeldItem, _frameHeldItemBig);
+                else if (_heldProp != null)
+                    propPlaced = body.SetHeldItem(_heldProp.Transform, false);
+
                 body.Tick(deltaTime);
+
+                if (_heldProp != null)
+                {
+                    // With the Player Model mod's held items off, keep the prop in front of the chest.
+                    if (!propPlaced)
+                    {
+                        Transform root = _visualAgent.VisualRoot.transform;
+                        _heldProp.Transform.SetPositionAndRotation(root.position + root.forward * 0.45f + root.up * 1f, root.rotation);
+                    }
+                    _heldProp.TickSweep(speed, deltaTime);
+                }
             }
 
             // Horizontal speed across the deck. The root lives in boat space, so the boat's own motion never
@@ -1234,7 +1404,7 @@ namespace SailwindVirtualCrew
                     return;
 
                 _bodyUpgradeAttempts++;
-                CrewVisualFactory.TryUpgradeToAnimatedBody(_visualAgent, Crew.Id);
+                CrewVisualFactory.TryUpgradeToAnimatedBody(_visualAgent, Crew);
             }
 
             private const float MaxBodyGaitSpeed = 8f;
@@ -1257,9 +1427,9 @@ namespace SailwindVirtualCrew
 
             internal void Complete()
             {
-                // The trim, halyard and sail storage requests complete positioning on arrival and then work the
-                // winch themselves; keep the hands on it until the crewman's task changes.
-                if (_bodyAction == CrewBodyAction.Crank && _workingLogged && Crew.CurrentTask != null)
+                // The trim, halyard, sail storage and sleep requests complete positioning on arrival and then carry
+                // on with the work themselves; keep the pose until the crewman's task changes.
+                if (HasBodyPose && _workingLogged && Crew.CurrentTask != null)
                     _bodyActionTask = Crew.CurrentTask;
                 else
                     ClearBodyAction();
@@ -1721,6 +1891,7 @@ namespace SailwindVirtualCrew
 
             internal void Destroy()
             {
+                ReleaseTemporaryItem(null);
                 _logicAgent.Destroy();
                 _visualAgent.Destroy();
             }

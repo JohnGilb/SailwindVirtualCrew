@@ -25,6 +25,8 @@ namespace SailwindVirtualCrew
             crewman.CurrentTask = this;
             Status = WorkRequestStatus.InProgress;
             StartCycle();
+            // Swept around the deck while walking; it goes when the task does.
+            CrewNavigationCoordinator.Instance.HoldTemporaryItem(crewman, this, CrewTemporaryItems.FindBroomPrefab(), "broom");
         }
 
         public void Tick()

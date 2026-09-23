@@ -43,6 +43,10 @@ namespace SailwindVirtualCrew
         public int AdvWisdom       { get; }
         public int AdvCharisma     { get; }
 
+        // The crewman's look in the Sailwind Player Model mod's own format (PlayerAppearance.Serialize). Chosen
+        // the first time their body is built and saved from then on; null until then.
+        public string Appearance { get; private set; }
+
         public object CurrentTask { get; set; }
         public bool IsOccupied => CurrentTask != null;
         public bool ShiftSleepPending { get; private set; }
@@ -200,6 +204,7 @@ namespace SailwindVirtualCrew
         }
 
         public void Rename(string newName) { Name = newName; }
+        public void SetAppearance(string appearance) { Appearance = string.IsNullOrEmpty(appearance) ? null : appearance; }
         public void SetShift(CrewShift shift) { Shift = shift; }
         public void SetShiftSleepPending(bool pending) { ShiftSleepPending = pending; }
 
@@ -214,7 +219,8 @@ namespace SailwindVirtualCrew
             currentStamina = CurrentStamina,
             modelIndex = ModelIndex,
             shift = Shift,
-            adrenalineCrash = AdrenalineCrash
+            adrenalineCrash = AdrenalineCrash,
+            appearance = Appearance
         };
     }
 }

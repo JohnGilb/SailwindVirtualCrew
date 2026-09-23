@@ -2798,8 +2798,9 @@ namespace SailwindVirtualCrew
                 MoneyNotification.instance.PlayNotif(amount, currency);
         }
 
-        private static Crewman FromSaveData(CrewmanSaveData d) =>
-            new Crewman(d.name, d.role,
+        private static Crewman FromSaveData(CrewmanSaveData d)
+        {
+            var crewman = new Crewman(d.name, d.role,
                 d.strength, d.dexterity, d.constitution, d.intelligence, d.wisdom, d.charisma,
                 d.advStrength, d.advDexterity, d.advConstitution, d.advIntelligence, d.advWisdom, d.advCharisma,
                 d.currentStamina,
@@ -2807,6 +2808,9 @@ namespace SailwindVirtualCrew
                 d.modelIndex,
                 d.shift,
                 d.adrenalineCrash);
+            crewman.SetAppearance(d.appearance);
+            return crewman;
+        }
 
         public void addSail(SimpleSail sail)
         {
@@ -3559,7 +3563,7 @@ namespace SailwindVirtualCrew
                 recentNavigationResults.RemoveAt(recentNavigationResults.Count - 1);
         }
 
-        private static string GetNavigationToolItemName(NavigationMethod method)
+        internal static string GetNavigationToolItemName(NavigationMethod method)
         {
             switch (method)
             {

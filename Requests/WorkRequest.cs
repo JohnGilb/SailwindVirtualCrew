@@ -92,11 +92,13 @@ namespace SailwindVirtualCrew
                 PositioningTimeTotal = Mathf.Max(PositioningTimeTotal, 7 - crewman2.Dexterity);
             positioningStartTime = Time.time;
             concretePositioning = Targets.Length > 0
-                && CrewNavigationCoordinator.Instance.TryBeginWinchPositioning(this, crewman, Targets[0].Winch);
+                && CrewNavigationCoordinator.Instance.TryBeginWinchPositioning(this, crewman, Targets[0].Winch,
+                    CrewNavigationCoordinator.GetHalyardLookTarget(Sail, Targets[0].Winch));
             concretePositioning2 = RequiresTwoDeckhands
                 && crewman2 != null
                 && Targets.Length > 1
-                && CrewNavigationCoordinator.Instance.TryBeginWinchPositioning((this, 1), crewman2, Targets[1].Winch);
+                && CrewNavigationCoordinator.Instance.TryBeginWinchPositioning((this, 1), crewman2, Targets[1].Winch,
+                    CrewNavigationCoordinator.GetHalyardLookTarget(Sail, Targets[1].Winch));
             Status = WorkRequestStatus.Positioning;
         }
 
