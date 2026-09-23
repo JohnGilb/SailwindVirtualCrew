@@ -28,6 +28,7 @@ namespace SailwindVirtualCrew
         internal static ConfigEntry<bool> RequireCrewForExternalModFeatures;
         internal static ConfigEntry<bool> ExtraWorkingStaminaDrain;
         internal static ConfigEntry<bool> InstrumentationEnabled;
+        internal static ConfigEntry<bool> LockWindowPositions;
         internal static ConfigEntry<string> InstrumentationOutputDirectory;
         internal static ConfigEntry<float> InstrumentationFlushIntervalSeconds;
 
@@ -84,6 +85,9 @@ namespace SailwindVirtualCrew
                 "RequireCrewForProfitPercentAndCargoController",
                 true,
                 "When enabled, VirtualCrew gates Profit Percent and Cargo Controller features behind awake Supercargo/Quartermaster crew. Disable to avoid interacting with those mods.");
+
+            LockWindowPositions = Config.Bind("UI", "LockWindowPositions", false,
+                "Prevent Virtual Crew windows from being dragged. Toggled by the Lock/Unlock Windows button in the launcher.");
 
             ToggleCrewWindow = Config.Bind("CrewHotkeys", "ToggleCrewWindow", new KeyboardShortcut(KeyCode.B));
             ResetWindowPositions = Config.Bind("CrewHotkeys", "ResetWindowPositions", new KeyboardShortcut(KeyCode.Backslash));

@@ -15,14 +15,17 @@ namespace SailwindVirtualCrew
         private static int _activeScrollableWindowId;
         private static bool _activeScrollableWindowEnded;
         private static int _imguiWindowRectFrame = -1;
-        private static bool _windowPositionsLocked;
 
         internal static bool ModLayerVisible => _modLayerVisible;
-        internal static bool WindowPositionsLocked => _windowPositionsLocked;
+
+        // Stored in the BepInEx config so the lock survives restarting the game and loading a save.
+        internal static bool WindowPositionsLocked =>
+            Plugin.LockWindowPositions != null && Plugin.LockWindowPositions.Value;
 
         internal static void SetWindowPositionsLocked(bool locked)
         {
-            _windowPositionsLocked = locked;
+            if (Plugin.LockWindowPositions != null)
+                Plugin.LockWindowPositions.Value = locked;
         }
 
         internal static void ToggleModLayer()
@@ -80,7 +83,7 @@ namespace SailwindVirtualCrew
             using (PerformanceInstrumentation.MeasureGui("UI.Window." + title))
             {
                 Rect updated = GUI.Window(windowId, windowRect, measuredWindowFunction, title);
-                if (_windowPositionsLocked)
+                if (WindowPositionsLocked)
                 {
                     updated.x = windowRect.x;
                     updated.y = windowRect.y;
