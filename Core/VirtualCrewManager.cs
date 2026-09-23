@@ -271,7 +271,9 @@ namespace SailwindVirtualCrew
             if (string.IsNullOrEmpty(key))
                 return;
 
-            if (CurrentVesselKey != null && CurrentVesselKey != key)
+            // Store even when rescanning the same vessel; otherwise groups made since the last save or
+            // vessel switch are wiped by the reload below.
+            if (CurrentVesselKey != null)
                 StoreCurrentSailGroups();
 
             CurrentVesselKey = key;

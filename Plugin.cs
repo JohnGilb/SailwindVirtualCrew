@@ -42,7 +42,6 @@ namespace SailwindVirtualCrew
         private string _lastScannedVesselKey;
         private bool _vesselScanRequested;
 
-        private ConfigEntry<KeyboardShortcut> BuildShipMap;
         private ConfigEntry<KeyboardShortcut> PanicAllHands;
 
         public static Plugin Instance { get; private set; }
@@ -94,7 +93,6 @@ namespace SailwindVirtualCrew
             SupercargoSellAtPortKey = Config.Bind("CrewHotkeys", "SupercargoSellAtPort", new KeyboardShortcut(KeyCode.X));
             SupercargoKeepCargoKey = Config.Bind("CrewHotkeys", "SupercargoKeepCargo", new KeyboardShortcut(KeyCode.N));
             CargoControllerGrabPortCargoKey = Config.Bind("CrewHotkeys", "CargoControllerGrabPortCargo", new KeyboardShortcut(KeyCode.Z));
-            BuildShipMap = Config.Bind("CrewHotkeys", "BuildShipMap", new KeyboardShortcut(KeyCode.V));
 
             PanicAllHands = Config.Bind("CrewHotkeys", "PanicAllHandsOnDeck", new KeyboardShortcut(KeyCode.P),
                 "Panic: for 5 real-time minutes all crew are fully rested, awake, have at least 5 in every stat, "
@@ -158,12 +156,11 @@ namespace SailwindVirtualCrew
                 if (ResetWindowPositions.Value.IsDown())
                     ResetAllWindowPositions();
 
-                bool requestedVesselScan = _vesselScanRequested;
-                if (BuildShipMap.Value.IsDown() || requestedVesselScan)
+                if (_vesselScanRequested)
                 {
                     _vesselScanRequested = false;
 	                Console.WriteLine("====================");
-	                Console.WriteLine(requestedVesselScan ? "Embark-triggered ship map scan!" : "Building ship map!");
+	                Console.WriteLine("Building ship map!");
 	                Console.WriteLine("====================");
                     var context = CrewBoatContextResolver.ResolveAndLog();
                     if (context == null)
@@ -451,6 +448,8 @@ namespace SailwindVirtualCrew
         {
             _vesselScanRequested = true;
         }
+
+        internal bool IsVesselScanPending => _vesselScanRequested;
 
         private static Sail FindPrimarySquare(Sail topsail)
         {

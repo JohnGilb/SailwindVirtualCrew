@@ -56,6 +56,7 @@ namespace SailwindVirtualCrew
         private int _lastMooringRequestCount = -1;
 
         private bool _rebuildRequested = true;
+        private bool _rebuildAfterRescan;
         private ICommonSailActions _builtSelectedSail;
         private SailGroup _builtSelectedGroup;
         private int _builtSailCount = -1;
@@ -220,8 +221,14 @@ namespace SailwindVirtualCrew
 
         private void RebuildIfNeeded(VirtualCrewManager manager)
         {
+            // After Force Rescan, rebuild once the scan has actually run (on a later Plugin.Update).
+            bool rescanFinished = _rebuildAfterRescan && Plugin.Instance != null && !Plugin.Instance.IsVesselScanPending;
+            if (rescanFinished)
+                _rebuildAfterRescan = false;
+
             var sails = manager.AllSails;
             bool structureChanged = _rebuildRequested
+                || rescanFinished
                 || _builtSelectedSail != selectedSail
                 || _builtSelectedGroup != manager.SelectedGroup
                 || _builtSailCount != sails.Count
@@ -259,12 +266,20 @@ namespace SailwindVirtualCrew
             _vesselLabel = AddLabel("");
             if (!_renamingVessel)
             {
-                AddRow(CreateButton("Rename", () =>
-                {
-                    _renamingVessel = true;
-                    vesselRenameBuffer = manager.CurrentVesselFriendlyName ?? "";
-                    RequestRebuild();
-                }, 80f));
+                AddRow(
+                    CreateButton("Rename", () =>
+                    {
+                        _renamingVessel = true;
+                        vesselRenameBuffer = manager.CurrentVesselFriendlyName ?? "";
+                        RequestRebuild();
+                    }, 80f),
+                    // Re-reads sails and winches (e.g. after changing rigging). Sail groups are kept.
+                    CreateButton("Force Rescan", () =>
+                    {
+                        Plugin.Instance?.RequestVesselScan();
+                        selectedSail = null; // The scan replaces every sail object.
+                        _rebuildAfterRescan = true;
+                    }, 110f));
             }
             else
             {
@@ -330,7 +345,7 @@ namespace SailwindVirtualCrew
                 var sails = manager.AllSails;
                 if (sails.Count == 0)
                 {
-                    AddLabel("No sails mapped. Press V to scan the boat.");
+                    AddLabel("No sails mapped. Press Force Rescan to scan the boat.");
                     return;
                 }
 
@@ -546,7 +561,7 @@ namespace SailwindVirtualCrew
                     string vesselFriendly = manager.CurrentVesselFriendlyName;
                     string vesselDisplay = !string.IsNullOrEmpty(vesselFriendly) ? vesselFriendly
                         : !string.IsNullOrEmpty(vesselKey) ? vesselKey
-                        : "(No vessel - press V to scan)";
+                        : "(No vessel - press Force Rescan)";
                     if (_vesselLabel)
                         _vesselLabel.text = "Vessel: " + vesselDisplay;
                 }
