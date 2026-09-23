@@ -185,6 +185,8 @@ namespace SailwindVirtualCrew
         public float maintenanceBailAllDeckhandsThresholdPercent = 66f;
         public bool maintenanceLanternAutoEnabled = true;
         public bool maintenanceLanternRefillEnabled = true;
+        public float maintenanceLanternLightHour = 18f;
+        public float maintenanceLanternExtinguishHour = 6f;
         public Dictionary<string, VesselSaveData> vessels = new Dictionary<string, VesselSaveData>();
         public List<CrewmanSaveData> shipCrew;
         public Dictionary<string, List<CrewmanSaveData>> portCrewPools;

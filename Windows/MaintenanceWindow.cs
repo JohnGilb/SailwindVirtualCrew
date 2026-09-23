@@ -139,6 +139,11 @@ namespace SailwindVirtualCrew
             if (autoLanterns != manager.MaintenanceLanternAutoEnabled)
                 manager.SetMaintenanceLanternAutoEnabled(autoLanterns);
 
+            GUI.enabled = manager.MaintenanceLanternAutoEnabled;
+            DrawHourSlider("Light at", manager.MaintenanceLanternLightHour, manager.SetMaintenanceLanternLightHour);
+            DrawHourSlider("Extinguish at", manager.MaintenanceLanternExtinguishHour, manager.SetMaintenanceLanternExtinguishHour);
+            GUI.enabled = true;
+
             bool refillLanterns = GUILayout.Toggle(manager.MaintenanceLanternRefillEnabled, "Quartermaster refills lanterns");
             if (refillLanterns != manager.MaintenanceLanternRefillEnabled)
                 manager.SetMaintenanceLanternRefillEnabled(refillLanterns);
@@ -178,6 +183,25 @@ namespace SailwindVirtualCrew
             float next = GUILayout.HorizontalSlider(value, 0f, 100f);
             if (!Mathf.Approximately(next, value))
                 setter(next);
+        }
+
+        private static void DrawHourSlider(string label, float hour, System.Action<float> setter)
+        {
+            GUILayout.Label(label + ": " + FormatHour(hour));
+            float next = GUILayout.HorizontalSlider(hour, 0f, 24f);
+            if (!Mathf.Approximately(next, hour))
+                setter(next);
+        }
+
+        // 18.5 -> "6:30 PM"; whole hours drop the minutes, e.g. "6 AM".
+        private static string FormatHour(float hour)
+        {
+            int totalMinutes = Mathf.RoundToInt(hour * 60f) % (24 * 60);
+            int h24 = totalMinutes / 60;
+            int minutes = totalMinutes % 60;
+            int h12 = h24 % 12 == 0 ? 12 : h24 % 12;
+            string suffix = h24 < 12 ? "AM" : "PM";
+            return minutes == 0 ? h12 + " " + suffix : h12 + ":" + minutes.ToString("00") + " " + suffix;
         }
 
         private Texture2D fillTexture;

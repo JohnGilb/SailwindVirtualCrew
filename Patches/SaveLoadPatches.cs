@@ -64,12 +64,14 @@ namespace SailwindVirtualCrew
                 stewardSettingsVersion = 1,
                 stewardThirstLimitPercent = mgr.StewardThirstLimitPercent,
                 stewardHungerLimitPercent = mgr.StewardHungerLimitPercent,
-                maintenanceSettingsVersion = 2,
+                maintenanceSettingsVersion = 3,
                 maintenanceBailOneDeckhandThresholdPercent = mgr.MaintenanceBailOneDeckhandThresholdPercent,
                 maintenanceBailTwoDeckhandsThresholdPercent = mgr.MaintenanceBailTwoDeckhandsThresholdPercent,
                 maintenanceBailAllDeckhandsThresholdPercent = mgr.MaintenanceBailAllDeckhandsThresholdPercent,
                 maintenanceLanternAutoEnabled = mgr.MaintenanceLanternAutoEnabled,
                 maintenanceLanternRefillEnabled = mgr.MaintenanceLanternRefillEnabled,
+                maintenanceLanternLightHour = mgr.MaintenanceLanternLightHour,
+                maintenanceLanternExtinguishHour = mgr.MaintenanceLanternExtinguishHour,
                 vessels      = new Dictionary<string, VesselSaveData>(mgr.AllVesselsData),
                 shipCrew     = mgr.Crew.Select(c => c.ToSaveData()).ToList(),
                 portCrewPools = mgr.PortCrewPools.ToDictionary(
@@ -122,7 +124,9 @@ namespace SailwindVirtualCrew
                 data.maintenanceBailTwoDeckhandsThresholdPercent,
                 data.maintenanceBailAllDeckhandsThresholdPercent,
                 data.maintenanceLanternAutoEnabled,
-                data.maintenanceLanternRefillEnabled);
+                data.maintenanceLanternRefillEnabled,
+                data.maintenanceLanternLightHour,
+                data.maintenanceLanternExtinguishHour);
             VirtualCrewManager.Instance.StoreLookoutCertainties(data.lookoutCertainties);
             VirtualCrewManager.Instance.StoreLookoutIdentifiedNames(data.lookoutIdentifiedNames);
             VirtualCrewManager.Instance.StoreLookoutIgnoredUntil(data.lookoutIgnoredUntil);

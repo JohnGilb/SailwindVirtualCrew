@@ -49,8 +49,8 @@ namespace SailwindVirtualCrew
         private const float StewardSourceScanCooldownSeconds = 10f;
         private const float LanternAutoScanIntervalSeconds = 30f;
         private const float LanternRefillScanIntervalGameHours = 1f;
-        private const float LanternDuskHour = 18f;
-        private const float LanternDawnHour = 6f;
+        private const float DefaultLanternLightHour = 18f;
+        private const float DefaultLanternExtinguishHour = 6f;
         private const int MaxNavigationResults = 3;
         private const int MaxFirstOfficers = 2;
         private float _lastFirstOfficerLocalTime = -1f;
@@ -88,6 +88,9 @@ namespace SailwindVirtualCrew
         public float MaintenanceBailTwoDeckhandsThresholdPercent { get; private set; } = 35f;
         public float MaintenanceBailAllDeckhandsThresholdPercent { get; private set; } = 66f;
         public bool MaintenanceLanternAutoEnabled { get; private set; } = true;
+        // Local hours (0-24) at which automatic lantern service lights and extinguishes lanterns.
+        public float MaintenanceLanternLightHour { get; private set; } = DefaultLanternLightHour;
+        public float MaintenanceLanternExtinguishHour { get; private set; } = DefaultLanternExtinguishHour;
         public bool MaintenanceLanternRefillEnabled { get; private set; } = true;
 
         public List<SailGroup> SailGroups { get; private set; }
@@ -2246,6 +2249,24 @@ namespace SailwindVirtualCrew
             _nextLanternAutoScanRealtime = 0f;
         }
 
+        public void SetMaintenanceLanternLightHour(float hour)
+        {
+            MaintenanceLanternLightHour = ClampLanternHour(hour);
+            _lastLanternWantedLit = null;
+            _nextLanternAutoScanRealtime = 0f;
+        }
+
+        public void SetMaintenanceLanternExtinguishHour(float hour)
+        {
+            MaintenanceLanternExtinguishHour = ClampLanternHour(hour);
+            _lastLanternWantedLit = null;
+            _nextLanternAutoScanRealtime = 0f;
+        }
+
+        // Snap to 15-minute steps; 24:00 is the same as 00:00.
+        private static float ClampLanternHour(float hour) =>
+            NormalizeHour(Mathf.Round(Mathf.Clamp(hour, 0f, 24f) * 4f) / 4f);
+
         public void SetMaintenanceLanternRefillEnabled(bool enabled)
         {
             MaintenanceLanternRefillEnabled = enabled;
@@ -2258,8 +2279,14 @@ namespace SailwindVirtualCrew
             float twoDeckhandsThresholdPercent,
             float allDeckhandsThresholdPercent,
             bool lanternAutoEnabled = true,
-            bool lanternRefillEnabled = true)
+            bool lanternRefillEnabled = true,
+            float lanternLightHour = DefaultLanternLightHour,
+            float lanternExtinguishHour = DefaultLanternExtinguishHour)
         {
+            // Saves before version 3 predate adjustable lantern times.
+            SetMaintenanceLanternLightHour(settingsVersion < 3 ? DefaultLanternLightHour : lanternLightHour);
+            SetMaintenanceLanternExtinguishHour(settingsVersion < 3 ? DefaultLanternExtinguishHour : lanternExtinguishHour);
+
             if (settingsVersion <= 0)
             {
                 MaintenanceBailOneDeckhandThresholdPercent = 15f;
@@ -4339,7 +4366,7 @@ namespace SailwindVirtualCrew
                 || Time.realtimeSinceStartup < _nextLanternAutoScanRealtime)
                 return;
 
-            bool wantedLit = WantsLanternsLit(Sun.sun.localTime);
+            bool wantedLit = IsHourInWindow(Sun.sun.localTime, MaintenanceLanternLightHour, MaintenanceLanternExtinguishHour);
             _nextLanternAutoScanRealtime = Time.realtimeSinceStartup + LanternAutoScanIntervalSeconds;
             _lastLanternWantedLit = wantedLit;
             AddLanternRequests(wantedLit);
@@ -4419,12 +4446,6 @@ namespace SailwindVirtualCrew
                 CrewLanternService.TraceRefill("Scan finished. scanned=" + scanned + " needsRefill=" + needsRefill + " queued=" + queued + ".");
 
             return queued;
-        }
-
-        private static bool WantsLanternsLit(float localTime)
-        {
-            localTime = NormalizeHour(localTime);
-            return localTime >= LanternDuskHour || localTime < LanternDawnHour;
         }
 
         public void CancelSquareTrimRequest(SquareTrimRequest request)
