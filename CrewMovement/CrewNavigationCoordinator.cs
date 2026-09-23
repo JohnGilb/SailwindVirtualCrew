@@ -426,26 +426,68 @@ namespace SailwindVirtualCrew
                 return false;
             }
 
-            Vector3 bedWorld = GetBedSleepPosition(bed);
-            Vector3 bedLocal = _context.WorldBoat.InverseTransformPoint(bedWorld);
-            Quaternion bedRotation = Quaternion.Inverse(_context.WorldBoat.rotation) * bed.transform.rotation;
+            Transform boat = _context.WorldBoat;
+            GetBedSleepPose(bed, boat.up, out Vector3 feetWorld, out Vector3 walkToWorld, out Quaternion bodyWorldRotation);
+            Vector3 feetLocal = boat.InverseTransformPoint(feetWorld);
+            Vector3 walkToLocal = boat.InverseTransformPoint(walkToWorld);
+            Quaternion bodyLocalRotation = Quaternion.Inverse(boat.rotation) * bodyWorldRotation;
 
-            if (!actor.BeginRole(request, bedLocal, bedRotation, "sleep bed='" + bed.name + "'", 1.5f, Vector3.up * 0.33f))
+            // Walk to the bedside, then lie in the bed itself.
+            if (!actor.BeginRole(request, walkToLocal, bodyLocalRotation, "sleep bed='" + bed.name + "'", 1.5f,
+                    exactArrivalLocalPosition: feetLocal))
             {
                 CrewDebugLog.Warn(Phase, "Bed off NavMesh, teleporting crew='" + crewman.Name + "' to bed='" + bed.name + "'");
-                actor.TeleportToRole(request, bedLocal, bedRotation, Vector3.up * 0.33f);
+                actor.TeleportToRole(request, feetLocal, bodyLocalRotation, Vector3.zero);
             }
             _actorsByOwner[request] = actor;
             return true;
         }
 
-        private static Vector3 GetBedSleepPosition(Component bed)
+        // Distance from the soles of the feet to the eyes, and from the eyes down to the back of the
+        // head, for the NPC model (feet pivot, scale 1) lying on its back.
+        private const float SleeperFeetToEyes = 1.55f;
+        private const float SleeperEyesAboveBack = 0.12f;
+
+        // Every bed the player can use has a sleep-view transform as its first child: Sleep.Update puts the
+        // player's view there (position and rotation) while in bed. That tells us where a sleeper's head is
+        // and which way their body runs, regardless of how the bed model itself is oriented.
+        private static void GetBedSleepPose(Component bed, Vector3 boatUp,
+            out Vector3 feetWorld, out Vector3 walkToWorld, out Quaternion bodyWorldRotation)
         {
+            Transform view = GetBedSleepView(bed);
+            Vector3 eyes = view.position;
+
+            // Lying on your back looking up, the view's up vector points toward the top of your head; looking
+            // down the bed toward your feet, the head is behind the view. Summing the two flattened vectors
+            // gives the head direction for any view pitch between those.
+            Vector3 headDirection = Vector3.ProjectOnPlane(view.up, boatUp) - Vector3.ProjectOnPlane(view.forward, boatUp);
+            if (headDirection.sqrMagnitude < 0.0001f)
+                headDirection = Vector3.ProjectOnPlane(bed.transform.forward, boatUp);
+            if (headDirection.sqrMagnitude < 0.0001f)
+                headDirection = Vector3.ProjectOnPlane(bed.transform.right, boatUp);
+            headDirection.Normalize();
+
+            // Face toward the sky, head toward the pillow; the model's origin is at its feet.
+            bodyWorldRotation = Quaternion.LookRotation(boatUp, headDirection);
+            feetWorld = eyes - headDirection * SleeperFeetToEyes - boatUp * SleeperEyesAboveBack;
+            walkToWorld = eyes - headDirection * (SleeperFeetToEyes * 0.5f);
+
+            if (DeveloperMode.IsEnabled)
+                CrewDebugLog.Ok(Phase, "Bed sleep pose bed='" + bed.name + "' view='" + view.name
+                    + "' viewEuler=" + view.eulerAngles + " bedEuler=" + bed.transform.eulerAngles
+                    + " headDirection=" + headDirection);
+        }
+
+        private static Transform GetBedSleepView(Component bed)
+        {
+            // Sleep.Update uses the first child, not the sleepPos field, so match it.
+            if (bed.transform.childCount > 0)
+                return bed.transform.GetChild(0);
             if (bed is ShipItemBed shipBed && shipBed.sleepPos)
-                return shipBed.sleepPos.position;
+                return shipBed.sleepPos;
             if (bed is GPButtonBed buttonBed && buttonBed.sleepPos)
-                return buttonBed.sleepPos.position;
-            return bed.transform.position;
+                return buttonBed.sleepPos;
+            return bed.transform;
         }
 
         internal bool IsPositioningComplete(object owner)
@@ -855,6 +897,10 @@ namespace SailwindVirtualCrew
             private Quaternion _activeArrivalRotation;
             private bool _hasActiveArrivalRotation;
             private Vector3 _arrivalWorldOffset;
+            // When set, the visual snaps to this exact pose on arrival instead of the agent's stopping point
+            // (e.g. lying in a bed, which is usually off the walkable navmesh).
+            private bool _hasExactArrivalPosition;
+            private Vector3 _exactArrivalLocalPosition;
             private bool _lookoutActive;
             private Vector3 _lookoutStartLocal;
             private Quaternion _lookoutStartRotation;
@@ -922,6 +968,7 @@ namespace SailwindVirtualCrew
                 _activeLabel = "station='" + station.Id + "'";
                 _activeArrivalRotation = station.LocalRotation;
                 _hasActiveArrivalRotation = true;
+                _hasExactArrivalPosition = false;
                 _lookoutActive = false;
                 _returningToRest = false;
                 _poseSync.ClearPoseOverride();
@@ -937,7 +984,7 @@ namespace SailwindVirtualCrew
                 _logicAgent.SetDestination(destinationWorld, station.ProjectedLocalStand, teleportIfUnreachable: true, unreachableTeleportDelay: GetPositioningDelay());
             }
 
-            internal bool BeginRole(object owner, Vector3 destinationLocal, Quaternion arrivalRotation, string label, float maxNavMeshDistance = 4f, Vector3 arrivalWorldOffset = default)
+            internal bool BeginRole(object owner, Vector3 destinationLocal, Quaternion arrivalRotation, string label, float maxNavMeshDistance = 4f, Vector3 arrivalWorldOffset = default, Vector3? exactArrivalLocalPosition = null)
             {
                 if (!_navMeshProvider.TryGetWorldOnNavMesh(destinationLocal, maxNavMeshDistance, out var destinationWorld))
                 {
@@ -953,6 +1000,8 @@ namespace SailwindVirtualCrew
                 _activeArrivalRotation = arrivalRotation;
                 _hasActiveArrivalRotation = true;
                 _arrivalWorldOffset = arrivalWorldOffset;
+                _hasExactArrivalPosition = exactArrivalLocalPosition.HasValue;
+                _exactArrivalLocalPosition = exactArrivalLocalPosition ?? Vector3.zero;
                 _lookoutActive = false;
                 _returningToRest = false;
                 _poseSync.ClearPoseOverride();
@@ -973,6 +1022,7 @@ namespace SailwindVirtualCrew
                 _hasActiveArrivalRotation = true;
                 _activeArrivalRotation = arrivalRotation;
                 _arrivalWorldOffset = arrivalWorldOffset;
+                _hasExactArrivalPosition = false;
                 _lookoutActive = false;
                 _returningToRest = false;
                 _poseSync.ClearPoseOverride();
@@ -1041,7 +1091,11 @@ namespace SailwindVirtualCrew
                 {
                     if (_hasActiveArrivalRotation)
                     {
-                        if (_arrivalWorldOffset != Vector3.zero)
+                        if (_hasExactArrivalPosition)
+                        {
+                            _poseSync.SetPoseOverride(_exactArrivalLocalPosition, _activeArrivalRotation);
+                        }
+                        else if (_arrivalWorldOffset != Vector3.zero)
                         {
                             Vector3 localOffset = _context.WorldBoat.InverseTransformDirection(_arrivalWorldOffset);
                             _poseSync.SetPoseOverride(_logicAgent.CurrentLocalPosition + localOffset, _activeArrivalRotation);
@@ -1107,6 +1161,7 @@ namespace SailwindVirtualCrew
                 _activeLabel = null;
                 _hasActiveArrivalRotation = false;
                 _arrivalWorldOffset = Vector3.zero;
+                _hasExactArrivalPosition = false;
                 _lookoutActive = false;
                 _lookoutSawLand = false;
                 _suppressNextLandDetection = false;
