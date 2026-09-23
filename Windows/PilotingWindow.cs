@@ -24,17 +24,25 @@ namespace SailwindVirtualCrew
                 hasPlayerSelection = hasPlayerSelection,
                 holdWindAngle = holdWindAngle,
                 playerSelectedHeading = playerSelectedHeading,
-                playerSelectedWindAngle = playerSelectedWindAngle
+                playerSelectedWindAngle = playerSelectedWindAngle,
+                pilotCrewId = VirtualCrewManager.Instance.ActivePilotTask?.AssignedCrewman?.Id
             };
         }
 
         public void RestorePilotingSaveData(PilotingSaveData data)
         {
+            restoredPilotPending = false;
+            restoredPilotCrewId = null;
+
             if (data == null || !data.hasPlayerSelection)
             {
                 ResetPilotingOrder();
                 return;
             }
+
+            // The pilot task itself isn't saved; put the same pilot back on the helm once the helm is found.
+            restoredPilotPending = data.autopilotEngaged || !string.IsNullOrEmpty(data.pilotCrewId);
+            restoredPilotCrewId = data.pilotCrewId;
 
             playerSelectedHeading = PilotController.Normalize(data.playerSelectedHeading);
             playerSelectedWindAngle = Mathf.Clamp(data.playerSelectedWindAngle, -179f, 179f);
@@ -68,6 +76,8 @@ namespace SailwindVirtualCrew
         private bool  holdWindAngle = false;
         private bool  restoredOrderPending = false;
         private bool  restoredAutopilotPending = false;
+        private bool  restoredPilotPending = false;
+        private string restoredPilotCrewId;
         private Transform headingBoat;
         private bool hasFilteredHeading = false;
         private float filteredHeading = 0f;
@@ -112,6 +122,9 @@ namespace SailwindVirtualCrew
                 helmSearchCooldown = 2f;
             }
 
+            if (restoredPilotPending && steeringWheel != null)
+                RestorePilotAssignment();
+
             if (!autopilotEngaged) return;
 
             if (steeringWheel == null)
@@ -119,6 +132,18 @@ namespace SailwindVirtualCrew
                 if (restoredAutopilotPending)
                     return;
 
+                autopilotEngaged = false;
+                return;
+            }
+
+            // Only an assigned pilot may steer. Without one (e.g. just after loading a save) the helm
+            // would keep turning while the window shows no pilot and the pilot is free to go to sleep.
+            if (VirtualCrewManager.Instance.ActivePilotTask == null)
+            {
+                if (restoredPilotPending)
+                    return;
+
+                ReleaseWheel();
                 autopilotEngaged = false;
                 return;
             }
@@ -166,6 +191,25 @@ namespace SailwindVirtualCrew
                 currentInputMax = wheel.attachedRudder.limits.max * wheel.gearRatio;
                 return;
             }
+        }
+
+        private void RestorePilotAssignment()
+        {
+            restoredPilotPending = false;
+            var manager = VirtualCrewManager.Instance;
+            if (manager.ActivePilotTask == null)
+            {
+                // Saves from before pilotCrewId was stored fall back to the freshest pilot.
+                var pilot = !string.IsNullOrEmpty(restoredPilotCrewId)
+                    ? manager.Crew.Find(c => c.Id == restoredPilotCrewId)
+                    : manager.FreshestCrewman(ShipRole.Pilot);
+                manager.StartPilot(pilot);
+            }
+            restoredPilotCrewId = null;
+
+            // Pilot is gone, exhausted or asleep: drop the restored order rather than steer unmanned.
+            if (manager.ActivePilotTask == null)
+                ResetPilotingOrder();
         }
 
         private void ReleaseWheel()

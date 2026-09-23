@@ -13,6 +13,8 @@ namespace SailwindVirtualCrew
 
         private const float ButtonWidth = 76f;
         private const float ButtonHeight = 28f;
+        private const float ButtonSpacing = 4f;
+        private const float WideButtonWidth = (3f * ButtonWidth + ButtonSpacing) / 2f;
 
         public string WindowKey => "SkullingWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
@@ -44,7 +46,7 @@ namespace SailwindVirtualCrew
             GUILayout.Space(6);
 
             GUILayout.BeginHorizontal();
-            GUILayout.Space(ButtonWidth + 4f);
+            GUILayout.Space(ButtonWidth + ButtonSpacing);
             DrawCommandButton("Ahead", SkullingCommand.Ahead);
             GUILayout.EndHorizontal();
 
@@ -55,14 +57,15 @@ namespace SailwindVirtualCrew
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Space(ButtonWidth + 4f);
+            GUILayout.Space(ButtonWidth + ButtonSpacing);
             DrawCommandButton("Aback", SkullingCommand.Aback);
             GUILayout.EndHorizontal();
 
             GUILayout.Space(8);
             GUILayout.BeginHorizontal();
-            DrawCommandButton("Turn Port", SkullingCommand.TurnPort);
-            DrawCommandButton("Turn Stbd", SkullingCommand.TurnStarboard);
+            // Two buttons spanning the width of the three-button row above, so the longer labels fit.
+            DrawCommandButton("Turn Port", SkullingCommand.TurnPort, WideButtonWidth);
+            DrawCommandButton("Turn Stbd", SkullingCommand.TurnStarboard, WideButtonWidth);
             GUILayout.EndHorizontal();
 
             if (!string.IsNullOrEmpty(lastMessage))
@@ -98,9 +101,9 @@ namespace SailwindVirtualCrew
                 GUILayout.Label(request.StatusMessage);
         }
 
-        private void DrawCommandButton(string label, SkullingCommand command)
+        private void DrawCommandButton(string label, SkullingCommand command, float width = ButtonWidth)
         {
-            if (GUILayout.Button(label, GUILayout.Width(ButtonWidth), GUILayout.Height(ButtonHeight)))
+            if (GUILayout.Button(label, GUILayout.Width(width), GUILayout.Height(ButtonHeight)))
             {
                 string reason;
                 if (VirtualCrewManager.Instance.StartSkulling(command, out reason))

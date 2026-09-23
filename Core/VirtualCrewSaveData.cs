@@ -150,6 +150,8 @@ namespace SailwindVirtualCrew
         public bool holdWindAngle;
         public float playerSelectedHeading;
         public float playerSelectedWindAngle;
+        // Crewman.Id of the pilot on the helm when saved; null if none (or a save from before this field).
+        public string pilotCrewId;
     }
 
     [Serializable]

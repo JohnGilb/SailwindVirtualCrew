@@ -99,7 +99,9 @@ namespace SailwindVirtualCrew
             if (Time.time < workStartTime + workDuration)
                 return;
 
-            CrewLanternService.SetLight(lantern, lightState);
+            // Re-check: the lantern may have been picked up, stowed in a crate, etc. while the crewman worked.
+            if (!IsDone())
+                CrewLanternService.SetLight(lantern, lightState);
             Complete();
         }
 
