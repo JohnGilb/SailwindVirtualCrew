@@ -285,6 +285,8 @@ namespace SailwindVirtualCrew
             text.characterSize = 0.2f;
             text.fontSize = 72;
             text.color = color;
+            // Hide the stamp behind decks and hulls instead of drawing it on top of everything.
+            DepthTestedTextMaterial.Apply(text);
         }
 
         private static void RemoveMarker(ShipItem item, string markerName)
