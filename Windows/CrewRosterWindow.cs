@@ -92,6 +92,11 @@ namespace SailwindVirtualCrew
             GUILayout.Space(4);
 
             // ── On Ship ─────────────────────────────────────────────────────
+            if (mgr.IsPanicActive)
+            {
+                var remaining = System.TimeSpan.FromSeconds(Mathf.CeilToInt(mgr.PanicRemainingSeconds));
+                GUILayout.Label($"ALL HANDS ON DECK — {remaining.Minutes}:{remaining.Seconds:00} remaining");
+            }
             GUILayout.Label("On Ship:");
             foreach (var c in mgr.Crew)
             {
@@ -142,7 +147,7 @@ namespace SailwindVirtualCrew
                 GUILayout.EndHorizontal();
                 GUI.enabled = !selectedShipCrew.IsOccupied;
                 if (GUILayout.Button("Sleep"))
-                    mgr.AddSleepRequest(selectedShipCrew);
+                    mgr.AddSleepRequest(selectedShipCrew, automatic: false);
                 GUI.enabled = true;
                 if (selectedShipCrew.Role == ShipRole.Pilot)
                 {

@@ -13,6 +13,7 @@ namespace SailwindVirtualCrew
         // True stat backing fields — always hold the real value regardless of exhaustion.
         private readonly int _strength;
         private readonly int _dexterity;
+        private readonly int _constitution;
         private readonly int _intelligence;
         private readonly int _wisdom;
         private readonly int _charisma;
@@ -23,10 +24,13 @@ namespace SailwindVirtualCrew
         internal int BaseWisdom       => _wisdom;
         internal int BaseCharisma     => _charisma;
 
+        // Panic (All Hands on Deck) raises every stat to at least this baseline while active.
+        internal const int PanicStatBaseline = 5;
+
         // True stats — return 1 when exhausted (except Constitution, which is never impaired).
         public int Strength     => EffectiveStat(_strength);
         public int Dexterity    => EffectiveStat(_dexterity);
-        public int Constitution { get; }
+        public int Constitution => IsPanicBoosted ? Math.Max(_constitution, PanicStatBaseline) : _constitution;
         public int Intelligence => EffectiveStat(_intelligence);
         public int Wisdom       => EffectiveStat(_wisdom);
         public int Charisma     => EffectiveStat(_charisma);
@@ -45,9 +49,11 @@ namespace SailwindVirtualCrew
 
         // ── Stamina ─────────────────────────────────────────────────────────
         // MaxStamina in minutes; baseline 960 min (16 h) at Constitution 3.
-        public int   MaxStamina     => 960 + (Constitution - 3) * 120;
+        // Uses the true Constitution so a panic boost doesn't change the energy pool.
+        public int   MaxStamina     => 960 + (_constitution - 3) * 120;
         public float CurrentStamina { get; private set; }
-        public bool  IsExhausted    => CurrentStamina <= 0f;
+        // An adrenaline crash keeps crew exhausted regardless of energy until they're fully rested.
+        public bool  IsExhausted    => CurrentStamina <= 0f || AdrenalineCrash;
 
         public void DrainStamina(float amount)
         {
@@ -57,12 +63,29 @@ namespace SailwindVirtualCrew
         public void RestoreStamina(float amount)
         {
             CurrentStamina = Math.Min(MaxStamina, CurrentStamina + amount);
+            if (CurrentStamina >= MaxStamina)
+                AdrenalineCrash = false;
         }
+
+        public void SetStaminaToMax()
+        {
+            CurrentStamina = MaxStamina;
+            AdrenalineCrash = false;
+        }
+
+        public void SetStaminaToZero()
+        {
+            CurrentStamina = 0f;
+        }
+
+        // Set when a panic ends. Only cleared by reaching full energy.
+        public bool AdrenalineCrash { get; set; }
 
         public string FatigueTag
         {
             get
             {
+                if (AdrenalineCrash)          return "Adrenaline Crash";
                 if (IsExhausted)              return "Exhausted";
                 if (CurrentStamina <= 120f)   return "Tired";
                 if (CurrentStamina <= 360f)   return "Flagging";
@@ -79,14 +102,14 @@ namespace SailwindVirtualCrew
             ModelIndex   = rng.Next(64);
             _strength    = rng.Next(1, 6);
             _dexterity   = rng.Next(1, 6);
-            Constitution = rng.Next(1, 6);
+            _constitution = rng.Next(1, 6);
             _intelligence = rng.Next(1, 6);
             _wisdom      = rng.Next(1, 6);
             _charisma    = rng.Next(1, 6);
 
             AdvStrength     = Advertise(_strength,     rng);
             AdvDexterity    = Advertise(_dexterity,    rng);
-            AdvConstitution = Advertise(Constitution,  rng);
+            AdvConstitution = Advertise(_constitution, rng);
             AdvIntelligence = Advertise(_intelligence, rng);
             AdvWisdom       = Advertise(_wisdom,       rng);
             AdvCharisma     = Advertise(_charisma,     rng);
@@ -102,7 +125,8 @@ namespace SailwindVirtualCrew
             float currentStamina = -1f,
             string id = null,
             int modelIndex = -1,
-            CrewShift shift = CrewShift.AdHoc)
+            CrewShift shift = CrewShift.AdHoc,
+            bool adrenalineCrash = false)
         {
             Id           = string.IsNullOrEmpty(id) ? Guid.NewGuid().ToString("N") : id;
             Name         = name;
@@ -111,7 +135,7 @@ namespace SailwindVirtualCrew
             ModelIndex   = modelIndex >= 0 ? modelIndex : 0;
             _strength    = strength;
             _dexterity   = dexterity;
-            Constitution = constitution;
+            _constitution = constitution;
             _intelligence = intelligence;
             _wisdom      = wisdom;
             _charisma    = charisma;
@@ -123,14 +147,18 @@ namespace SailwindVirtualCrew
             AdvCharisma     = advCharisma;
 
             CurrentStamina = currentStamina >= 0f ? currentStamina : MaxStamina;
+            AdrenalineCrash = adrenalineCrash;
         }
 
         private static int Advertise(int trueStat, Random rng) =>
             Math.Max(1, trueStat + rng.Next(-1, 4));
 
+        private bool IsPanicBoosted => VirtualCrewManager.Instance.IsPanicBoosted(this);
+
         private int EffectiveStat(int baseValue)
         {
             if (IsExhausted) return 1;
+            if (IsPanicBoosted) baseValue = Math.Max(baseValue, PanicStatBaseline);
             return Math.Max(1, baseValue + VirtualCrewManager.Instance.GetFirstOfficerStatModifier(this));
         }
 
@@ -160,7 +188,7 @@ namespace SailwindVirtualCrew
             {
                 case ShipRole.Deckhand:      return $"S{_strength}  D{_dexterity}";
                 case ShipRole.Navigator:     return $"D{_dexterity}  I{_intelligence}";
-                case ShipRole.Pilot:         return $"I{_intelligence}  Co{Constitution}";
+                case ShipRole.Pilot:         return $"I{_intelligence}  Co{_constitution}";
                 case ShipRole.ChiefOfficer:  return $"W{_wisdom}  Ch{_charisma}";
                 case ShipRole.Chef:          return $"D{_dexterity}  W{_wisdom}";
                 case ShipRole.Quartermaster: return $"S{_strength}  W{_wisdom}";
@@ -179,13 +207,14 @@ namespace SailwindVirtualCrew
         {
             id = Id,
             name = Name, role = Role,
-            strength = _strength, dexterity = _dexterity, constitution = Constitution,
+            strength = _strength, dexterity = _dexterity, constitution = _constitution,
             intelligence = _intelligence, wisdom = _wisdom, charisma = _charisma,
             advStrength = AdvStrength, advDexterity = AdvDexterity, advConstitution = AdvConstitution,
             advIntelligence = AdvIntelligence, advWisdom = AdvWisdom, advCharisma = AdvCharisma,
             currentStamina = CurrentStamina,
             modelIndex = ModelIndex,
-            shift = Shift
+            shift = Shift,
+            adrenalineCrash = AdrenalineCrash
         };
     }
 }

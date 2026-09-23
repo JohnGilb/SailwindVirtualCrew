@@ -15,6 +15,7 @@ namespace SailwindVirtualCrew
         public float currentStamina = -1f;
         public int modelIndex = -1;
         public CrewShift shift = CrewShift.AdHoc;
+        public bool adrenalineCrash;
     }
 
     [Serializable]
@@ -199,5 +200,7 @@ namespace SailwindVirtualCrew
         public NavigatorToolScanSaveData navigatorToolScan;
         public Dictionary<string, NavigatorIslandMapEntrySaveData> navigatorIslandMap;
         public PilotingSaveData piloting;
+        // Real-time seconds left on an active All Hands on Deck panic; 0 when inactive.
+        public float panicRemainingSeconds;
     }
 }

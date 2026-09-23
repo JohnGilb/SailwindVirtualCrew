@@ -42,7 +42,7 @@ namespace SailwindVirtualCrew
         private bool _vesselScanRequested;
 
         private ConfigEntry<KeyboardShortcut> BuildShipMap;
-        private ConfigEntry<KeyboardShortcut> ScanItems;
+        private ConfigEntry<KeyboardShortcut> PanicAllHands;
 
         public static Plugin Instance { get; private set; }
         private Harmony _harmony;
@@ -92,7 +92,9 @@ namespace SailwindVirtualCrew
             CargoControllerGrabPortCargoKey = Config.Bind("CrewHotkeys", "CargoControllerGrabPortCargo", new KeyboardShortcut(KeyCode.Z));
             BuildShipMap = Config.Bind("CrewHotkeys", "BuildShipMap", new KeyboardShortcut(KeyCode.V));
 
-            ScanItems = Config.Bind("CrewHotkeys", "ScanItems", new KeyboardShortcut(KeyCode.P));
+            PanicAllHands = Config.Bind("CrewHotkeys", "PanicAllHandsOnDeck", new KeyboardShortcut(KeyCode.P),
+                "Panic: for 5 real-time minutes all crew are fully rested, awake, have at least 5 in every stat, "
+                + "take deckhand work regardless of role, and move twice as fast. Afterwards all crew crash to 0 energy.");
 
             gameObject.AddComponent<CrewSoundPlayer>();
             gameObject.AddComponent<WindowLauncherWindow>();
@@ -411,9 +413,9 @@ namespace SailwindVirtualCrew
                 _lastScannedVesselKey = vesselKey;
             }
 
-            if (ScanItems.Value.IsDown())
+            if (PanicAllHands.Value.IsDown() && !TextInputHotkeySuppressor.ShouldSuppressFavoriteActionHotkeys)
             {
-                CrewNavigationCoordinator.Instance.ForceRingLookoutBell();
+                VirtualCrewManager.Instance.ActivatePanic();
             }
             }
         }

@@ -33,7 +33,7 @@ namespace SailwindVirtualCrew
         public List<StewardFoodRequest> StewardFoodRequests { get; private set; }
         public StewardPhilosophyRequest ActiveStewardPhilosophyRequest { get; private set; }
         public int ActiveSwabDecksRequestCount => SwabDecksRequests.Count(r => r.Status != WorkRequestStatus.Complete);
-        public int SwabDecksRequestCapacity => Crew.Count(c => c.Role == ShipRole.Deckhand);
+        public int SwabDecksRequestCapacity => Crew.Count(IsDeckhandCapable);
         public Dictionary<GPButtonRopeWinch, WinchTarget> crewWinchInstructions;
 
         private readonly System.Random rng = new System.Random();
@@ -1467,6 +1467,62 @@ namespace SailwindVirtualCrew
         public bool IsCrewAssignable(Crewman crewman) =>
             IsCrewAvailable(crewman) && !crewman.IsOccupied;
 
+        // ── Panic / All Hands on Deck ───────────────────────────────────────
+        private const float PanicDurationSeconds = 300f;
+        private float _panicEndRealtime = -1f;
+
+        public bool IsPanicActive => _panicEndRealtime >= 0f;
+
+        public float PanicRemainingSeconds =>
+            IsPanicActive ? Mathf.Max(0f, _panicEndRealtime - Time.realtimeSinceStartup) : 0f;
+
+        // Panic's stat, energy and speed boosts don't reach crew in an adrenaline crash.
+        public bool IsPanicBoosted(Crewman crewman) =>
+            IsPanicActive && crewman != null && !crewman.AdrenalineCrash;
+
+        // Deckhand work orders normally go to deckhands only; during a panic every crewman is a candidate.
+        internal bool IsDeckhandCapable(Crewman crewman) =>
+            crewman != null && (crewman.Role == ShipRole.Deckhand || IsPanicActive);
+
+        public void ActivatePanic()
+        {
+            if (IsPanicActive)
+                return;
+
+            _panicEndRealtime = Time.realtimeSinceStartup + PanicDurationSeconds;
+            foreach (var sleep in SleepRequests.ToList())
+                CancelSleepRequest(sleep);
+            foreach (var crewman in Crew)
+            {
+                crewman.SetShiftSleepPending(false);
+                if (!crewman.AdrenalineCrash)
+                    crewman.SetStaminaToMax();
+            }
+
+            NotificationUi.instance?.ShowNotification("All hands on deck!");
+            CrewNavigationCoordinator.Instance.ForceRingLookoutBell();
+        }
+
+        private void TickPanic()
+        {
+            if (!IsPanicActive || Time.realtimeSinceStartup < _panicEndRealtime)
+                return;
+
+            _panicEndRealtime = -1f;
+            foreach (var crewman in Crew)
+            {
+                crewman.SetStaminaToZero();
+                crewman.AdrenalineCrash = true;
+            }
+
+            NotificationUi.instance?.ShowNotification("The crew's adrenaline wears off.");
+        }
+
+        public void RestorePanic(float remainingSeconds)
+        {
+            _panicEndRealtime = remainingSeconds > 0f ? Time.realtimeSinceStartup + remainingSeconds : -1f;
+        }
+
         private Crewman BestAvailableQuartermaster() =>
             Crew.Where(c => c.Role == ShipRole.Quartermaster && IsCrewAvailable(c))
                 .OrderByDescending(c => c.Charisma)
@@ -2720,7 +2776,8 @@ namespace SailwindVirtualCrew
                 d.currentStamina,
                 d.id,
                 d.modelIndex,
-                d.shift);
+                d.shift,
+                d.adrenalineCrash);
 
         public void addSail(SimpleSail sail)
         {
@@ -4200,7 +4257,7 @@ namespace SailwindVirtualCrew
                 return;
 
             float waterLevel = damage.waterLevel;
-            int deckhandCount = Crew.Count(c => c.Role == ShipRole.Deckhand);
+            int deckhandCount = Crew.Count(IsDeckhandCapable);
             if (deckhandCount <= 0)
                 return;
 
@@ -4675,7 +4732,8 @@ namespace SailwindVirtualCrew
         private void WakeNavigatorIfRested()
         {
             var navigator = Navigator;
-            if (navigator == null || navigator.CurrentStamina < navigator.MaxStamina * NavigatorWakeStaminaRatio)
+            if (navigator == null || navigator.AdrenalineCrash
+                || navigator.CurrentStamina < navigator.MaxStamina * NavigatorWakeStaminaRatio)
                 return;
 
             var sleep = SleepRequests.FirstOrDefault(r => r.AssignedCrewman == navigator);
@@ -4799,6 +4857,10 @@ namespace SailwindVirtualCrew
 
         private void SendShiftToSleep(CrewShift shift)
         {
+            // All hands stay on duty through a panic.
+            if (IsPanicActive)
+                return;
+
             foreach (var crewman in Crew.Where(c => c.Shift == shift))
             {
                 StopContinuousDutyForCrewman(crewman);
@@ -4946,6 +5008,9 @@ namespace SailwindVirtualCrew
         // deckhands and marks completed tasks as done.
         public void Tick()
         {
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.Tick.Panic"))
+                TickPanic();
+
             // Drain stamina at 1 unit per in-game minute. Optional config restores the old
             // behavior where actively working crew drain twice as fast.
             // Sleeping crew are exempt from drain — their stamina is handled by SleepRequest.Tick().
@@ -5386,9 +5451,11 @@ namespace SailwindVirtualCrew
             }
         }
 
-        public void AddSleepRequest(Crewman crewman)
+        // automatic = queued by auto/shift/navigator sleep logic, which is suspended during a panic.
+        // The player can still order a crewman to bed manually.
+        public void AddSleepRequest(Crewman crewman, bool automatic = true)
         {
-            if (crewman == null || crewman.IsOccupied)
+            if (crewman == null || crewman.IsOccupied || (automatic && IsPanicActive))
                 return;
             if (SleepRequests.Any(r => r.AssignedCrewman == crewman))
                 return;
@@ -5398,7 +5465,7 @@ namespace SailwindVirtualCrew
         private void AssignOpenDeckhandTasksByDistance()
         {
             var allCandidates = new List<DeckhandTaskCandidate>();
-            foreach (var crewman in Crew.Where(c => !c.IsOccupied && c.Role == ShipRole.Deckhand).ToList())
+            foreach (var crewman in Crew.Where(c => !c.IsOccupied && IsDeckhandCapable(c)).ToList())
                 allCandidates.AddRange(GetOpenDeckhandTaskCandidates(crewman));
 
             var ranked = allCandidates
@@ -5621,7 +5688,7 @@ namespace SailwindVirtualCrew
 
         private int CountFreeDeckhands()
         {
-            return Crew.Count(c => !c.IsOccupied && c.Role == ShipRole.Deckhand);
+            return Crew.Count(c => !c.IsOccupied && IsDeckhandCapable(c));
         }
 
         private Crewman FindSecondDeckhandForWorkRequest(WorkRequest request, Crewman first)
@@ -5630,7 +5697,7 @@ namespace SailwindVirtualCrew
                 ? request.Targets[1].Winch
                 : null;
 
-            return Crew.Where(c => c != first && !c.IsOccupied && c.Role == ShipRole.Deckhand)
+            return Crew.Where(c => c != first && !c.IsOccupied && IsDeckhandCapable(c))
                 .OrderBy(c => secondWinch
                     ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(c, secondWinch)
                     : 0f)
@@ -5641,7 +5708,7 @@ namespace SailwindVirtualCrew
         {
             var starboardWinch = request?.Sail?.getStarboardSheetWinch();
 
-            return Crew.Where(c => c != first && !c.IsOccupied && c.Role == ShipRole.Deckhand)
+            return Crew.Where(c => c != first && !c.IsOccupied && IsDeckhandCapable(c))
                 .OrderBy(c => starboardWinch
                     ? CrewNavigationCoordinator.Instance.EstimateDistanceToWinch(c, starboardWinch)
                     : 0f)

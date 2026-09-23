@@ -124,7 +124,7 @@ namespace SailwindVirtualCrew
             }
 
             var selectedCrew = (candidates ?? Enumerable.Empty<Crewman>())
-                .Where(c => c != null && c.Role == ShipRole.Deckhand && VirtualCrewManager.Instance.IsCrewAssignable(c))
+                .Where(c => c != null && VirtualCrewManager.Instance.IsDeckhandCapable(c) && VirtualCrewManager.Instance.IsCrewAssignable(c))
                 .OrderByDescending(c => (float)c.CurrentStamina / c.MaxStamina)
                 .ThenByDescending(c => c.Strength)
                 .Take(capacity)

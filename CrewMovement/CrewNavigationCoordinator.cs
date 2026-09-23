@@ -800,9 +800,17 @@ namespace SailwindVirtualCrew
             return Mathf.Max(12f, _proxyBoat.Bounds.size.y + 2f);
         }
 
+        private const float PanicSpeedMultiplier = 2f;
+
         private static float DexterityToSpeed(int dexterity)
         {
             return 1.6f + (dexterity - 3) * 0.3f;
+        }
+
+        private static float CrewMoveSpeed(Crewman crew)
+        {
+            float speed = DexterityToSpeed(crew.Dexterity);
+            return VirtualCrewManager.Instance.IsPanicBoosted(crew) ? speed * PanicSpeedMultiplier : speed;
         }
 
         private static Vector3 ToVector3(float[] values)
@@ -875,7 +883,7 @@ namespace SailwindVirtualCrew
             private Vector3 _restStandLocalPosition;
             private Quaternion _restLocalRotation;
             private bool _hasRestLocation;
-            private int  _lastAppliedDexterity    = -1;
+            private float _lastAppliedSpeed       = -1f;
             private bool _lookoutSawLand;
             private bool _suppressNextLandDetection;
             private float _lastLookoutCertaintyGameHour;
@@ -892,7 +900,7 @@ namespace SailwindVirtualCrew
 
                 string id = SafeName(crew.Name);
                 _logicAgent = new ProxyLogicAgent(navMeshProvider.Proxy.Root.transform, startWorld, "VC_LogicAgent_" + id);
-                _logicAgent.SetSpeed(DexterityToSpeed(crew.Dexterity));
+                _logicAgent.SetSpeed(CrewMoveSpeed(crew));
                 _visualAgent = CrewVisualFactory.SpawnTestCrewVisual(context, _logicAgent.CurrentLocalPosition, _logicAgent.CurrentLocalRotation, id, crew.ModelIndex);
                 _poseSync = new ProxyToBoatPoseSync(_visualAgent, _logicAgent, context);
                 RefreshRestLocation();
@@ -1020,11 +1028,11 @@ namespace SailwindVirtualCrew
 
             internal void Tick()
             {
-                int dex = Crew.Dexterity;
-                if (dex != _lastAppliedDexterity)
+                float speed = CrewMoveSpeed(Crew);
+                if (speed != _lastAppliedSpeed)
                 {
-                    _logicAgent.SetSpeed(DexterityToSpeed(dex));
-                    _lastAppliedDexterity = dex;
+                    _logicAgent.SetSpeed(speed);
+                    _lastAppliedSpeed = speed;
                 }
 
                 _logicAgent.Tick();

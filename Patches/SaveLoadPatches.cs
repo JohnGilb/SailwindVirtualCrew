@@ -84,7 +84,8 @@ namespace SailwindVirtualCrew
                 quartermasterWaterRefillNextAllowedDay = mgr.GetQuartermasterWaterRefillSnapshot(),
                 navigatorToolScan = navigatorWindow != null ? navigatorWindow.GetToolScanSaveData() : null,
                 navigatorIslandMap = mgr.GetNavigatorIslandMapSnapshot(),
-                piloting = pilotingWindow != null ? pilotingWindow.GetPilotingSaveData() : null
+                piloting = pilotingWindow != null ? pilotingWindow.GetPilotingSaveData() : null,
+                panicRemainingSeconds = mgr.PanicRemainingSeconds
             };
             ModSave.Save(Plugin.Instance.Info, container);
         }
@@ -98,6 +99,7 @@ namespace SailwindVirtualCrew
             if (data.vessels != null)
                 VirtualCrewManager.Instance.AllVesselsData = data.vessels;
             VirtualCrewManager.Instance.RestoreShipCrew(data.shipCrew);
+            VirtualCrewManager.Instance.RestorePanic(data.panicRemainingSeconds);
             VirtualCrewManager.Instance.RestorePortPools(data.portCrewPools);
             VirtualCrewManager.Instance.RestorePortCrewRefreshDay(data.lastPortCrewRefreshDay);
             VirtualCrewManager.Instance.RestorePayData(data.totalSalaryPay, data.totalSharePayByCurrency, data.cargoPayRecords);

@@ -40,6 +40,12 @@ TLDR: Press B and then the CR (Crew Roster) button. Walk very close to a Port Tr
 - Each crewmember takes a share of your profits. Each deckhand, for example, will take 1% of your profit.
   - So if you buy a barrel of spices for 100 coins, and sell it for 300 coins, a deckhand will take 2 coins (1% of 200 profit).
   - They always take at least one coin.
+- Press P to call "All Hands on Deck" in an emergency. For 5 real-time minutes:
+  - Every crewmember wakes, is fully rested, and has at least 5 in every stat.
+  - Every crewmember will take deckhand jobs (winches, bailing, etc.) regardless of role.
+  - Crew move twice as fast.
+  - Crew won't go to bed on their own (you can still send someone to sleep manually).
+  - Afterwards the adrenaline wears off: all crew drop to 0 energy and have an "Adrenaline Crash". They stay exhausted until they are fully rested, and a new Panic won't boost them until then.
 
 ### Crew Types
 
