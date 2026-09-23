@@ -132,6 +132,29 @@ namespace SailwindVirtualCrew
             "Godwin", "Elspeth", "Thurstan", "Mathilda", "Eadric", "Beatrix"
         };
 
+        // The female names among the crew pool and the starting crew. A crewman with one gets a female body by
+        // default (the player can change it in the appearance editor).
+        private static readonly HashSet<string> FemaleCrewNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Margot", "Isolde", "Rowena", "Sybil", "Heloise", "Mira",
+            "Petra", "Cecily", "Aveline", "Elspeth", "Mathilda", "Beatrix",
+            "Margit"
+        };
+
+        // Matches any word of the name, so a renamed "FO Mathilda" still counts.
+        internal static bool IsFemaleCrewName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            foreach (var word in name.Split(' ', '-', '\''))
+            {
+                if (FemaleCrewNames.Contains(word.Trim()))
+                    return true;
+            }
+            return false;
+        }
+
         public string CurrentVesselFriendlyName
         {
             get

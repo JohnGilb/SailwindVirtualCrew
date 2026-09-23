@@ -617,6 +617,14 @@ namespace SailwindVirtualCrew
             return actor.HoldTemporaryItem(task, prefab, label);
         }
 
+        /// <summary>The crewman's animated body, if they are aboard and have one.</summary>
+        internal ICrewBodyAnimator TryGetCrewBody(Crewman crewman)
+        {
+            return crewman != null && _actorsByCrew.TryGetValue(crewman, out var actor) && actor.IsValid
+                ? actor.Body
+                : null;
+        }
+
         internal void ReleaseTemporaryItem(Crewman crewman, object task)
         {
             if (crewman != null && _actorsByCrew.TryGetValue(crewman, out var actor))
@@ -1188,6 +1196,7 @@ namespace SailwindVirtualCrew
             }
 
             internal bool HasAnimatedBody => _visualAgent != null && _visualAgent.Body != null;
+            internal ICrewBodyAnimator Body => _visualAgent != null ? _visualAgent.Body : null;
 
             internal void SetBodyAction(CrewBodyAction action, Transform target)
             {

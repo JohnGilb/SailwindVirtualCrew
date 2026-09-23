@@ -9,6 +9,7 @@ namespace SailwindVirtualCrew
         private static readonly int windowId = "VirtualCrewRosterWindow".GetHashCode();
 
         private WindowResizer _resizer;
+        private CrewAppearanceWindow _appearanceWindow;
         private GUIStyle _leftButtonStyle;
         private GUIStyle _wrappedLabelStyle;
         private bool _stylesDarkMode;
@@ -122,14 +123,22 @@ namespace SailwindVirtualCrew
             }
             if (selectedShipCrew != null)
             {
+                // A long name, role and status make the crew rows wider than the window, and the scroll view
+                // widens with them. Held to the visible width, the controls below stay on screen regardless.
+                GUILayout.BeginVertical(GUILayout.Width(GetVisibleContentWidth()));
                 GUILayout.Label(StatLine(selectedShipCrew));
                 if (!_renamingShipCrew)
                 {
+                    GUILayout.BeginHorizontal();
                     if (GUILayout.Button("Rename", GUILayout.Width(80)))
                     {
                         _renamingShipCrew = true;
                         crewRenameBuffer = selectedShipCrew.Name;
                     }
+                    if (PlayerModelCrewBodies.IsEnabled && GUILayout.Button("Edit Appearance", GUILayout.Width(150)))
+                        GetAppearanceWindow()?.Open(selectedShipCrew);
+                    GUILayout.FlexibleSpace();
+                    GUILayout.EndHorizontal();
                 }
                 else
                 {
@@ -191,6 +200,7 @@ namespace SailwindVirtualCrew
                     crewRenameBuffer = "";
                     _renamingShipCrew = false;
                 }
+                GUILayout.EndVertical();
             }
 
             // ── Available at Port ────────────────────────────────────────────
@@ -243,6 +253,24 @@ namespace SailwindVirtualCrew
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        // The window's inner width, less its padding and room for the vertical scrollbar.
+        private float GetVisibleContentWidth()
+        {
+            float width = windowRect.width
+                - GUI.skin.window.padding.horizontal
+                - GUI.skin.verticalScrollbar.fixedWidth
+                - GUI.skin.verticalScrollbar.margin.horizontal
+                - 8f;
+            return Mathf.Max(200f, width);
+        }
+
+        private CrewAppearanceWindow GetAppearanceWindow()
+        {
+            if (_appearanceWindow == null)
+                _appearanceWindow = GetComponent<CrewAppearanceWindow>();
+            return _appearanceWindow;
         }
 
         private void SyncTextInputHotkeySuppression()

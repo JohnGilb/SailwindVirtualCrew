@@ -73,14 +73,35 @@ namespace SailwindVirtualCrew
         // A crewman wears their saved look; one without a look yet gets one, which is kept on them to be saved.
         private static ICrewBodyAnimator TryCreateAnimatedBody(Transform root, string id, Crewman crew)
         {
-            string seed = crew != null && !string.IsNullOrEmpty(crew.Id) ? crew.Id : id;
-            var body = PlayerModelCrewBodies.TryCreate(root, "VC " + id, crew?.Appearance, seed, out string appearanceUsed);
+            if (!PlayerModelCrewBodies.IsEnabled)
+                return null;
+
+            string appearance = crew != null ? ResolveAppearance(crew) : PlayerModelCrewBodies.DefaultAppearance(id, false);
+            if (string.IsNullOrEmpty(appearance))
+                return null;
+
+            var body = PlayerModelCrewBodies.TryCreate(root, "VC " + id, appearance);
             if (body != null && crew != null && string.IsNullOrEmpty(crew.Appearance))
             {
-                crew.SetAppearance(appearanceUsed);
-                CrewDebugLog.Ok(Phase, "Assigned appearance to crew='" + crew.Name + "': " + appearanceUsed);
+                crew.SetAppearance(appearance);
+                CrewDebugLog.Ok(Phase, "Assigned appearance to crew='" + crew.Name + "': " + appearance);
             }
             return body;
+        }
+
+        /// <summary>
+        /// The crewman's saved look, or the one they get before anyone chooses: seeded by their id, and female for
+        /// a female name. Null when the Player Model mod is absent.
+        /// </summary>
+        internal static string ResolveAppearance(Crewman crew)
+        {
+            if (crew == null)
+                return null;
+
+            if (!string.IsNullOrEmpty(crew.Appearance))
+                return crew.Appearance;
+
+            return PlayerModelCrewBodies.DefaultAppearance(crew.Id, VirtualCrewManager.IsFemaleCrewName(crew.Name));
         }
 
         private static void CreateBody(Transform root)

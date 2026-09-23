@@ -170,6 +170,7 @@
     <Compile Include="Utilities\WindAngleUtils.cs" />
     <Compile Include="Windows\VirtualCrewDebugWindow.cs" />
     <Compile Include="Windows\WindowLauncherWindow.cs" />
+    <Compile Include="Windows\CrewAppearanceWindow.cs" />
     <Compile Include="Windows\CrewRosterWindow.cs" />
     <Compile Include="Windows\LookoutWindow.cs" />
     <Compile Include="Windows\DeveloperWindow.cs" />

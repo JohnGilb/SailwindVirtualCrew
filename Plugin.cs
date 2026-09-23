@@ -125,6 +125,7 @@ namespace SailwindVirtualCrew
             gameObject.AddComponent<PilotingWindow>();
             gameObject.AddComponent<SkullingWindow>();
             gameObject.AddComponent<CrewRosterWindow>();
+            gameObject.AddComponent<CrewAppearanceWindow>();
             gameObject.AddComponent<LookoutWindow>();
             gameObject.AddComponent<WorkstationCustomizerWindow>();
             gameObject.AddComponent<FavoriteActionsWindow>();
