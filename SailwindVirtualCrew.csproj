@@ -128,6 +128,7 @@
     <Compile Include="Crew\PlayerModelCrewBodies.cs" />
     <Compile Include="CrewMovement\CrewBoatContext.cs" />
     <Compile Include="CrewMovement\CrewBoatContextResolver.cs" />
+    <Compile Include="CrewMovement\CrewDowntime.cs" />
     <Compile Include="CrewMovement\CrewNavigationCoordinator.cs" />
     <Compile Include="CrewMovement\CrewSpaceMapper.cs" />
     <Compile Include="CrewMovement\Proxy\ProxyBoat.cs" />

@@ -94,6 +94,11 @@ namespace SailwindVirtualCrew
                 if (GUILayout.Button("Restore 60 Stamina (All Crew)"))
                     foreach (var c in VirtualCrewManager.Instance.Crew)
                         c.RestoreStamina(60f);
+                // Downtime only reaches idle crew with a rest location, as in play.
+                if (GUILayout.Button("Light Wander Now (Idle Crew)"))
+                    NotifyDowntimeForced(CrewNavigationCoordinator.Instance.ForceDowntime(CrewDowntimeLevel.LightWander, 0f), "light wander");
+                if (GUILayout.Button("Major Wander Now (Idle Crew, 1s Apart)"))
+                    NotifyDowntimeForced(CrewNavigationCoordinator.Instance.ForceDowntime(CrewDowntimeLevel.MajorWander, 1f), "major wander");
 
                 var workstationCustomizer = GetWorkstationCustomizerWindow();
                 if (workstationCustomizer != null
@@ -105,6 +110,13 @@ namespace SailwindVirtualCrew
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        private static void NotifyDowntimeForced(int count, string label)
+        {
+            NotificationUi.instance?.ShowNotification(count > 0
+                ? count + " crew set to " + label
+                : "No idle crew with a rest location to set to " + label);
         }
 
         private static void DrawInstrumentationControls()

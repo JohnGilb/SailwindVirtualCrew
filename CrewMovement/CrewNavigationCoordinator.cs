@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 namespace SailwindVirtualCrew
 {
-    internal sealed class CrewNavigationCoordinator
+    internal sealed partial class CrewNavigationCoordinator
     {
         private const string Phase = "RuntimeNav";
         private static readonly CrewNavigationCoordinator _instance = new CrewNavigationCoordinator();
@@ -972,7 +972,7 @@ namespace SailwindVirtualCrew
             return chars.Length == 0 ? "crew" : new string(chars);
         }
 
-        private sealed class RuntimeActor
+        private sealed partial class RuntimeActor
         {
             private readonly ProxyNavMeshNavigationProvider _navMeshProvider;
             private readonly CrewBoatContext _context;
@@ -1318,7 +1318,15 @@ namespace SailwindVirtualCrew
                 if (_lookoutActive && ActiveOwner != null)
                     TickLookout();
 
-                if (ActiveOwner == null && !Crew.IsOccupied && _hasRestLocation)
+                if (!IsDowntimeEligible)
+                {
+                    ResetDowntime();
+                }
+                else if (TickDowntime())
+                {
+                    // Wandering, sitting or lying about; see CrewDowntime.
+                }
+                else
                 {
                     if (_returningToRest && _logicAgent.HasArrived)
                     {
@@ -1366,6 +1374,7 @@ namespace SailwindVirtualCrew
                             _context.WorldBoat.TransformDirection(_bodyLieAlongLocal),
                             _context.WorldBoat.TransformDirection(_bodyLieUpLocal));
                 }
+                ApplyDowntimePose(body);
 
                 bool propPlaced = false;
                 if (_frameHeldItemFrame == Time.frameCount && _frameHeldItem)
@@ -1373,7 +1382,7 @@ namespace SailwindVirtualCrew
                 else if (_heldProp != null)
                     propPlaced = body.SetHeldItem(_heldProp.Transform, false);
 
-                body.Tick(deltaTime);
+                body.Tick(ScaleBodyDeltaForDowntime(deltaTime));
 
                 if (_heldProp != null)
                 {
@@ -1862,6 +1871,8 @@ namespace SailwindVirtualCrew
 
             internal void RefreshRestLocation()
             {
+                // A new rest location is an order: back to it, and the idle clock starts again.
+                ResetDowntime();
                 _hasRestLocation = VirtualCrewManager.Instance.TryGetCrewRestLocation(Crew, out _restLocalPosition, out _restLocalRotation);
                 if (!_hasRestLocation)
                     return;

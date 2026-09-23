@@ -16,6 +16,15 @@ namespace SailwindVirtualCrew
         Rope,
     }
 
+    /// <summary>Ways to sit on the deck itself (the Player Model mod's floor seat poses).</summary>
+    internal enum CrewSeatPose
+    {
+        LegsOut,
+        CrossLegged,
+        KneeUp,
+        KneesHugged,
+    }
+
     /// <summary>
     /// An animated crew body. Callers set the per-frame inputs and then call Tick once the root has been placed.
     /// Everything but SpeedMps is per-frame: one frame without the call and the body eases out of it.
@@ -31,6 +40,8 @@ namespace SailwindVirtualCrew
         bool SetHeldItem(Transform item, bool big);
         // Lies on the back: head at headWorld, feet toward alongWorld, chest toward upWorld.
         void SetLying(Vector3 headWorld, Vector3 alongWorld, Vector3 upWorld);
+        // Sits on the deck: hip joints at hipsWorld, facing forwardWorld, over a floor at floorWorldY.
+        void SetSeat(Vector3 hipsWorld, Vector3 forwardWorld, CrewSeatPose pose, float floorWorldY);
         // Re-dresses the body in place in another look (a PlayerAppearance string).
         void RefreshAppearance(string appearance);
         void Tick(float deltaTime);
@@ -319,6 +330,23 @@ namespace SailwindVirtualCrew
         {
             if (!_faulted)
                 _body.SetLying(headWorld, alongWorld, upWorld);
+        }
+
+        public void SetSeat(Vector3 hipsWorld, Vector3 forwardWorld, CrewSeatPose pose, float floorWorldY)
+        {
+            if (!_faulted)
+                _body.SetSeat(hipsWorld, forwardWorld, ToSeatPose(pose), floorWorldY);
+        }
+
+        private static SeatPose ToSeatPose(CrewSeatPose pose)
+        {
+            switch (pose)
+            {
+                case CrewSeatPose.CrossLegged: return SeatPose.FloorCrossLegged;
+                case CrewSeatPose.KneeUp: return SeatPose.FloorKneeUp;
+                case CrewSeatPose.KneesHugged: return SeatPose.FloorKneesHugged;
+                default: return SeatPose.FloorLegsOut;
+            }
         }
 
         public void RefreshAppearance(string appearance)
