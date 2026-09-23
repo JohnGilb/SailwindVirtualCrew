@@ -9,7 +9,7 @@ namespace SailwindVirtualCrew
         private static readonly Vector3 NpcBodyScale = Vector3.one;
         private static readonly List<GameObject> _cachedTemplates = new List<GameObject>();
 
-        internal static CrewAgent SpawnTestCrewVisual(CrewBoatContext context, Vector3 localPosition, Quaternion localRotation, string id = "test-crew-001", int modelIndex = 0)
+        internal static CrewAgent SpawnTestCrewVisual(CrewBoatContext context, Vector3 localPosition, Quaternion localRotation, string id = "test-crew-001", int modelIndex = 0, string appearanceSeed = null)
         {
             var root = new GameObject("VC_VisualCrew_" + id);
             root.transform.SetParent(context.WorldBoat, false);
@@ -17,11 +17,13 @@ namespace SailwindVirtualCrew
             root.transform.localRotation = localRotation;
             root.transform.localScale = Vector3.one;
 
-            if (!TryCreateNpcBody(root.transform, modelIndex))
+            var animatedBody = PlayerModelCrewBodies.TryCreate(root.transform, "VC " + id, appearanceSeed ?? id);
+            if (animatedBody == null && !TryCreateNpcBody(root.transform, modelIndex))
                 CreateBody(root.transform);
 
-            var agent = new CrewAgent(id, root);
-            CrewDebugLog.Ok(Phase, "Spawned visual crew id='" + agent.Id + "' modelIndex=" + modelIndex);
+            var agent = new CrewAgent(id, root, animatedBody);
+            CrewDebugLog.Ok(Phase, "Spawned visual crew id='" + agent.Id + "' modelIndex=" + modelIndex
+                + " body=" + (animatedBody != null ? "PlayerModel" : "static"));
             CrewDebugLog.Ok(Phase, "Parent worldBoat='" + context.WorldBoat.name + "'");
             LogPose(agent);
             return agent;
@@ -40,6 +42,32 @@ namespace SailwindVirtualCrew
                 "Local pose=pos" + Format(t.localPosition)
                 + ", rot" + Format(t.localEulerAngles)
                 + ", parent='" + (t.parent ? t.parent.name : "null") + "'");
+        }
+
+        /// <summary>
+        /// Swap a static body for a Player Model one, for crew spawned before its NPC template had loaded.
+        /// </summary>
+        internal static bool TryUpgradeToAnimatedBody(CrewAgent agent, string appearanceSeed)
+        {
+            if (agent == null || !agent.VisualRoot || agent.Body != null)
+                return false;
+
+            var root = agent.VisualRoot.transform;
+            var animatedBody = PlayerModelCrewBodies.TryCreate(root, "VC " + agent.Id, appearanceSeed ?? agent.Id);
+            if (animatedBody == null)
+                return false;
+
+            // The static bodies are the only children named VC_VisualCrew_*; the Player Model body is "Body".
+            for (int i = root.childCount - 1; i >= 0; i--)
+            {
+                var child = root.GetChild(i);
+                if (child.name.StartsWith("VC_VisualCrew_"))
+                    Object.Destroy(child.gameObject);
+            }
+
+            agent.AttachBody(animatedBody);
+            CrewDebugLog.Ok(Phase, "Upgraded visual crew id='" + agent.Id + "' to a Player Model body");
+            return true;
         }
 
         private static void CreateBody(Transform root)

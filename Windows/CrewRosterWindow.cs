@@ -102,6 +102,15 @@ namespace SailwindVirtualCrew
             {
                 bool sel = c == selectedShipCrew;
                 string fatigue = DeveloperMode.IsEnabled ? "" : $"  [{c.FatigueTag}]";
+                // Sleep status is shown even in developer mode. Asleep replaces the energy tag
+                // (except an Adrenaline Crash, which is worth keeping visible).
+                var sleep = c.CurrentTask as SleepRequest;
+                if (sleep != null && sleep.Status == WorkRequestStatus.InProgress)
+                    fatigue = c.AdrenalineCrash ? "  [Sleeping]  [Adrenaline Crash]" : "  [Sleeping]";
+                else if (sleep != null && sleep.Status == WorkRequestStatus.Positioning)
+                    fatigue += "  [Going to bed]";
+                else if (sleep != null && sleep.Status == WorkRequestStatus.Open)
+                    fatigue += "  [Waiting for bed]";
                 string roleName = c.Role.DisplayName();
                 string shiftTag = c.Shift.DisplayTag();
                 string label = sel ? $"► {c.Name}  ({roleName}){shiftTag}{fatigue}" : $"  {c.Name}  ({roleName}){shiftTag}{fatigue}";

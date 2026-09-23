@@ -50,6 +50,12 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\SailwindVirtualCrew - Local\Dependencies\ModSaveBackups.dll</HintPath>
     </Reference>
+    <!-- Optional at runtime: only used when the Sailwind Player Model plugin is loaded. Not copied to output. -->
+    <Reference Include="SailwindPlayerModel">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\SailwindVirtualCrew - Local\Dependencies\SailwindPlayerModel.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -114,6 +120,7 @@
     <Compile Include="Crew\Crewman.cs" />
     <Compile Include="Crew\CrewSoundPlayer.cs" />
     <Compile Include="Crew\CrewVisualFactory.cs" />
+    <Compile Include="Crew\PlayerModelCrewBodies.cs" />
     <Compile Include="CrewMovement\CrewBoatContext.cs" />
     <Compile Include="CrewMovement\CrewBoatContextResolver.cs" />
     <Compile Include="CrewMovement\CrewNavigationCoordinator.cs" />

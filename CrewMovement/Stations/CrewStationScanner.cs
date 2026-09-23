@@ -85,7 +85,7 @@ namespace SailwindVirtualCrew
         {
             Transform t = control.transform;
             Vector3 anchorWorld = GetStationAnchorWorld(control, typeName);
-            Vector3 standWorld = anchorWorld + t.forward * standDistance;
+            Vector3 standWorld = anchorWorld + GetStandDirection(t, typeName) * standDistance;
             Vector3 requestedLocal = _context.WorldBoat.InverseTransformPoint(standWorld);
             Vector3 projectedLocal = requestedLocal;
             bool projected = false;
@@ -176,6 +176,27 @@ namespace SailwindVirtualCrew
             hitWorld = bestWorld;
             CrewDebugLog.Ok(Phase, "Helm station projected to highest deck local=" + Format(bestLocal));
             return true;
+        }
+
+        // A steering wheel turns about its local X, so its forward lies in the plane of the rim. The handles of
+        // every vanilla wheel sit on the -X side of the pivot, which is where the helmsman stands. Measured from
+        // points so a mirrored transform keeps its sign. A tiller (axis near vertical) keeps the old direction.
+        private Vector3 GetStandDirection(Transform t, string typeName)
+        {
+            if (typeName != "helm")
+                return t.forward;
+
+            Vector3 up = _context.WorldBoat.up;
+            Vector3 handleSide = t.position - t.TransformPoint(Vector3.right);
+            if (handleSide.sqrMagnitude < 1e-8f)
+                return t.forward;
+
+            handleSide.Normalize();
+            Vector3 flat = Vector3.ProjectOnPlane(handleSide, up);
+            if (flat.sqrMagnitude < 0.25f)
+                return t.forward;
+
+            return flat.normalized;
         }
 
         private static Vector3 GetStationAnchorWorld(Component control, string typeName)

@@ -12,6 +12,7 @@ using UnityEngine.Diagnostics;
 namespace SailwindVirtualCrew
 {
     [BepInPlugin(PLUGIN_ID, PLUGIN_NAME, PLUGIN_VERSION)]
+    [BepInDependency(PlayerModelCrewBodies.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public const string PLUGIN_ID = "com.zorkinian.virtualcrew";
@@ -29,6 +30,7 @@ namespace SailwindVirtualCrew
         internal static ConfigEntry<bool> ExtraWorkingStaminaDrain;
         internal static ConfigEntry<bool> InstrumentationEnabled;
         internal static ConfigEntry<bool> LockWindowPositions;
+        internal static ConfigEntry<bool> UsePlayerModelBodies;
         internal static ConfigEntry<string> InstrumentationOutputDirectory;
         internal static ConfigEntry<float> InstrumentationFlushIntervalSeconds;
 
@@ -84,6 +86,12 @@ namespace SailwindVirtualCrew
                 "RequireCrewForProfitPercentAndCargoController",
                 true,
                 "When enabled, VirtualCrew gates Profit Percent and Cargo Controller features behind awake Supercargo/Quartermaster crew. Disable to avoid interacting with those mods.");
+
+            UsePlayerModelBodies = Config.Bind(
+                "Integrations",
+                "UsePlayerModelBodies",
+                true,
+                "When the Sailwind Player Model mod is installed, build crew bodies with it so they walk and put their hands on the helm and winches. Applies to crew spawned after the change.");
 
             LockWindowPositions = Config.Bind("UI", "LockWindowPositions", false,
                 "Prevent Virtual Crew windows from being dragged. Toggled by the Lock/Unlock Windows button in the launcher.");

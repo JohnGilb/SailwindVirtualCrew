@@ -316,7 +316,11 @@ namespace SailwindVirtualCrew
             }
 
             if (actor.BeginRole(task, station.ProjectedLocalStand, GetBowRotation(), "pilot helm='" + station.Id + "'"))
+            {
                 _actorsByOwner[task] = actor;
+                if (station.Control)
+                    actor.SetBodyAction(CrewBodyAction.Helm, station.Control.transform);
+            }
         }
 
         internal void BeginLookout(LookoutTask task)
@@ -932,6 +936,15 @@ namespace SailwindVirtualCrew
             private float _lastAppliedSpeed       = -1f;
             private bool _lookoutSawLand;
             private bool _suppressNextLandDetection;
+            // Player Model body animation: what the hands are on once arrived, and the deck-relative gait speed.
+            private CrewBodyAction _bodyAction;
+            private Transform _bodyActionTarget;
+            // Winch work runs on after positioning completes, so the hands stay on for as long as this task does.
+            private object _bodyActionTask;
+            private Vector3 _lastBodyLocalPosition;
+            private bool _hasLastBodyLocalPosition;
+            private float _nextBodyUpgradeTime;
+            private int _bodyUpgradeAttempts;
             private float _lastLookoutCertaintyGameHour;
             private bool _hasLastLookoutCertaintyGameHour;
 
@@ -947,7 +960,7 @@ namespace SailwindVirtualCrew
                 string id = SafeName(crew.Name);
                 _logicAgent = new ProxyLogicAgent(navMeshProvider.Proxy.Root.transform, startWorld, "VC_LogicAgent_" + id);
                 _logicAgent.SetSpeed(CrewMoveSpeed(crew));
-                _visualAgent = CrewVisualFactory.SpawnTestCrewVisual(context, _logicAgent.CurrentLocalPosition, _logicAgent.CurrentLocalRotation, id, crew.ModelIndex);
+                _visualAgent = CrewVisualFactory.SpawnTestCrewVisual(context, _logicAgent.CurrentLocalPosition, _logicAgent.CurrentLocalRotation, id, crew.ModelIndex, crew.Id);
                 _poseSync = new ProxyToBoatPoseSync(_visualAgent, _logicAgent, context);
                 RefreshRestLocation();
             }
@@ -973,6 +986,7 @@ namespace SailwindVirtualCrew
                 _returningToRest = false;
                 _poseSync.ClearPoseOverride();
                 _poseSync.ClearRotationOverride();
+                SetBodyAction(CrewBodyAction.Crank, winch.transform);
 
                 var destinationWorld = _navMeshProvider.Proxy.Root.transform.TransformPoint(station.ProjectedLocalStand);
                 _initialDistance = Mathf.Max(0.01f, Vector3.Distance(_logicAgent.CurrentLocalPosition, station.ProjectedLocalStand));
@@ -1006,6 +1020,7 @@ namespace SailwindVirtualCrew
                 _returningToRest = false;
                 _poseSync.ClearPoseOverride();
                 _poseSync.ClearRotationOverride();
+                ClearBodyAction();
                 _initialDistance = Mathf.Max(0.01f, Vector3.Distance(_logicAgent.CurrentLocalPosition, projectedLocal));
                 CrewDebugLog.Ok(Phase, "Role positioning started crew='" + Crew.Name + "' " + label);
                 _logicAgent.SetDestination(destinationWorld, projectedLocal, teleportIfUnreachable: true, unreachableTeleportDelay: GetPositioningDelay());
@@ -1027,6 +1042,7 @@ namespace SailwindVirtualCrew
                 _returningToRest = false;
                 _poseSync.ClearPoseOverride();
                 _poseSync.ClearRotationOverride();
+                ClearBodyAction();
                 Vector3 localOffset = _context.WorldBoat.InverseTransformDirection(arrivalWorldOffset);
                 _poseSync.SetPoseOverride(destinationLocal + localOffset, arrivalRotation);
                 CrewDebugLog.Ok(Phase, "Teleported to role crew='" + Crew.Name + "' dest=" + destinationLocal);
@@ -1077,6 +1093,41 @@ namespace SailwindVirtualCrew
             }
 
             internal void Tick()
+            {
+                TickMotion();
+                TickBody();
+            }
+
+            internal void SetBodyAction(CrewBodyAction action, Transform target)
+            {
+                _bodyAction = target ? action : CrewBodyAction.None;
+                _bodyActionTarget = target;
+                _bodyActionTask = null;
+            }
+
+            private void ClearBodyAction()
+            {
+                _bodyAction = CrewBodyAction.None;
+                _bodyActionTarget = null;
+                _bodyActionTask = null;
+            }
+
+            private bool IsBodyActionActive()
+            {
+                if (_bodyAction == CrewBodyAction.None)
+                    return false;
+
+                if (ActiveOwner != null)
+                    return _workingLogged;
+
+                if (_bodyActionTask != null && Crew.CurrentTask == _bodyActionTask && !_logicAgent.HasActiveDestination)
+                    return true;
+
+                ClearBodyAction();
+                return false;
+            }
+
+            private void TickMotion()
             {
                 float speed = CrewMoveSpeed(Crew);
                 if (speed != _lastAppliedSpeed)
@@ -1137,6 +1188,59 @@ namespace SailwindVirtualCrew
                 _poseSync.Tick();
             }
 
+            // Runs after the pose sync has placed the visual root, so the body is posed where it is drawn.
+            private void TickBody()
+            {
+                if (_visualAgent == null || !_visualAgent.VisualRoot)
+                    return;
+
+                var body = _visualAgent.Body;
+                if (body == null)
+                {
+                    TryUpgradeBody();
+                    return;
+                }
+
+                float deltaTime = Time.deltaTime;
+                body.SpeedMps = MeasureDeckSpeed(_visualAgent.VisualRoot.transform.localPosition, deltaTime);
+                if (IsBodyActionActive())
+                    body.SetAction(_bodyAction, _bodyActionTarget);
+                body.Tick(deltaTime);
+            }
+
+            // Horizontal speed across the deck. The root lives in boat space, so the boat's own motion never
+            // shows up as walking. Snaps (teleports, pose overrides) read as standing still, not a sprint.
+            private float MeasureDeckSpeed(Vector3 localPosition, float deltaTime)
+            {
+                Vector3 delta = localPosition - _lastBodyLocalPosition;
+                bool hadLast = _hasLastBodyLocalPosition;
+                _lastBodyLocalPosition = localPosition;
+                _hasLastBodyLocalPosition = true;
+                if (!hadLast || deltaTime <= 0f)
+                    return 0f;
+
+                delta.y = 0f;
+                float speed = _context.WorldBoat.TransformVector(delta).magnitude / deltaTime;
+                return speed > MaxBodyGaitSpeed ? 0f : speed;
+            }
+
+            private void TryUpgradeBody()
+            {
+                if (_bodyUpgradeAttempts >= MaxBodyUpgradeAttempts || Time.time < _nextBodyUpgradeTime)
+                    return;
+
+                _nextBodyUpgradeTime = Time.time + BodyUpgradeRetrySeconds;
+                if (!PlayerModelCrewBodies.IsEnabled)
+                    return;
+
+                _bodyUpgradeAttempts++;
+                CrewVisualFactory.TryUpgradeToAnimatedBody(_visualAgent, Crew.Id);
+            }
+
+            private const float MaxBodyGaitSpeed = 8f;
+            private const float BodyUpgradeRetrySeconds = 2f;
+            private const int MaxBodyUpgradeAttempts = 15;
+
             internal float GetPositioningProgress()
             {
                 if (ActiveOwner == null)
@@ -1153,6 +1257,12 @@ namespace SailwindVirtualCrew
 
             internal void Complete()
             {
+                // The trim, halyard and sail storage requests complete positioning on arrival and then work the
+                // winch themselves; keep the hands on it until the crewman's task changes.
+                if (_bodyAction == CrewBodyAction.Crank && _workingLogged && Crew.CurrentTask != null)
+                    _bodyActionTask = Crew.CurrentTask;
+                else
+                    ClearBodyAction();
                 ActiveOwner = null;
                 ActiveStation = null;
                 _initialDistance = 0f;
@@ -1183,6 +1293,7 @@ namespace SailwindVirtualCrew
                 _poseSync.ClearRotationOverride();
                 CrewDebugLog.Ok(Phase, "Concrete positioning cancelled crew='" + Crew.Name + "'");
                 Complete();
+                ClearBodyAction();
             }
 
             private void TickLookout()
