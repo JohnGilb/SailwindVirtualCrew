@@ -9,6 +9,10 @@ namespace SailwindVirtualCrew
     /// one or more free runs: vertical stretches between the structure the run rests on and the structure (or height
     /// cap) above it. Several runs per column cover overhangs, shelves and stacked decks; runs whose floors step up
     /// column by column follow a sloped hull.
+    ///
+    /// A run's top is either real structure (a deck or beam above) or just where painting stopped looking (the painter's
+    /// height limit); the latter is marked Capped. How high cargo may be stacked is the area's StackHeight, applied at
+    /// solve time, so it can change without repainting: see EffectiveCeiling.
     /// </summary>
     internal sealed class CargoArea
     {
@@ -19,10 +23,18 @@ namespace SailwindVirtualCrew
         internal const float MinConnectOverlap = 0.2f;
         internal const float MaxFloorStep = 0.35f;
 
+        // Tops within this of each other are the same top (saved heights are rounded to the millimetre).
+        private const float SameTopTolerance = 0.002f;
+
+        // Islands whose average floors are within this of each other are on the same level (see GetLevel).
+        internal const float LevelSeparation = 0.5f;
+
         internal struct Run
         {
             public float FloorY;
             public float CeilingY;
+            // The top is where painting stopped looking, not structure: the space may well continue above it.
+            public bool Capped;
 
             public float Height => CeilingY - FloorY;
         }
@@ -42,9 +54,12 @@ namespace SailwindVirtualCrew
             public Vector3 Max;
             public float MinHeight;
             public float MaxHeight;
+            public int Level;
         }
 
         private readonly Dictionary<long, List<Run>> columns = new Dictionary<long, List<Run>>();
+        private readonly Dictionary<RunId, int> levelByRun = new Dictionary<RunId, int>();
+        private int levelsVersion = -1;
 
         internal int RunCount { get; private set; }
         internal int ColumnCount => columns.Count;
@@ -53,6 +68,35 @@ namespace SailwindVirtualCrew
         internal int Version { get; private set; }
 
         internal float FloorAreaSquareMeters => ColumnCount * CellSize * CellSize;
+
+        internal const float DefaultStackHeight = 2.5f;
+        internal const float MinStackHeight = 0.5f;
+        internal const float MaxStackHeight = 5f;
+        private float stackHeight = DefaultStackHeight;
+
+        /// <summary>How high above its floor cargo may be stacked in this area.</summary>
+        internal float StackHeight
+        {
+            get => stackHeight;
+            set
+            {
+                float clamped = Mathf.Clamp(value, MinStackHeight, MaxStackHeight);
+                if (Mathf.Approximately(clamped, stackHeight))
+                    return;
+                stackHeight = clamped;
+                Version++;
+            }
+        }
+
+        /// <summary>
+        /// The highest cargo may reach in a run: the stack height above its floor, and no higher than real structure
+        /// above. A capped top is only where painting stopped, so it doesn't limit anything.
+        /// </summary>
+        internal float EffectiveCeiling(Run run)
+        {
+            float stackTop = run.FloorY + stackHeight;
+            return run.Capped ? stackTop : Mathf.Min(run.CeilingY, stackTop);
+        }
 
         internal float VolumeCubicMeters
         {
@@ -66,19 +110,22 @@ namespace SailwindVirtualCrew
             }
         }
 
-        // Save format: base64 of a version byte, a run count, then per run the column (two int16 cell indices) and the
-        // floor and ceiling heights (two int16 millimetres). 8 bytes a run keeps a large hold to tens of KB.
-        private const byte SaveFormatVersion = 1;
+        // Save format: base64 of a version byte, the stack height (int16 millimetres), a run count, then per run the
+        // column (two int16 cell indices), the floor and ceiling heights (two int16 millimetres) and a flags byte (bit 0:
+        // capped). 9 bytes a run keeps a large hold to tens of KB. Version 1 had no stack height and no flags byte.
+        private const byte SaveFormatVersion = 2;
+        private const int RunCountOffset = 3;
 
         internal string ToSaveString()
         {
             if (RunCount == 0)
                 return null;
 
-            using (var stream = new System.IO.MemoryStream(5 + RunCount * 8))
+            using (var stream = new System.IO.MemoryStream(RunCountOffset + 4 + RunCount * 9))
             using (var writer = new System.IO.BinaryWriter(stream))
             {
                 writer.Write(SaveFormatVersion);
+                writer.Write((short)ToMillimetres(stackHeight));
                 writer.Write(0);
                 int written = 0;
                 foreach (var painted in EnumerateRuns())
@@ -91,17 +138,21 @@ namespace SailwindVirtualCrew
                     writer.Write((short)painted.Iz);
                     writer.Write((short)ToMillimetres(painted.Run.FloorY));
                     writer.Write((short)ToMillimetres(painted.Run.CeilingY));
+                    writer.Write((byte)(painted.Run.Capped ? 1 : 0));
                     written++;
                 }
 
                 writer.Flush();
-                stream.Position = 1;
+                stream.Position = RunCountOffset;
                 writer.Write(written);
                 return System.Convert.ToBase64String(stream.ToArray());
             }
         }
 
-        /// <summary>Reads an area written by <see cref="ToSaveString"/>; returns an empty area for missing or unreadable data.</summary>
+        /// <summary>
+        /// Reads an area written by <see cref="ToSaveString"/>; returns an empty area for missing or unreadable data. Areas
+        /// from version 1 have every top treated as real structure; repainting over them records which tops are capped.
+        /// </summary>
         internal static CargoArea FromSaveString(string data)
         {
             var area = new CargoArea();
@@ -112,8 +163,12 @@ namespace SailwindVirtualCrew
             {
                 using (var reader = new System.IO.BinaryReader(new System.IO.MemoryStream(System.Convert.FromBase64String(data))))
                 {
-                    if (reader.ReadByte() != SaveFormatVersion)
+                    byte version = reader.ReadByte();
+                    if (version != 1 && version != SaveFormatVersion)
                         return area;
+
+                    if (version >= 2)
+                        area.stackHeight = Mathf.Clamp(reader.ReadInt16() / 1000f, MinStackHeight, MaxStackHeight);
 
                     int count = reader.ReadInt32();
                     for (int i = 0; i < count; i++)
@@ -122,7 +177,8 @@ namespace SailwindVirtualCrew
                         int iz = reader.ReadInt16();
                         float floorY = reader.ReadInt16() / 1000f;
                         float ceilingY = reader.ReadInt16() / 1000f;
-                        area.AddRun(ix, iz, new Run { FloorY = floorY, CeilingY = ceilingY });
+                        bool capped = version >= 2 && (reader.ReadByte() & 1) != 0;
+                        area.AddRun(ix, iz, new Run { FloorY = floorY, CeilingY = ceilingY, Capped = capped });
                     }
                 }
             }
@@ -188,9 +244,21 @@ namespace SailwindVirtualCrew
                 columns[key] = column;
             }
 
-            foreach (var existing in column)
-                if (existing.FloorY <= run.FloorY && existing.CeilingY >= run.CeilingY)
-                    return;
+            for (int i = 0; i < column.Count; i++)
+            {
+                var existing = column[i];
+                if (existing.FloorY > run.FloorY || existing.CeilingY < run.CeilingY)
+                    continue;
+
+                // Already covered. A fresh probe reaching the same top knows best whether that top is capped.
+                if (Mathf.Abs(existing.CeilingY - run.CeilingY) < SameTopTolerance && existing.Capped != run.Capped)
+                {
+                    existing.Capped = run.Capped;
+                    column[i] = existing;
+                    Version++;
+                }
+                return;
+            }
 
             int before = column.Count;
             for (int i = column.Count - 1; i >= 0; i--)
@@ -199,8 +267,17 @@ namespace SailwindVirtualCrew
                 if (existing.FloorY > run.CeilingY + 0.001f || existing.CeilingY < run.FloorY - 0.001f)
                     continue;
 
+                // The merged run's top is the higher of the two, and capped or not as that one was.
                 run.FloorY = Mathf.Min(run.FloorY, existing.FloorY);
-                run.CeilingY = Mathf.Max(run.CeilingY, existing.CeilingY);
+                if (existing.CeilingY > run.CeilingY + SameTopTolerance)
+                {
+                    run.CeilingY = existing.CeilingY;
+                    run.Capped = existing.Capped;
+                }
+                else
+                {
+                    run.CeilingY = Mathf.Max(run.CeilingY, existing.CeilingY);
+                }
                 column.RemoveAt(i);
             }
 
@@ -253,15 +330,9 @@ namespace SailwindVirtualCrew
         internal List<Island> FindIslands()
         {
             var islands = new List<Island>();
-            var visited = new HashSet<RunId>();
-            var queue = new Queue<PaintedRun>();
             var islandColumns = new HashSet<long>();
-
-            foreach (var start in EnumerateRuns())
+            foreach (var members in CollectIslands())
             {
-                if (!visited.Add(new RunId(start)))
-                    continue;
-
                 var island = new Island
                 {
                     Min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue),
@@ -270,13 +341,84 @@ namespace SailwindVirtualCrew
                     MaxHeight = float.MinValue
                 };
                 islandColumns.Clear();
+                foreach (var painted in members)
+                {
+                    islandColumns.Add(Key(painted.Ix, painted.Iz));
+                    Accumulate(ref island, painted);
+                }
 
+                island.ColumnCount = islandColumns.Count;
+                island.Level = GetLevel(members[0].Ix, members[0].Iz, members[0].Run.FloorY);
+                islands.Add(island);
+            }
+
+            islands.Sort((a, b) => b.Volume.CompareTo(a.Volume));
+            return islands;
+        }
+
+        /// <summary>
+        /// Which level a painted run belongs to: its island's rank from the bottom, counting islands whose average
+        /// floors are within <see cref="LevelSeparation"/> of each other as one level (a hold split by a bulkhead). The
+        /// solver fills level 0 (the lowest, usually the hold) before putting anything on level 1, and so on.
+        /// </summary>
+        internal int GetLevel(int ix, int iz, float floorY)
+        {
+            if (levelsVersion != Version)
+                ComputeLevels();
+            return levelByRun.TryGetValue(new RunId(ix, iz, floorY), out int level) ? level : 0;
+        }
+
+        private void ComputeLevels()
+        {
+            levelByRun.Clear();
+            levelsVersion = Version;
+
+            var islands = CollectIslands();
+            var meanFloors = new float[islands.Count];
+            var order = new int[islands.Count];
+            for (int i = 0; i < islands.Count; i++)
+            {
+                float sum = 0f;
+                foreach (var painted in islands[i])
+                    sum += painted.Run.FloorY;
+                meanFloors[i] = sum / islands[i].Count;
+                order[i] = i;
+            }
+
+            System.Array.Sort(order, (a, b) => meanFloors[a].CompareTo(meanFloors[b]));
+            int level = 0;
+            float levelFloor = islands.Count > 0 ? meanFloors[order[0]] : 0f;
+            foreach (int index in order)
+            {
+                if (meanFloors[index] > levelFloor + LevelSeparation)
+                {
+                    level++;
+                    levelFloor = meanFloors[index];
+                }
+
+                foreach (var painted in islands[index])
+                    levelByRun[new RunId(painted)] = level;
+            }
+        }
+
+        // The runs of each island: runs connected across neighbouring columns (see AreConnected).
+        private List<List<PaintedRun>> CollectIslands()
+        {
+            var islands = new List<List<PaintedRun>>();
+            var visited = new HashSet<RunId>();
+            var queue = new Queue<PaintedRun>();
+
+            foreach (var start in EnumerateRuns())
+            {
+                if (!visited.Add(new RunId(start)))
+                    continue;
+
+                var members = new List<PaintedRun>();
                 queue.Enqueue(start);
                 while (queue.Count > 0)
                 {
                     var current = queue.Dequeue();
-                    islandColumns.Add(Key(current.Ix, current.Iz));
-                    Accumulate(ref island, current);
+                    members.Add(current);
 
                     for (int n = 0; n < 4; n++)
                     {
@@ -297,11 +439,9 @@ namespace SailwindVirtualCrew
                     }
                 }
 
-                island.ColumnCount = islandColumns.Count;
-                islands.Add(island);
+                islands.Add(members);
             }
 
-            islands.Sort((a, b) => b.Volume.CompareTo(a.Volume));
             return islands;
         }
 
@@ -335,10 +475,15 @@ namespace SailwindVirtualCrew
             private readonly float floorY;
 
             internal RunId(PaintedRun painted)
+                : this(painted.Ix, painted.Iz, painted.Run.FloorY)
             {
-                ix = painted.Ix;
-                iz = painted.Iz;
-                floorY = painted.Run.FloorY;
+            }
+
+            internal RunId(int ix, int iz, float floorY)
+            {
+                this.ix = ix;
+                this.iz = iz;
+                this.floorY = floorY;
             }
 
             public bool Equals(RunId other)

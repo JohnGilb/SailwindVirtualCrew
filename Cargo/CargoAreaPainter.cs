@@ -24,7 +24,7 @@ namespace SailwindVirtualCrew
     }
 
     /// <summary>
-    /// Developer spike: the player "paints" a cargo area by walking through it. A few times a second, free space is
+    /// The player "paints" a cargo area by walking through it (from the Supercargo window, or the paint hotkey). A few times a second, free space is
     /// flood-filled outwards from the player's feet, out to the brush radius. Each 10cm column in a height band around
     /// the player's floor is split into free runs: stretches of the column that no boat structure touches. A run is
     /// kept when it rests on structure, has enough headroom, and connects to an already-kept run in a neighbouring
@@ -113,7 +113,17 @@ namespace SailwindVirtualCrew
         private static int stampQueries;
 
         internal static CargoPaintMode Mode { get; private set; } = CargoPaintMode.Off;
-        internal static bool ShowOverlay { get; set; } = true;
+        // Whether the painted area is shown when not painting (it always shows while painting). Kept in the config.
+        internal static bool ShowOverlay
+        {
+            get => Plugin.ShowCargoArea != null && Plugin.ShowCargoArea.Value;
+            set
+            {
+                // The window's toggle assigns every repaint; only write (and save) the config on a real change.
+                if (Plugin.ShowCargoArea != null && Plugin.ShowCargoArea.Value != value)
+                    Plugin.ShowCargoArea.Value = value;
+            }
+        }
         internal static IEnumerable<RejectedMark> RejectedMarks => Rejected.Values;
         internal static int RejectedCount => Rejected.Count;
         internal static int RejectedVersion { get; private set; }
@@ -193,7 +203,7 @@ namespace SailwindVirtualCrew
             {
                 var island = islands[i];
                 CrewDebugLog.Ok(Phase,
-                    "island[" + i + "] columns=" + island.ColumnCount
+                    "island[" + i + "] level=" + island.Level + " columns=" + island.ColumnCount
                     + " volume=" + island.Volume.ToString("0.00") + "m3"
                     + " min=" + Format(island.Min)
                     + " max=" + Format(island.Max)
@@ -260,7 +270,7 @@ namespace SailwindVirtualCrew
                 {
                     CrewDebugLog.Ok(Phase,
                         "  run floor=" + run.Run.FloorY.ToString("0.000")
-                        + " ceiling=" + run.Run.CeilingY.ToString("0.000")
+                        + " ceiling=" + run.Run.CeilingY.ToString("0.000") + (run.Run.Capped ? " (capped)" : "")
                         + " supported=" + run.Supported);
                 }
 
@@ -359,14 +369,6 @@ namespace SailwindVirtualCrew
 
         internal static void Tick()
         {
-            if (!DeveloperMode.IsEnabled)
-            {
-                if (Mode != CargoPaintMode.Off)
-                    SetMode(CargoPaintMode.Off);
-                CargoAreaOverlay.Hide();
-                return;
-            }
-
             if (Plugin.CargoPaintCycleModeKey != null
                 && Plugin.CargoPaintCycleModeKey.Value.IsDown()
                 && !TextInputHotkeySuppressor.ShouldSuppressFavoriteActionHotkeys)
@@ -705,7 +707,8 @@ namespace SailwindVirtualCrew
                     Lo = lo,
                     Hi = hi,
                     Supported = supported,
-                    Run = new CargoArea.Run { FloorY = floorY, CeilingY = ceilingY }
+                    // A run reaching the top of the band ends where painting stopped looking, not at structure.
+                    Run = new CargoArea.Run { FloorY = floorY, CeilingY = ceilingY, Capped = !covered }
                 });
             }
 

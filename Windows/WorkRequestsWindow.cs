@@ -44,6 +44,7 @@ namespace SailwindVirtualCrew
             var navigateRequests   = manager.NavigateRequests;
             var mooringRequests    = manager.MooringRequests;
             var haulSellRequests   = manager.HaulSellRequests;
+            var haulLoadRequests   = manager.HaulLoadRequests;
             var bailRequests       = manager.BailRequests;
             var swabDecksRequests  = manager.SwabDecksRequests;
             var lanternRequests    = manager.LanternRequests;
@@ -54,7 +55,7 @@ namespace SailwindVirtualCrew
 
             int totalTasks = requests.Count + sailStorageRequests.Count + trimRequests.Count
                            + jibTrimRequests.Count + squareTrimRequests.Count
-                           + navigateRequests.Count + mooringRequests.Count + haulSellRequests.Count + bailRequests.Count + swabDecksRequests.Count + sleepRequests.Count
+                           + navigateRequests.Count + mooringRequests.Count + haulSellRequests.Count + haulLoadRequests.Count + bailRequests.Count + swabDecksRequests.Count + sleepRequests.Count
                            + lanternRequests.Count + lanternRefillRequests.Count
                            + (pilotTask   != null ? 1 : 0)
                            + (lookoutTask != null ? 1 : 0);
@@ -91,6 +92,9 @@ namespace SailwindVirtualCrew
                     taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
                         ? InProgressTaskHeight : OpenTaskHeight;
                 foreach (var r in haulSellRequests)
+                    taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
+                        ? InProgressTaskHeight : OpenTaskHeight;
+                foreach (var r in haulLoadRequests)
                     taskListHeight += (r.Status == WorkRequestStatus.InProgress || r.Status == WorkRequestStatus.Positioning)
                         ? InProgressTaskHeight : OpenTaskHeight;
                 foreach (var r in bailRequests)
@@ -131,6 +135,7 @@ namespace SailwindVirtualCrew
             var navigateRequests   = manager.NavigateRequests;
             var mooringRequests    = manager.MooringRequests;
             var haulSellRequests   = manager.HaulSellRequests;
+            var haulLoadRequests   = manager.HaulLoadRequests;
             var bailRequests       = manager.BailRequests;
             var swabDecksRequests  = manager.SwabDecksRequests;
             var lanternRequests    = manager.LanternRequests;
@@ -143,7 +148,7 @@ namespace SailwindVirtualCrew
 
             if (requests.Count == 0 && sailStorageRequests.Count == 0 && trimRequests.Count == 0
              && jibTrimRequests.Count == 0 && squareTrimRequests.Count == 0
-             && navigateRequests.Count == 0 && mooringRequests.Count == 0 && haulSellRequests.Count == 0 && bailRequests.Count == 0 && swabDecksRequests.Count == 0 && sleepRequests.Count == 0
+             && navigateRequests.Count == 0 && mooringRequests.Count == 0 && haulSellRequests.Count == 0 && haulLoadRequests.Count == 0 && bailRequests.Count == 0 && swabDecksRequests.Count == 0 && sleepRequests.Count == 0
              && lanternRequests.Count == 0 && lanternRefillRequests.Count == 0
              && pilotTask == null && lookoutTask == null)
             {
@@ -379,6 +384,35 @@ namespace SailwindVirtualCrew
                 }
             }
             if (haulToCancel != null) manager.CancelHaulSellRequest(haulToCancel);
+
+            HaulLoadRequest loadToCancel = null;
+            foreach (var load in haulLoadRequests)
+            {
+                if (load.Status == WorkRequestStatus.Open)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[Waiting] " + load.StatusLabel);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) loadToCancel = load;
+                    GUILayout.EndHorizontal();
+                }
+                else if (load.Status == WorkRequestStatus.Positioning)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + load.AssignedCrewman.Name + "] (moving) " + load.StatusLabel);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) loadToCancel = load;
+                    GUILayout.EndHorizontal();
+                    DrawPositioningBar(load.GetPositioningProgress());
+                }
+                else if (load.Status == WorkRequestStatus.InProgress)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("[" + load.AssignedCrewman.Name + "] " + load.StatusLabel);
+                    if (GUILayout.Button("X", GUILayout.Width(28))) loadToCancel = load;
+                    GUILayout.EndHorizontal();
+                    DrawProgressBar(load.GetProgress());
+                }
+            }
+            if (loadToCancel != null) manager.CancelHaulLoadRequest(loadToCancel);
 
             BailRequest bailToCancel = null;
             foreach (var bail in bailRequests)

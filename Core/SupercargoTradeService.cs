@@ -265,7 +265,7 @@ namespace SailwindVirtualCrew
             AttachMarker(item, KeepStampName, "KEEP", new Color(0.1f, 0.45f, 0.9f, 1f));
         }
 
-        private static void AttachMarker(ShipItem item, string markerName, string textValue, Color color)
+        internal static void AttachMarker(ShipItem item, string markerName, string textValue, Color color)
         {
             if (!item)
                 return;
@@ -289,7 +289,7 @@ namespace SailwindVirtualCrew
             DepthTestedTextMaterial.Apply(text);
         }
 
-        private static void RemoveMarker(ShipItem item, string markerName)
+        internal static void RemoveMarker(ShipItem item, string markerName)
         {
             if (!item)
                 return;
@@ -299,7 +299,7 @@ namespace SailwindVirtualCrew
                 Object.Destroy(marker.gameObject);
         }
 
-        private static bool HasMarker(ShipItem item, string markerName)
+        internal static bool HasMarker(ShipItem item, string markerName)
         {
             return item && item.transform.Find(markerName) != null;
         }

@@ -27,6 +27,7 @@ namespace SailwindVirtualCrew
         internal static ConfigEntry<KeyboardShortcut> SupercargoKeepCargoKey;
         internal static ConfigEntry<KeyboardShortcut> CargoControllerGrabPortCargoKey;
         internal static ConfigEntry<KeyboardShortcut> CargoPaintCycleModeKey;
+        internal static ConfigEntry<bool> ShowCargoArea;
         internal static ConfigEntry<KeyboardShortcut> CargoSolverKey;
         internal static ConfigEntry<KeyboardShortcut> CargoSolverClaimKey;
         internal static ConfigEntry<bool> RequireCrewForExternalModFeatures;
@@ -105,7 +106,9 @@ namespace SailwindVirtualCrew
             SupercargoKeepCargoKey = Config.Bind("CrewHotkeys", "SupercargoKeepCargo", new KeyboardShortcut(KeyCode.N));
             CargoControllerGrabPortCargoKey = Config.Bind("CrewHotkeys", "CargoControllerGrabPortCargo", new KeyboardShortcut(KeyCode.Z));
             CargoPaintCycleModeKey = Config.Bind("CrewHotkeys", "CargoPaintCycleMode", new KeyboardShortcut(KeyCode.Semicolon),
-                "Developer mode only: cycle cargo area painting between Paint, Erase and Off.");
+                "Cycle cargo area painting between Paint, Erase and Off.");
+            ShowCargoArea = Config.Bind("UI", "ShowCargoArea", false,
+                "Show the painted cargo area on the boat. Toggled from the Supercargo window.");
             CargoSolverKey = Config.Bind("CrewHotkeys", "CargoSolverPreviewPlace", new KeyboardShortcut(KeyCode.Quote),
                 "Developer mode only: preview where the held or looked-at item would be packed in the painted cargo area; press again on the same item to place it.");
             CargoSolverClaimKey = Config.Bind("CrewHotkeys", "CargoSolverClaimSpot", new KeyboardShortcut(KeyCode.RightBracket),
@@ -174,6 +177,10 @@ namespace SailwindVirtualCrew
                     CargoAreaPainter.Tick();
                 using (PerformanceInstrumentation.Measure("CargoPackingSolver.Tick"))
                     CargoPackingSolver.Tick();
+                using (PerformanceInstrumentation.Measure("CargoLoadService.Tick"))
+                    CargoLoadService.Tick();
+                using (PerformanceInstrumentation.Measure("CargoLoadPlanner.Tick"))
+                    CargoLoadPlanner.Tick();
 
                 if (ResetWindowPositions.Value.IsDown())
                     ResetAllWindowPositions();

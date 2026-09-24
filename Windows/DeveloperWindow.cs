@@ -37,7 +37,7 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 30f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 30f * 31; // developer actions, cargo painting and instrumentation controls
+                height += 30f * 33; // developer actions, cargo painting and instrumentation controls
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Developer Tools");
@@ -162,6 +162,11 @@ namespace SailwindVirtualCrew
                 return;
             }
 
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Stack " + area.StackHeight.ToString("0.0") + "m", GUILayout.Width(90));
+            area.StackHeight = GUILayout.HorizontalSlider(area.StackHeight, CargoArea.MinStackHeight, CargoArea.MaxStackHeight);
+            GUILayout.EndHorizontal();
+
             if (area.Version != _cargoIslandsVersion || area != _cargoIslandsArea)
             {
                 _cargoIslandCount = area.FindIslands().Count;
@@ -214,6 +219,9 @@ namespace SailwindVirtualCrew
                     + CargoPackingSolver.LastSolveMilliseconds.ToString("0") + " ms");
             if (!string.IsNullOrEmpty(CargoPackingSolver.LastMessage))
                 GUILayout.Label(CargoPackingSolver.LastMessage);
+
+            if (GUILayout.Button("Probe moves: " + (CargoPackingSolver.UseRigidbodyMoves ? "Rigidbody" : "Transform + Sync")))
+                CargoPackingSolver.UseRigidbodyMoves = !CargoPackingSolver.UseRigidbodyMoves;
         }
 
         private static void DrawCargoPaintModeButton(string label, CargoPaintMode mode)

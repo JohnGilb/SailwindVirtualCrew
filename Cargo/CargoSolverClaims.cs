@@ -10,16 +10,17 @@ namespace SailwindVirtualCrew
     /// it really fits, looks at it and presses the claim key: "this spot works". The solver then judges that spot by
     /// its own rules and reports each place it disagrees:
     ///
-    ///  - shape assumptions: the solver only tries items upright, turned 0 or 90 degrees, on a 10cm grid;
-    ///  - the painted area: whether it covers the item's footprint, with room under the ceiling;
-    ///  - physics at the exact spot: the drop and support test at the item's own position and heading;
+    ///  - shape assumptions: the solver only tries its poses (90-degree turns), on a 10cm grid;
+    ///  - the painted area: whether it covers every column the item reaches, with room under the ceiling;
+    ///  - physics at the exact spot: the start, drop and support test at the item's own position and orientation;
     ///  - the nearest candidate the solver could have tried: whether the coarse pass keeps it, and what physics says.
     ///
-    /// Each claim is logged and appended to BepInEx/VirtualCrewCargoClaims.tsv, so claims collect into test cases.
+    /// Each claim is logged and appended to BepInEx/VirtualCrewCargoClaims-v3.tsv, so claims collect into test cases.
     /// </summary>
     internal static partial class CargoPackingSolver
     {
-        private const string ClaimsFileName = "VirtualCrewCargoClaims.tsv";
+        // v3: columns changed when the solver moved to real shapes (v2) and then to 90-degree poses (v3).
+        private const string ClaimsFileName = "VirtualCrewCargoClaims-v3.tsv";
 
         internal static void ClaimSpot(ShipItem item)
         {
@@ -47,27 +48,52 @@ namespace SailwindVirtualCrew
             }
 
             var body = item.GetItemRigidbody();
-            if (!body || !TryGetBodyBox(body, out Vector3 boxCenter, out Vector3 size))
+            if (!body)
             {
-                Notify("Can't work out the shape of '" + item.name + "'.");
+                Notify("'" + item.name + "' has no physics body yet.");
+                return;
+            }
+
+            // A claim uses the solver's working state, which a plan in progress (paused between frames) also holds.
+            if (CargoLoadPlanner.IsBusy)
+            {
+                Notify("Still planning cargo; claim again in a moment.");
                 return;
             }
 
             ClearPreview();
             walkCol = context.WalkCol;
+            selectedItem = item;
             selectedBody = body;
 
-            bool previousBackfaces = Physics.queriesHitBackfaces;
+            bool shapeBackfaces = Physics.queriesHitBackfaces;
             Physics.queriesHitBackfaces = true;
             try
             {
+                if (!AcquireShape(item, body))
+                {
+                    Notify("Can't work out the shape of '" + item.name + "'.");
+                    return;
+                }
+
                 BuildCargoColumns();
-                var report = BuildClaimReport(context, area, item, body, boxCenter, size);
+                EnterPhysics();
+                ClaimReport report;
+                try
+                {
+                    report = BuildClaimReport(context, area, item, body);
+                }
+                finally
+                {
+                    LeavePhysics();
+                }
+
                 WriteClaim(report);
             }
             finally
             {
-                Physics.queriesHitBackfaces = previousBackfaces;
+                ReleaseProbe();
+                Physics.queriesHitBackfaces = shapeBackfaces;
             }
         }
 
@@ -75,13 +101,11 @@ namespace SailwindVirtualCrew
         {
             public string Vessel;
             public string Item;
-            public Vector3 Size;
-            public Vector3 Center;
+            public string Shape;
+            public Vector3 Origin;
             public float Bottom;
-            public float Top;
-            public float Yaw;
-            public float YawOffGrid;
-            public float Tilt;
+            public string NearestPose;
+            public float PoseOffAngle;
             public int FootprintColumns;
             public int UnpaintedColumns;
             public string PaintedSummary;
@@ -93,129 +117,144 @@ namespace SailwindVirtualCrew
             public string GridDetail;
         }
 
-        private static ClaimReport BuildClaimReport(CrewBoatContext context, CargoArea area, ShipItem item, ItemRigidbody body, Vector3 boxCenter, Vector3 size)
+        private static ClaimReport BuildClaimReport(CrewBoatContext context, CargoArea area, ShipItem item, ItemRigidbody body)
         {
             var report = new ClaimReport
             {
                 Vessel = context.WorldBoat.name.Replace("(Clone)", "").Trim(),
                 Item = item.name,
-                Size = size
+                Shape = lastShapeSummary
             };
 
             // The item's actual pose, from its physics body in walk-collider space.
             Quaternion rotation = Quaternion.Inverse(walkCol.rotation) * body.transform.rotation;
-            Vector3 center = walkCol.InverseTransformPoint(body.transform.TransformPoint(boxCenter));
-            Vector3 half = size * 0.5f;
-            float bottom = float.MaxValue, top = float.MinValue;
-            for (int i = 0; i < 8; i++)
-            {
-                float y = (center + rotation * new Vector3((i & 1) == 0 ? -half.x : half.x, (i & 2) == 0 ? -half.y : half.y, (i & 4) == 0 ? -half.z : half.z)).y;
-                bottom = Mathf.Min(bottom, y);
-                top = Mathf.Max(top, y);
-            }
+            Vector3 origin = walkCol.InverseTransformPoint(body.transform.position);
 
-            Vector3 forward = rotation * Vector3.forward;
-            float yaw = Mathf.Repeat(Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg, 360f);
-            float gridYaw = Mathf.Round(yaw / 90f) * 90f;
-            report.Center = center;
+            report.Origin = origin;
+            int poseIndex = NearestPose(rotation, out float offAngle);
+            report.NearestPose = probe.Profiles[poseIndex].Pose.Label;
+            report.PoseOffAngle = offAngle;
+
+            // The item's shape exactly as it sits, and the painted runs under the columns it reaches.
+            var rigidbody = body.GetBody();
+            var exactProfile = MeasureProfile(probe, rotation, rigidbody ? rigidbody.centerOfMass : probe.LocalBounds.center);
+            // Its real lowest point, from the measured shape (a tilted bounding box's corner can sit well below it).
+            float bottom = origin.y + exactProfile.BaseY;
             report.Bottom = bottom;
-            report.Top = top;
-            report.Yaw = yaw;
-            report.YawOffGrid = Mathf.DeltaAngle(gridYaw, yaw);
-            report.Tilt = Vector3.Angle(rotation * Vector3.up, Vector3.up);
-
-            // Painted coverage of the footprint (upright, at the item's own heading).
-            Quaternion upright = Quaternion.Euler(0f, yaw, 0f);
-            float floorRest = float.MinValue, minCeiling = float.MaxValue, minFloor = float.MaxValue;
+            int exactIx = Mathf.RoundToInt((origin.x + exactProfile.MinX) / VoxelSize);
+            int exactIz = Mathf.RoundToInt((origin.z + exactProfile.MinZ) / VoxelSize);
             var missing = new List<string>();
-            MeasureFootprint(area, center, upright, half, bottom, top, ref report.FootprintColumns, ref report.UnpaintedColumns,
-                missing, ref floorRest, ref minCeiling, ref minFloor);
-            report.PaintedSummary = report.FootprintColumns == 0
-                ? "no footprint"
-                : (report.FootprintColumns - report.UnpaintedColumns) + "/" + report.FootprintColumns + " columns painted"
-                    + (missing.Count > 0 ? " (unpainted e.g. " + string.Join(" ", missing.ToArray()) + ")" : "")
-                    + (floorRest > float.MinValue ? "; painted floor " + floorRest.ToString("0.00") + " vs item bottom " + bottom.ToString("0.00")
-                        + ", painted ceiling " + minCeiling.ToString("0.00") + " vs item top " + top.ToString("0.00") : "");
+            MeasureCoverage(area, exactProfile, exactIx, exactIz, origin.y, missing,
+                out report.FootprintColumns, out report.UnpaintedColumns, out float paintedRest, out float paintedStart);
+            report.PaintedSummary = (report.FootprintColumns - report.UnpaintedColumns) + "/" + report.FootprintColumns + " columns painted"
+                + (missing.Count > 0 ? " (unpainted e.g. " + string.Join(" ", missing.ToArray()) + ")" : "")
+                + (paintedRest > float.MinValue
+                    ? "; painted floors put its bottom at " + (paintedRest + exactProfile.BaseY).ToString("0.00")
+                        + " (actual " + bottom.ToString("0.00") + "), ceilings and stack height " + area.StackHeight.ToString("0.0")
+                        + "m allow it up to " + (paintedStart + exactProfile.BaseY).ToString("0.00")
+                    : "");
 
-            // Physics at the exact spot, independent of the painting: drop from just above where it sits.
+            // Physics at the exact spot, independent of the painting: start just above where it sits.
             lastSweepHit = null;
-            report.ExactOutcome = EvaluatePose(center.x, center.z, upright, size, bottom - 0.3f, top + 0.05f, bottom - 0.3f,
+            report.ExactOutcome = EvaluatePose(origin.x, origin.z, exactProfile, origin.y - 0.3f, origin.y + ConfirmStartLift,
                 out var exact, out float exactRest, out int exactSupport);
-            report.ExactDetail = DescribeAttempt(exactRest, exactSupport, bottom)
+            report.ExactDetail = DescribeAttempt(exactRest, exactProfile, exactSupport, bottom)
                 + (report.ExactOutcome == Outcome.Valid ? " contacts=" + exact.SideContacts : "");
 
-            // The nearest candidate the solver generates: snapped to 0/90 degrees and the 10cm grid.
-            int yawIndex = Mathf.Abs(Mathf.RoundToInt(gridYaw / 90f)) % 2;
-            float sizeX = yawIndex == 0 ? size.x : size.z;
-            float sizeZ = yawIndex == 0 ? size.z : size.x;
-            int ix = Mathf.RoundToInt((center.x - sizeX * 0.5f) / VoxelSize);
-            int iz = Mathf.RoundToInt((center.z - sizeZ * 0.5f) / VoxelSize);
-            float gridX = ix * VoxelSize + sizeX * 0.5f;
-            float gridZ = iz * VoxelSize + sizeZ * 0.5f;
-            report.GridOffset = new Vector2(gridX - center.x, gridZ - center.z).magnitude;
+            // The nearest candidate the solver generates: snapped to its nearest pose and the 10cm grid.
+            var profile = probe.Profiles[poseIndex];
+            int ix = Mathf.RoundToInt((origin.x + profile.MinX) / VoxelSize);
+            int iz = Mathf.RoundToInt((origin.z + profile.MinZ) / VoxelSize);
+            var candidate = new Candidate { Ix = ix, Iz = iz, PoseIndex = poseIndex };
+            Vector2 gridOrigin = CandidateOrigin(candidate);
+            report.GridOffset = new Vector2(gridOrigin.x - origin.x, gridOrigin.y - origin.z).magnitude;
 
-            if (!TryFindAnchor(area, ix, iz, bottom, size.y, out var anchor))
-            {
-                report.GridCoarse = "anchor column (" + ix + ", " + iz + ") has no painted run at the item's height";
-                return report;
-            }
-
-            int cellsX = Mathf.Max(1, Mathf.CeilToInt((sizeX - 0.001f) / VoxelSize));
-            int cellsZ = Mathf.Max(1, Mathf.CeilToInt((sizeZ - 0.001f) / VoxelSize));
             lastCoarseFailure = null;
-            if (!TryCoarseFit(area, anchor, cellsX, cellsZ, size.y, out float candidateFloor, out float estimatedRest, out float candidateCeiling, out float candidateMinFloor))
+            if (!TryCoarseFit(area, profile, ix, iz, origin.y, out float floorRest, out float estimatedRest, out float startY))
             {
                 report.GridCoarse = "rejected: " + lastCoarseFailure;
                 return report;
             }
 
-            report.GridCoarse = "kept (floorRest=" + candidateFloor.ToString("0.00")
-                + " estRest=" + (estimatedRest > candidateFloor + 50f ? "on-cargo-no-room, tried last" : estimatedRest.ToString("0.00"))
-                + " ceiling=" + candidateCeiling.ToString("0.00") + ")";
+            candidate.FloorRest = floorRest;
+            candidate.EstimatedRest = estimatedRest;
+            candidate.StartY = startY;
+            report.GridCoarse = "kept (floorRestBottom=" + (floorRest + profile.BaseY).ToString("0.00")
+                + " estRest=" + (estimatedRest > floorRest + 50f ? "on-cargo-no-room, tried last" : (estimatedRest + profile.BaseY).ToString("0.00"))
+                + " startBottom=" + (startY + profile.BaseY).ToString("0.00") + ")";
 
-            var candidate = new Candidate
-            {
-                Ix = ix,
-                Iz = iz,
-                YawIndex = yawIndex,
-                FloorRest = candidateFloor,
-                EstimatedRest = estimatedRest,
-                MinCeiling = candidateCeiling,
-                MinFloor = candidateMinFloor
-            };
             lastSweepHit = null;
-            report.GridOutcome = Evaluate(candidate, size, out var gridPlacement, out float gridRest, out int gridSupport);
-            report.GridDetail = DescribeAttempt(gridRest, gridSupport, bottom)
+            report.GridOutcome = Evaluate(candidate, out var gridPlacement, out float gridRest, out int gridSupport);
+            report.GridDetail = DescribeAttempt(gridRest, profile, gridSupport, bottom)
                 + (report.GridOutcome == Outcome.Valid ? " contacts=" + gridPlacement.SideContacts : "");
             return report;
         }
 
-        // Columns whose centres lie inside the upright footprint; for each, the painted run best overlapping the item.
-        private static void MeasureFootprint(CargoArea area, Vector3 center, Quaternion upright, Vector3 half, float bottom, float top,
-            ref int columns, ref int unpainted, List<string> missing, ref float floorRest, ref float minCeiling, ref float minFloor)
+        // The solver pose closest to a rotation, and how far off it is. A round item's pose only fixes where its axis of
+        // symmetry points; a box-like item's fixes which of its axes point up and along z (either way along each).
+        private static int NearestPose(Quaternion rotation, out float offAngle)
         {
-            Quaternion inverse = Quaternion.Inverse(upright);
-            float reach = Mathf.Sqrt(half.x * half.x + half.z * half.z);
-            int x0 = CargoArea.ToIndex(center.x - reach), x1 = CargoArea.ToIndex(center.x + reach);
-            int z0 = CargoArea.ToIndex(center.z - reach), z1 = CargoArea.ToIndex(center.z + reach);
-
-            for (int ix = x0; ix <= x1; ix++)
+            int best = 0;
+            offAngle = float.MaxValue;
+            for (int i = 0; i < probe.Profiles.Count; i++)
             {
-                for (int iz = z0; iz <= z1; iz++)
+                var pose = probe.Profiles[i].Pose;
+                float angle;
+                if (pose.SymmetryAxis != Vector3.zero)
                 {
-                    Vector3 inBox = inverse * new Vector3(CargoArea.CellCenter(ix) - center.x, 0f, CargoArea.CellCenter(iz) - center.z);
-                    if (Mathf.Abs(inBox.x) > half.x || Mathf.Abs(inBox.z) > half.z)
+                    angle = AxisAngle(rotation * pose.SymmetryAxis, pose.Rotation * pose.SymmetryAxis);
+                }
+                else
+                {
+                    angle = Mathf.Max(
+                        AxisAngle(rotation * pose.LocalUp, Vector3.up),
+                        AxisAngle(rotation * pose.LocalForward, Vector3.forward));
+                }
+
+                if (angle < offAngle)
+                {
+                    offAngle = angle;
+                    best = i;
+                }
+            }
+
+            return best;
+        }
+
+        // The angle between two directions, treating a direction and its opposite as the same axis.
+        private static float AxisAngle(Vector3 a, Vector3 b)
+        {
+            float angle = Vector3.Angle(a, b);
+            return Mathf.Min(angle, 180f - angle);
+        }
+
+        // Like TryCoarseFit, but counts every column instead of stopping at the first problem.
+        private static void MeasureCoverage(CargoArea area, PoseProfile profile, int ix, int iz, float referenceY, List<string> missing,
+            out int columns, out int unpainted, out float floorRest, out float startY)
+        {
+            columns = 0;
+            unpainted = 0;
+            floorRest = float.MinValue;
+            startY = float.MaxValue;
+
+            for (int dx = 0; dx < profile.CellsX; dx++)
+            {
+                for (int dz = 0; dz < profile.CellsZ; dz++)
+                {
+                    int index = dx * profile.CellsZ + dz;
+                    if (float.IsNaN(profile.Bottom[index]))
                         continue;
 
                     columns++;
+                    float sliceMin = referenceY + profile.Bottom[index], sliceMax = referenceY + profile.Top[index];
                     bool found = false;
                     float bestOverlap = 0f;
                     var chosen = default(CargoArea.Run);
-                    if (area.TryGetColumn(ix, iz, out var runs))
+                    if (area.TryGetColumn(ix + dx, iz + dz, out var runs))
                     {
                         foreach (var run in runs)
                         {
-                            float overlap = Mathf.Min(run.CeilingY, top) - Mathf.Max(run.FloorY, bottom - 0.1f);
+                            float overlap = Mathf.Min(run.CeilingY, sliceMax) - Mathf.Max(run.FloorY, sliceMin - 0.1f);
                             if (overlap > bestOverlap)
                             {
                                 bestOverlap = overlap;
@@ -229,54 +268,30 @@ namespace SailwindVirtualCrew
                     {
                         unpainted++;
                         if (missing.Count < 4)
-                            missing.Add("(" + ix + "," + iz + ")");
+                            missing.Add("(" + (ix + dx) + "," + (iz + dz) + ")");
                         continue;
                     }
 
-                    floorRest = Mathf.Max(floorRest, chosen.FloorY);
-                    minCeiling = Mathf.Min(minCeiling, chosen.CeilingY);
-                    minFloor = Mathf.Min(minFloor, chosen.FloorY);
+                    floorRest = Mathf.Max(floorRest, chosen.FloorY - profile.Bottom[index]);
+                    startY = Mathf.Min(startY, area.EffectiveCeiling(chosen) - profile.Top[index]);
                 }
             }
         }
 
-        private static bool TryFindAnchor(CargoArea area, int ix, int iz, float bottom, float height, out CargoArea.PaintedRun anchor)
+        private static string DescribeAttempt(float restY, PoseProfile profile, int supportHits, float actualBottom)
         {
-            anchor = default(CargoArea.PaintedRun);
-            if (!area.TryGetColumn(ix, iz, out var runs))
-                return false;
-
-            float bestOverlap = 0f;
-            bool found = false;
-            foreach (var run in runs)
-            {
-                float overlap = Mathf.Min(run.CeilingY, bottom + height) - Mathf.Max(run.FloorY, bottom - 0.1f);
-                if (overlap > bestOverlap)
-                {
-                    bestOverlap = overlap;
-                    anchor = new CargoArea.PaintedRun { Ix = ix, Iz = iz, Run = run };
-                    found = true;
-                }
-            }
-
-            return found;
-        }
-
-        private static string DescribeAttempt(float restBottom, int supportHits, float actualBottom)
-        {
-            return (float.IsNaN(restBottom) ? "" : "restBottom=" + restBottom.ToString("0.00")
+            return (float.IsNaN(restY) ? "" : "restBottom=" + (restY + profile.BaseY).ToString("0.00")
                     + " (actual " + actualBottom.ToString("0.00") + ") ")
-                + "support=" + supportHits + "/" + (SupportSamplesPerSide * SupportSamplesPerSide)
+                + "support=" + supportHits + "/" + profile.BaseSamples.Count
                 + (lastSweepHit != null ? " hit=" + lastSweepHit : "");
         }
 
         private static void WriteClaim(ClaimReport r)
         {
             string gridOutcome = r.GridOutcome.HasValue ? r.GridOutcome.Value.ToString() : "not tried";
-            CrewDebugLog.Ok(Phase, "CLAIM item='" + r.Item + "' vessel='" + r.Vessel + "' size=" + Format(r.Size)
-                + " center=" + Format(r.Center) + " bottom=" + r.Bottom.ToString("0.00"));
-            CrewDebugLog.Ok(Phase, "  pose: yaw=" + r.Yaw.ToString("0.0") + " (" + r.YawOffGrid.ToString("+0.0;-0.0") + " off 0/90)"
-                + " tilt=" + r.Tilt.ToString("0.0") + (r.Tilt > 5f ? " (solver only tries upright)" : ""));
+            CrewDebugLog.Ok(Phase, "CLAIM item='" + r.Item + "' vessel='" + r.Vessel + "' origin=" + Format(r.Origin)
+                + " bottom=" + r.Bottom.ToString("0.00") + " shape=" + r.Shape);
+            CrewDebugLog.Ok(Phase, "  pose: nearest solver pose '" + r.NearestPose + "', " + r.PoseOffAngle.ToString("0.0") + " degrees off");
             CrewDebugLog.Ok(Phase, "  painted: " + r.PaintedSummary);
             CrewDebugLog.Ok(Phase, "  physics at this exact spot: " + r.ExactOutcome + " " + r.ExactDetail);
             CrewDebugLog.Ok(Phase, "  nearest grid candidate (" + r.GridOffset.ToString("0.00") + "m away): coarse " + r.GridCoarse);
@@ -296,15 +311,15 @@ namespace SailwindVirtualCrew
                     if (newFile)
                         writer.WriteLine(string.Join("\t", new[]
                         {
-                            "time", "vessel", "item", "size", "center", "bottom", "yaw", "yawOffGrid", "tilt",
+                            "time", "vessel", "item", "shape", "origin", "bottom", "nearestPose", "poseOffAngle",
                             "footprintColumns", "unpaintedColumns", "painted", "exactOutcome", "exactDetail",
                             "gridOffset", "gridCoarse", "gridOutcome", "gridDetail"
                         }));
 
                     writer.WriteLine(string.Join("\t", new[]
                     {
-                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), r.Vessel, r.Item, Format(r.Size), Format(r.Center),
-                        r.Bottom.ToString("0.000"), r.Yaw.ToString("0.0"), r.YawOffGrid.ToString("0.0"), r.Tilt.ToString("0.0"),
+                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), r.Vessel, r.Item, r.Shape, Format(r.Origin),
+                        r.Bottom.ToString("0.000"), r.NearestPose, r.PoseOffAngle.ToString("0.0"),
                         r.FootprintColumns.ToString(), r.UnpaintedColumns.ToString(), r.PaintedSummary,
                         r.ExactOutcome.ToString(), r.ExactDetail, r.GridOffset.ToString("0.00"), r.GridCoarse,
                         gridOutcome, r.GridDetail ?? ""

@@ -111,7 +111,10 @@
     <Compile Include="Cargo\CargoArea.cs" />
     <Compile Include="Cargo\CargoAreaOverlay.cs" />
     <Compile Include="Cargo\CargoAreaPainter.cs" />
+    <Compile Include="Cargo\CargoLoadPlanner.cs" />
+    <Compile Include="Cargo\CargoLoadService.cs" />
     <Compile Include="Cargo\CargoPackingSolver.cs" />
+    <Compile Include="Cargo\FrozenCargo.cs" />
     <Compile Include="Cargo\CargoSolverClaims.cs" />
     <Compile Include="Core\DeveloperMode.cs" />
     <Compile Include="Core\FavoriteAction.cs" />
@@ -151,6 +154,8 @@
     <Compile Include="Mooring\MooringLocator.cs" />
     <Compile Include="Mooring\MooringRopeThrowAnimator.cs" />
     <Compile Include="Requests\BailRequest.cs" />
+    <Compile Include="Requests\CarriedCargo.cs" />
+    <Compile Include="Requests\HaulLoadRequest.cs" />
     <Compile Include="Requests\HaulSellRequest.cs" />
     <Compile Include="Requests\LookoutTask.cs" />
     <Compile Include="Requests\MooringRequest.cs" />

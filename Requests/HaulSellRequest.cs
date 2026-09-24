@@ -9,6 +9,9 @@ namespace SailwindVirtualCrew
         private const float HaulSpeed = 2.25f;
         private const float ReturnSpeed = 2.75f;
         private const float JumpHeight = 1.15f;
+        // Walks run at constant speed, the top speed the eased movement used to reach (smoothstep peaks at 1.5x its
+        // average), so a deckhand is at full pace from the moment they land on the dock. Jumps keep the easing.
+        private const float WalkSpeedFactor = 1.5f;
 
         private readonly ShipItem item;
         private readonly PortDude portDude;
@@ -572,7 +575,7 @@ namespace SailwindVirtualCrew
 
             var segment = routeSegments[routeSegmentIndex];
             float rawT = segment.Duration <= 0f ? 1f : Mathf.Clamp01((Time.time - routeSegmentStartTime) / segment.Duration);
-            float t = rawT * rawT * (3f - 2f * rawT);
+            float t = segment.ArcHeight > 0f ? rawT * rawT * (3f - 2f * rawT) : rawT;
             Vector3 position = Vector3.Lerp(segment.Start, segment.End, t);
             if (segment.ArcHeight > 0f)
                 position.y += Mathf.Sin(rawT * Mathf.PI) * segment.ArcHeight;
@@ -680,7 +683,8 @@ namespace SailwindVirtualCrew
                 StartRotation = startRotation,
                 End = end,
                 EndRotation = endRotation,
-                Duration = Mathf.Max(0.2f, Vector3.Distance(start, end) / Mathf.Max(0.1f, speed)),
+                // Walking goes at a steady top speed; see WalkSpeedFactor.
+                Duration = Mathf.Max(0.2f, Vector3.Distance(start, end) / Mathf.Max(0.1f, arcHeight > 0f ? speed : speed * WalkSpeedFactor)),
                 ArcHeight = arcHeight
             };
         }

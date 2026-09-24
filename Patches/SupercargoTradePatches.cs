@@ -15,8 +15,14 @@ namespace SailwindVirtualCrew
             if (!item)
                 return;
 
+            // The same key loads an item on the dock aboard, or sells one that's aboard.
             if (Plugin.SupercargoSellAtPortKey != null && Plugin.SupercargoSellAtPortKey.Value.IsDown())
-                SupercargoTradeService.TryToggleSellAtPort(item);
+            {
+                if (!item.currentActualBoat && (CargoLoadService.IsMarkedForLoad(item) || CargoLoadService.CanQueueLoad(item, out _)))
+                    CargoLoadService.TryToggleLoad(item);
+                else
+                    SupercargoTradeService.TryToggleSellAtPort(item);
+            }
 
             if (Plugin.SupercargoKeepCargoKey != null && Plugin.SupercargoKeepCargoKey.Value.IsDown())
                 SupercargoTradeService.TryToggleKeep(item);
@@ -38,9 +44,10 @@ namespace SailwindVirtualCrew
             if (!item)
                 return;
 
-            bool canSell = SupercargoTradeService.CanOfferSellAtPort(item);
+            bool canLoad = !item.currentActualBoat && CargoLoadService.CanOfferLoad(item);
+            bool canSell = !canLoad && SupercargoTradeService.CanOfferSellAtPort(item);
             bool canKeep = SupercargoTradeService.CanMarkKeep(item);
-            if (!canSell && !canKeep)
+            if (!canLoad && !canSell && !canKeep)
                 return;
 
             var controlsText = ControlsTextField.GetValue(__instance) as TextMesh;
@@ -48,6 +55,10 @@ namespace SailwindVirtualCrew
                 return;
 
             controlsText.text = RemoveSupercargoPrompts(controlsText.text);
+
+            if (canLoad)
+                AppendControlLine(controlsText, GetSellKeyName()
+                    + (CargoLoadService.IsMarkedForLoad(item) ? " cancel loading" : " load aboard"));
 
             if (canSell)
                 AppendControlLine(controlsText, GetSellKeyName()
@@ -86,6 +97,8 @@ namespace SailwindVirtualCrew
         {
             string trimmed = line.Trim();
             return trimmed.EndsWith(" sell at port", System.StringComparison.Ordinal)
+                || trimmed.EndsWith(" load aboard", System.StringComparison.Ordinal)
+                || trimmed.EndsWith(" cancel loading", System.StringComparison.Ordinal)
                 || trimmed.EndsWith(" cancel port sale", System.StringComparison.Ordinal)
                 || trimmed.EndsWith(" mark keep", System.StringComparison.Ordinal)
                 || trimmed.EndsWith(" unmark keep", System.StringComparison.Ordinal);

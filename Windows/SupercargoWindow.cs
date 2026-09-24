@@ -12,6 +12,13 @@ namespace SailwindVirtualCrew
         private int _keptCargoCount;
         private bool _canBulkSellUnmarkedCargo;
         private bool _isCurrentBoatMoored;
+        private int _loadableDockCargoCount;
+        private CargoArea _statsArea;
+        private int _statsVersion = -1;
+        private float _areaVolume;
+        // The Clear button asks again before throwing away the painted area.
+        private float _confirmClearUntil;
+        private const float ConfirmClearSeconds = 3f;
 
         public string WindowKey => "SupercargoWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
@@ -31,7 +38,7 @@ namespace SailwindVirtualCrew
             if (!showWindow) return;
             SailwindGuiStyle.Apply();
 
-            float contentHeight = ButtonHeight * 4 + 32f;
+            float contentHeight = ButtonHeight * 12 + 32f;
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : contentHeight + 40f;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Supercargo");
         }
@@ -58,10 +65,97 @@ namespace SailwindVirtualCrew
                         ? "Queued " + queued + " cargo for port sale"
                         : "No unmarked cargo available to sell");
             }
+
+            bool loading = CargoLoadService.IsLoadingAll;
+            GUI.enabled = !loading && _loadableDockCargoCount > 0;
+            string loadLabel = loading
+                ? "Planning Cargo Loading..."
+                : "Load All Dock Cargo" + (_loadableDockCargoCount > 0 ? " (" + _loadableDockCargoCount + ")" : "");
+            if (GUILayout.Button(loadLabel))
+            {
+                if (CargoLoadService.StartLoadingAll() == 0)
+                    NotificationUi.instance?.ShowNotification("No cargo on the dock to load");
+                _nextSnapshotRefreshTime = 0f;
+            }
             GUI.enabled = true;
+
+            DrawCargoAreaControls();
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        // Painting the cargo area: walk through the space to be used for cargo while painting (erasing takes it out).
+        private void DrawCargoAreaControls()
+        {
+            GUILayout.Space(8);
+            var area = CargoAreaPainter.GetActiveArea();
+            if (area == null)
+            {
+                GUILayout.Label("Cargo area: no boat");
+                return;
+            }
+
+            if (area != _statsArea || area.Version != _statsVersion)
+            {
+                _areaVolume = area.VolumeCubicMeters;
+                _statsArea = area;
+                _statsVersion = area.Version;
+            }
+
+            GUILayout.Label(area.RunCount == 0
+                ? "Cargo area: not painted"
+                : "Cargo area: " + area.FloorAreaSquareMeters.ToString("0.0") + " sq m, " + _areaVolume.ToString("0.0") + " cu m");
+
+            var mode = CargoAreaPainter.Mode;
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(mode == CargoPaintMode.Paint ? "[Paint]" : "Paint"))
+                CargoAreaPainter.SetMode(CargoPaintMode.Paint);
+            if (GUILayout.Button(mode == CargoPaintMode.Erase ? "[Erase]" : "Erase"))
+                CargoAreaPainter.SetMode(CargoPaintMode.Erase);
+            GUI.enabled = mode != CargoPaintMode.Off;
+            if (GUILayout.Button("Stop"))
+                CargoAreaPainter.SetMode(CargoPaintMode.Off);
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
+            if (mode != CargoPaintMode.Off)
+            {
+                GUILayout.Label(mode == CargoPaintMode.Paint
+                    ? "Walk through the space to use for cargo (" + Plugin.CargoPaintCycleModeKey.Value + " cycles)."
+                    : "Walk through space to take out of the cargo area.");
+                if (!string.IsNullOrEmpty(CargoAreaPainter.LastProblem))
+                    GUILayout.Label(CargoAreaPainter.LastProblem);
+            }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Brush " + CargoAreaPainter.BrushRadius.ToString("0.0") + "m", GUILayout.Width(90));
+            CargoAreaPainter.BrushRadius = GUILayout.HorizontalSlider(CargoAreaPainter.BrushRadius, 0.3f, 3f);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Stack " + area.StackHeight.ToString("0.0") + "m", GUILayout.Width(90));
+            area.StackHeight = GUILayout.HorizontalSlider(area.StackHeight, CargoArea.MinStackHeight, CargoArea.MaxStackHeight);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            CargoAreaPainter.ShowOverlay = GUILayout.Toggle(CargoAreaPainter.ShowOverlay, "Show cargo area");
+            GUI.enabled = area.RunCount > 0;
+            bool confirming = Time.realtimeSinceStartup < _confirmClearUntil;
+            if (GUILayout.Button(confirming ? "Confirm Clear" : "Clear Area"))
+            {
+                if (confirming)
+                {
+                    CargoAreaPainter.ClearActiveArea();
+                    _confirmClearUntil = 0f;
+                }
+                else
+                {
+                    _confirmClearUntil = Time.realtimeSinceStartup + ConfirmClearSeconds;
+                }
+            }
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
         }
 
         private void RefreshSnapshotIfNeeded()
@@ -75,8 +169,11 @@ namespace SailwindVirtualCrew
             {
                 _keptCargoCount = 0;
                 _canBulkSellUnmarkedCargo = false;
+                _loadableDockCargoCount = 0;
                 return;
             }
+
+            _loadableDockCargoCount = CargoLoadService.IsLoadingAll ? 0 : CargoLoadService.FindLoadableDockCargo().Count;
 
             _keptCargoCount = SupercargoTradeService.CountKeptCargoOnCurrentVessel();
             _canBulkSellUnmarkedCargo = SupercargoTradeService.CanBulkSellUnmarkedCargo();

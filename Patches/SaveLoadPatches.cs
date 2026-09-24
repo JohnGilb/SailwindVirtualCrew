@@ -108,6 +108,9 @@ namespace SailwindVirtualCrew
         {
             // Before the early return, so a save without mod data doesn't keep the previous game's painted areas.
             CargoAreaPainter.OnGameLoaded();
+            CargoLoadPlanner.Clear();
+            CargoLoadService.ClearBatch();
+            FrozenCargo.Clear();
             if (!ModSave.Load(Plugin.Instance.Info, out VirtualCrewSaveData data))
                 return;
             if (data.vessels != null)
