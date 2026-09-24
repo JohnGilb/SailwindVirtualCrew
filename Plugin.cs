@@ -26,6 +26,9 @@ namespace SailwindVirtualCrew
         internal static ConfigEntry<KeyboardShortcut> SupercargoSellAtPortKey;
         internal static ConfigEntry<KeyboardShortcut> SupercargoKeepCargoKey;
         internal static ConfigEntry<KeyboardShortcut> CargoControllerGrabPortCargoKey;
+        internal static ConfigEntry<KeyboardShortcut> CargoPaintCycleModeKey;
+        internal static ConfigEntry<KeyboardShortcut> CargoSolverKey;
+        internal static ConfigEntry<KeyboardShortcut> CargoSolverClaimKey;
         internal static ConfigEntry<bool> RequireCrewForExternalModFeatures;
         internal static ConfigEntry<bool> ExtraWorkingStaminaDrain;
         internal static ConfigEntry<bool> InstrumentationEnabled;
@@ -101,6 +104,12 @@ namespace SailwindVirtualCrew
             SupercargoSellAtPortKey = Config.Bind("CrewHotkeys", "SupercargoSellAtPort", new KeyboardShortcut(KeyCode.X));
             SupercargoKeepCargoKey = Config.Bind("CrewHotkeys", "SupercargoKeepCargo", new KeyboardShortcut(KeyCode.N));
             CargoControllerGrabPortCargoKey = Config.Bind("CrewHotkeys", "CargoControllerGrabPortCargo", new KeyboardShortcut(KeyCode.Z));
+            CargoPaintCycleModeKey = Config.Bind("CrewHotkeys", "CargoPaintCycleMode", new KeyboardShortcut(KeyCode.Semicolon),
+                "Developer mode only: cycle cargo area painting between Paint, Erase and Off.");
+            CargoSolverKey = Config.Bind("CrewHotkeys", "CargoSolverPreviewPlace", new KeyboardShortcut(KeyCode.Quote),
+                "Developer mode only: preview where the held or looked-at item would be packed in the painted cargo area; press again on the same item to place it.");
+            CargoSolverClaimKey = Config.Bind("CrewHotkeys", "CargoSolverClaimSpot", new KeyboardShortcut(KeyCode.RightBracket),
+                "Developer mode only: claim that the looked-at item's current spot works, and log how the packing solver judges it.");
 
             PanicAllHands = Config.Bind("CrewHotkeys", "PanicAllHandsOnDeck", new KeyboardShortcut(KeyCode.P),
                 "Panic: for 5 real-time minutes all crew are fully rested, awake, have at least 5 in every stat, "
@@ -161,6 +170,10 @@ namespace SailwindVirtualCrew
                     CargoControllerPortCargoHotkey.Tick();
                 using (PerformanceInstrumentation.Measure("PlayerWaitingState.Tick"))
                     PlayerWaitingState.Tick();
+                using (PerformanceInstrumentation.Measure("CargoAreaPainter.Tick"))
+                    CargoAreaPainter.Tick();
+                using (PerformanceInstrumentation.Measure("CargoPackingSolver.Tick"))
+                    CargoPackingSolver.Tick();
 
                 if (ResetWindowPositions.Value.IsDown())
                     ResetAllWindowPositions();

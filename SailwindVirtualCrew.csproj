@@ -108,6 +108,11 @@
     <Compile Include="AccessoryCrewLogic\Lookout\LookoutIslandKnowledge.cs" />
     <Compile Include="AccessoryCrewLogic\Lookout\LookoutVisibility.cs" />
     <Compile Include="AccessoryCrewLogic\Piloting\PilotController.cs" />
+    <Compile Include="Cargo\CargoArea.cs" />
+    <Compile Include="Cargo\CargoAreaOverlay.cs" />
+    <Compile Include="Cargo\CargoAreaPainter.cs" />
+    <Compile Include="Cargo\CargoPackingSolver.cs" />
+    <Compile Include="Cargo\CargoSolverClaims.cs" />
     <Compile Include="Core\DeveloperMode.cs" />
     <Compile Include="Core\FavoriteAction.cs" />
     <Compile Include="Core\LegendaryCrewCatalog.cs" />
@@ -186,6 +191,7 @@
     <Compile Include="Windows\NavigatorWindow.cs" />
     <Compile Include="Windows\NavigatorMapWindow.cs" />
     <Compile Include="Windows\NavigatorShipLogWindow.cs" />
+    <Compile Include="Patches\CargoSolverPatches.cs" />
     <Compile Include="Patches\CrewPayPatches.cs" />
     <Compile Include="Patches\LookoutVisitPatches.cs" />
     <Compile Include="Patches\PlayerEmbarkPatches.cs" />

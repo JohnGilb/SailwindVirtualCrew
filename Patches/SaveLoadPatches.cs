@@ -46,6 +46,8 @@ namespace SailwindVirtualCrew
                     .ToList();
             }
 
+            CargoAreaPainter.WriteToSaveData(mgr.AllVesselsData);
+
             var windowPositions = new Dictionary<string, float[]>();
             foreach (var w in Plugin.Instance.GetComponents<IWindowPosition>())
                 windowPositions[w.WindowKey] = w.GetPosition();
@@ -104,6 +106,8 @@ namespace SailwindVirtualCrew
         [HarmonyPatch("LoadModData")]
         static void DoLoad()
         {
+            // Before the early return, so a save without mod data doesn't keep the previous game's painted areas.
+            CargoAreaPainter.OnGameLoaded();
             if (!ModSave.Load(Plugin.Instance.Info, out VirtualCrewSaveData data))
                 return;
             if (data.vessels != null)

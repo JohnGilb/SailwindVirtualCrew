@@ -170,6 +170,8 @@ namespace SailwindVirtualCrew
         public List<FavoriteAction> favoriteActions = new List<FavoriteAction>();
         public List<int> keptCargoInstanceIds = new List<int>();
         public List<NavigatorShipLogEntrySaveData> navigatorShipLog = new List<NavigatorShipLogEntrySaveData>();
+        // Painted cargo area (CargoArea.ToSaveString), in boat-local space; null when nothing is painted.
+        public string cargoArea;
     }
 
     [Serializable]
