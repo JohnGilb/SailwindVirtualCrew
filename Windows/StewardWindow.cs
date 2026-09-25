@@ -35,7 +35,7 @@ namespace SailwindVirtualCrew
             float foodScanHeight = _hasFoodScan
                 ? Mathf.Min(180f, Mathf.Max(60f, (_looseFoodLines.Count + _unsealedCrateFoodLines.Count + 4) * 22f))
                 : 0f;
-            float contentHeight = 150f + foodScanHeight;
+            float contentHeight = 176f + foodScanHeight;
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : contentHeight + 40f;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Steward");
         }
@@ -57,6 +57,10 @@ namespace SailwindVirtualCrew
 
             DrawLimitSlider("Thirst Limit", manager.StewardThirstLimitPercent, manager.SetStewardThirstLimit);
             DrawLimitSlider("Hunger Limit", manager.StewardHungerLimitPercent, manager.SetStewardHungerLimit);
+
+            bool tuckIn = GUILayout.Toggle(manager.StewardTuckInEnabled, "Tuck In (carry me to bed below 5% energy)");
+            if (tuckIn != manager.StewardTuckInEnabled)
+                manager.SetStewardTuckInEnabled(tuckIn);
 
             GUI.enabled = manager.CanStartStewardPhilosophy();
             if (GUILayout.Button("Philosophize with Steward"))

@@ -210,6 +210,16 @@ namespace SailwindVirtualCrew
             return nearest != null && bestDistance <= PortDudeRange;
         }
 
+        // The supercargo can bring the port's trade book or mission list aboard while the boat is held in place near a trader.
+        internal static bool TryGetRemoteTradeDude(bool boatHeld, out PortDude portDude)
+        {
+            portDude = null;
+            if (!boatHeld || !CrewRoleAvailability.HasAwakeCrew(ShipRole.Supercargo))
+                return false;
+
+            return TryFindNearestPortDude(out portDude);
+        }
+
         internal static bool TrySellCargoAtPort(ShipItem item, IslandMarket market, int goodIndex)
         {
             if (!item || goodIndex <= 0 || !CanSellCargoAtMarket(item, market))
@@ -332,7 +342,7 @@ namespace SailwindVirtualCrew
             if (!manager.Crew.Any(c => c.Role == ShipRole.Deckhand))
                 return false;
 
-            if (!MooringLocator.IsCurrentBoatMooredFast())
+            if (!ShoreRoute.IsBoatHeld())
                 return false;
 
             if (!TryFindNearestPortDude(out portDude))

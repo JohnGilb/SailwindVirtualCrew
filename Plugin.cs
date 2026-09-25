@@ -134,6 +134,7 @@ namespace SailwindVirtualCrew
             gameObject.AddComponent<StewardWindow>();
             gameObject.AddComponent<FirstOfficerWindow>();
             gameObject.AddComponent<StandingOrdersWindow>();
+            gameObject.AddComponent<FirstOfficerDestinationWindow>();
             gameObject.AddComponent<PilotingWindow>();
             gameObject.AddComponent<SkullingWindow>();
             gameObject.AddComponent<CrewRosterWindow>();
@@ -181,6 +182,9 @@ namespace SailwindVirtualCrew
                     CargoLoadService.Tick();
                 using (PerformanceInstrumentation.Measure("CargoLoadPlanner.Tick"))
                     CargoLoadPlanner.Tick();
+                using (PerformanceInstrumentation.Measure("ShoreNavMesh.Tick"))
+                    ShoreNavMesh.Tick();
+                ShoreNavMeshProbe.Tick();
 
                 if (ResetWindowPositions.Value.IsDown())
                     ResetAllWindowPositions();

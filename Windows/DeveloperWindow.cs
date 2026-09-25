@@ -37,7 +37,7 @@ namespace SailwindVirtualCrew
 
             float height = 100f + 30f; // title bar + activate button
             if (DeveloperMode.IsEnabled)
-                height += 30f * 33; // developer actions, cargo painting and instrumentation controls
+                height += 30f * (39 + (ShoreNavMeshProbe.Enabled ? ShoreNavMesh.Report.Count + ShoreNavMeshProbe.PathReport.Count : 0)); // developer actions, cargo painting, shore nav and instrumentation controls
 
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : height;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Developer Tools");
@@ -110,6 +110,7 @@ namespace SailwindVirtualCrew
                     workstationCustomizer.ToggleWindow();
 
                 DrawCargoPaintingControls();
+                DrawShoreNavControls();
                 DrawInstrumentationControls();
             }
 
@@ -222,6 +223,33 @@ namespace SailwindVirtualCrew
 
             if (GUILayout.Button("Probe moves: " + (CargoPackingSolver.UseRigidbodyMoves ? "Rigidbody" : "Transform + Sync")))
                 CargoPackingSolver.UseRigidbodyMoves = !CargoPackingSolver.UseRigidbodyMoves;
+        }
+
+        // Shore pathfinding: the port NavMesh the crew walk on, and test walks from the dock.
+        private static void DrawShoreNavControls()
+        {
+            GUILayout.Space(8);
+            GUILayout.Label("Shore NavMesh: " + ShoreNavMesh.StatusLabel);
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Rebake Port"))
+                ShoreNavMesh.Rebake();
+            GUI.enabled = ShoreNavMesh.IsReady && ShoreNavMeshProbe.Enabled;
+            if (GUILayout.Button("Retest Walks"))
+                ShoreNavMeshProbe.Retest();
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
+            ShoreNavMeshProbe.Enabled = GUILayout.Toggle(ShoreNavMeshProbe.Enabled, "Show shore navigation");
+            if (!ShoreNavMeshProbe.Enabled)
+                return;
+
+            ShoreNavMeshProbe.ShowMesh = GUILayout.Toggle(ShoreNavMeshProbe.ShowMesh, "NavMesh overlay");
+            ShoreNavMeshProbe.ShowStandIns = GUILayout.Toggle(ShoreNavMeshProbe.ShowStandIns, "Building stand-ins");
+            foreach (var line in ShoreNavMesh.Report)
+                GUILayout.Label(line);
+            foreach (var line in ShoreNavMeshProbe.PathReport)
+                GUILayout.Label(line);
         }
 
         private static void DrawCargoPaintModeButton(string label, CargoPaintMode mode)

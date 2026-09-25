@@ -152,6 +152,11 @@ namespace SailwindVirtualCrew
         public bool holdWindAngle;
         public float playerSelectedHeading;
         public float playerSelectedWindAngle;
+        // First Officer destination order: the pilot steers for this plotted island.
+        public bool holdDestination;
+        public string destinationName;
+        public float destinationLatitude;
+        public float destinationLongitude;
         // Crewman.Id of the pilot on the helm when saved; null if none (or a save from before this field).
         public string pilotCrewId;
     }
@@ -183,6 +188,7 @@ namespace SailwindVirtualCrew
         public int stewardSettingsVersion;
         public float stewardThirstLimitPercent = 50f;
         public float stewardHungerLimitPercent = 50f;
+        public bool stewardTuckInEnabled;
         public int maintenanceSettingsVersion;
         public float maintenanceBailOneDeckhandThresholdPercent = 15f;
         public float maintenanceBailTwoDeckhandsThresholdPercent = 35f;

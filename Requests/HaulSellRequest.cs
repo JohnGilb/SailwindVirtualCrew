@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SailwindVirtualCrew
@@ -12,6 +13,10 @@ namespace SailwindVirtualCrew
         // Walks run at constant speed, the top speed the eased movement used to reach (smoothstep peaks at 1.5x its
         // average), so a deckhand is at full pace from the moment they land on the dock. Jumps keep the easing.
         private const float WalkSpeedFactor = 1.5f;
+        // Walking bobs once per this much ground covered.
+        private const float StrideLength = 1.4f;
+        private const float JumpArcPerMeter = 0.2f;
+        private const float MaxJumpSeconds = 3f;
 
         private readonly ShipItem item;
         private readonly PortDude portDude;
@@ -50,7 +55,7 @@ namespace SailwindVirtualCrew
         private bool removedFromBoatMass;
         private Phase phase = Phase.Waiting;
         private bool restoringCanceledCargo;
-        private ActiveMooringRoute activeRoute;
+        private ShoreRoute activeRoute;
         private bool navigatingToMooring;
         private float cargoCarryHeightOffset;
         private bool suspendedForSave;
@@ -70,6 +75,9 @@ namespace SailwindVirtualCrew
             internal Quaternion EndRotation;
             internal float Duration;
             internal float ArcHeight;
+            internal int Bobs;
+            // Carrying on the shore, the route is the cargo's and the crewman walks this far below it, on the ground.
+            internal float CrewDrop;
         }
 
         public Crewman AssignedCrewman { get; set; }
@@ -180,7 +188,7 @@ namespace SailwindVirtualCrew
             returnLocalRotation = originBoat
                 ? Quaternion.Inverse(originBoat.rotation) * haulStartRotation
                 : haulStartRotation;
-            if (!MooringLocator.TryFindActiveRoute(haulStartPosition, out activeRoute))
+            if (!ShoreRoute.TryFind(haulStartPosition, out activeRoute))
             {
                 ReturnCargoToOrigin();
                 RestoreCargoCollision();
@@ -190,7 +198,7 @@ namespace SailwindVirtualCrew
                 return;
             }
 
-            haulEndPosition = portDude.transform.position + Vector3.up * Mathf.Max(0.25f, GetCargoHalfHeight());
+            haulEndPosition = portDude.transform.position + Vector3.up * GetCarryLift();
             haulEndRotation = GetLookRotation(haulStartPosition, haulEndPosition, haulStartRotation);
             if (!BeginNavigateToMooring())
                 BeginRoute(BuildRoute(haulStartPosition, haulStartRotation, haulEndPosition, haulEndRotation, activeRoute, toPort: true), carriesCargo: true);
@@ -307,6 +315,12 @@ namespace SailwindVirtualCrew
         {
             var renderer = item ? item.GetComponent<Renderer>() : null;
             return renderer != null ? renderer.bounds.extents.y : 0.5f;
+        }
+
+        // How high the cargo is carried above the ground ashore.
+        private float GetCarryLift()
+        {
+            return Mathf.Max(0.25f, GetCargoHalfHeight());
         }
 
         private void DisableCargoCollision()
@@ -496,7 +510,7 @@ namespace SailwindVirtualCrew
 
             if (routeSegmentIndex <= 0)
                 BeginRoute(new[] { CreateSegment(start, startRotation, GetReturnWorldPosition(), GetReturnWorldRotation(), 0f, ReturnSpeed) }, carriesCargo: true);
-            else if (MooringLocator.TryFindActiveRoute(GetReturnWorldPosition(), out var activeRoute))
+            else if (ShoreRoute.TryFind(GetReturnWorldPosition(), out var activeRoute))
                 BeginRoute(BuildRoute(start, startRotation, GetReturnWorldPosition(), GetReturnWorldRotation(), activeRoute, toPort: false), carriesCargo: true);
             else
                 BeginRoute(new[] { CreateSegment(start, startRotation, GetReturnWorldPosition(), GetReturnWorldRotation(), 0f, ReturnSpeed) }, carriesCargo: true);
@@ -538,7 +552,7 @@ namespace SailwindVirtualCrew
                     this,
                     activeRoute.BoatAnchorLocal,
                     arrivalRotation,
-                    "haul sell mooring='" + activeRoute.Dock.Mooring.name + "'"))
+                    "haul sell via " + activeRoute.Label))
                 return false;
 
             navigatingToMooring = true;
@@ -580,7 +594,7 @@ namespace SailwindVirtualCrew
             if (segment.ArcHeight > 0f)
                 position.y += Mathf.Sin(rawT * Mathf.PI) * segment.ArcHeight;
             else
-                position.y += Mathf.Sin(rawT * Mathf.PI * 4f) * 0.035f;
+                position.y += Mathf.Sin(rawT * Mathf.PI * 2f * segment.Bobs) * 0.035f;
 
             Quaternion rotation = Quaternion.Slerp(segment.StartRotation, segment.EndRotation, t);
 
@@ -589,7 +603,7 @@ namespace SailwindVirtualCrew
                 item.transform.position = position;
                 item.transform.rotation = rotation;
                 SyncSuspendedItemRigidbody(position, rotation);
-                MoveDeckhandWithCargo(position, rotation);
+                MoveDeckhandWithCargo(position - Vector3.up * segment.CrewDrop, rotation);
                 CrewNavigationCoordinator.Instance.HoldItemThisFrame(this, item);
             }
             else
@@ -605,10 +619,10 @@ namespace SailwindVirtualCrew
             return routeSegmentIndex >= routeSegments.Length;
         }
 
-        private bool TryFindReturnRoute(out ActiveMooringRoute returnRoute)
+        private bool TryFindReturnRoute(out ShoreRoute returnRoute)
         {
             returnRoute = activeRoute;
-            return returnRoute != null || MooringLocator.TryFindActiveRoute(GetReturnWorldPosition(), out returnRoute);
+            return returnRoute != null || ShoreRoute.TryFind(GetReturnWorldPosition(), out returnRoute);
         }
 
         private HaulSegment[] BuildRoute(
@@ -616,7 +630,7 @@ namespace SailwindVirtualCrew
             Quaternion startRotation,
             Vector3 end,
             Quaternion endRotation,
-            ActiveMooringRoute activeRoute,
+            ShoreRoute activeRoute,
             bool toPort)
         {
             Vector3 boatAnchor = originBoat
@@ -624,28 +638,25 @@ namespace SailwindVirtualCrew
                 : activeRoute.BoatAnchorWorld;
             Vector3 dock = activeRoute.DockWorld;
 
+            var segments = new List<HaulSegment>();
             if (toPort)
             {
-                return new[]
-                {
-                    CreateSegment(start, startRotation, boatAnchor, GetLookRotation(start, boatAnchor, startRotation), 0f, GetHaulSpeed()),
-                    CreateSegment(boatAnchor, GetLookRotation(start, dock, startRotation), dock, GetLookRotation(boatAnchor, dock, startRotation), JumpHeight, GetHaulSpeed()),
-                    CreateSegment(dock, GetLookRotation(dock, end, endRotation), end, endRotation, 0f, GetHaulSpeed())
-                };
+                segments.Add(CreateSegment(start, startRotation, boatAnchor, GetLookRotation(start, boatAnchor, startRotation), 0f, GetHaulSpeed()));
+                segments.Add(CreateSegment(boatAnchor, GetLookRotation(start, dock, startRotation), dock, GetLookRotation(boatAnchor, dock, startRotation), JumpHeight, GetHaulSpeed()));
+                AddShoreWalk(segments, dock, GetLookRotation(dock, end, endRotation), end, endRotation, GetHaulSpeed(), GetCarryLift());
+                return segments.ToArray();
             }
 
-            return new[]
-            {
-                CreateSegment(start, startRotation, dock, GetLookRotation(start, dock, startRotation), 0f, ReturnSpeed),
-                CreateSegment(dock, GetLookRotation(dock, boatAnchor, startRotation), boatAnchor, GetLookRotation(dock, boatAnchor, startRotation), JumpHeight, ReturnSpeed),
-                CreateSegment(boatAnchor, GetLookRotation(boatAnchor, end, endRotation), end, endRotation, 0f, ReturnSpeed)
-            };
+            AddShoreWalk(segments, start, startRotation, dock, GetLookRotation(start, dock, startRotation), ReturnSpeed, GetCarryLift());
+            segments.Add(CreateSegment(dock, GetLookRotation(dock, boatAnchor, startRotation), boatAnchor, GetLookRotation(dock, boatAnchor, startRotation), JumpHeight, ReturnSpeed));
+            segments.Add(CreateSegment(boatAnchor, GetLookRotation(boatAnchor, end, endRotation), end, endRotation, 0f, ReturnSpeed));
+            return segments.ToArray();
         }
 
         private HaulSegment[] BuildCrewReturnRouteToBoatAnchor(
             Vector3 start,
             Quaternion startRotation,
-            ActiveMooringRoute returnRoute)
+            ShoreRoute returnRoute)
         {
             Vector3 boatAnchor = originBoat
                 ? originBoat.TransformPoint(returnRoute.BoatAnchorLocal)
@@ -653,11 +664,10 @@ namespace SailwindVirtualCrew
             Vector3 dock = returnRoute.DockWorld;
             Quaternion boatRotation = GetLookRotation(dock, boatAnchor, startRotation);
 
-            return new[]
-            {
-                CreateSegment(start, startRotation, dock, GetLookRotation(start, dock, startRotation), 0f, ReturnSpeed),
-                CreateSegment(dock, boatRotation, boatAnchor, boatRotation, JumpHeight, ReturnSpeed)
-            };
+            var segments = new List<HaulSegment>();
+            AddShoreWalk(segments, start, startRotation, dock, GetLookRotation(start, dock, startRotation), ReturnSpeed, 0f);
+            segments.Add(CreateSegment(dock, boatRotation, boatAnchor, boatRotation, JumpHeight, ReturnSpeed));
+            return segments.ToArray();
         }
 
         private HaulSegment[] BuildPortRouteFromBoatAnchor(
@@ -665,18 +675,49 @@ namespace SailwindVirtualCrew
             Quaternion startRotation,
             Vector3 end,
             Quaternion endRotation,
-            ActiveMooringRoute route)
+            ShoreRoute route)
         {
             Vector3 dock = route.DockWorld;
-            return new[]
+            var segments = new List<HaulSegment>
             {
-                CreateSegment(start, startRotation, dock, GetLookRotation(start, dock, startRotation), JumpHeight, GetHaulSpeed()),
-                CreateSegment(dock, GetLookRotation(dock, end, endRotation), end, endRotation, 0f, GetHaulSpeed())
+                CreateSegment(start, startRotation, dock, GetLookRotation(start, dock, startRotation), JumpHeight, GetHaulSpeed())
             };
+            AddShoreWalk(segments, dock, GetLookRotation(dock, end, endRotation), end, endRotation, GetHaulSpeed(), GetCarryLift());
+            return segments.ToArray();
+        }
+
+        // A walk ashore: around buildings on the port's NavMesh when there's a path, straight otherwise. Carrying,
+        // the route is the cargo's, lift above the ground, with the crewman walking on the ground (see CrewDrop).
+        private void AddShoreWalk(List<HaulSegment> segments, Vector3 start, Quaternion startRotation, Vector3 end, Quaternion endRotation, float speed, float lift)
+        {
+            if (!ShoreNavMesh.TryBuildWalk(start, end, lift, out var points))
+            {
+                segments.Add(CreateSegment(start, startRotation, end, endRotation, 0f, speed));
+                return;
+            }
+
+            // Each piece turns towards the next one as it goes, so the heading is continuous through corners.
+            Quaternion rotation = startRotation;
+            for (int i = 1; i < points.Count; i++)
+            {
+                Quaternion next = i + 1 < points.Count ? GetLookRotation(points[i], points[i + 1], rotation) : endRotation;
+                var segment = CreateSegment(points[i - 1], rotation, points[i], next, 0f, speed);
+                segment.CrewDrop = lift;
+                segments.Add(segment);
+                rotation = next;
+            }
         }
 
         private HaulSegment CreateSegment(Vector3 start, Quaternion startRotation, Vector3 end, Quaternion endRotation, float arcHeight, float speed)
         {
+            float distance = Vector3.Distance(start, end);
+            float duration = distance / Mathf.Max(0.1f, arcHeight > 0f ? speed : speed * WalkSpeedFactor);
+            if (arcHeight > 0f)
+            {
+                // Longer leaps (ashore from an anchored boat) arc higher and don't take forever.
+                arcHeight = Mathf.Max(arcHeight, distance * JumpArcPerMeter);
+                duration = Mathf.Min(duration, MaxJumpSeconds);
+            }
             return new HaulSegment
             {
                 Start = start,
@@ -684,8 +725,9 @@ namespace SailwindVirtualCrew
                 End = end,
                 EndRotation = endRotation,
                 // Walking goes at a steady top speed; see WalkSpeedFactor.
-                Duration = Mathf.Max(0.2f, Vector3.Distance(start, end) / Mathf.Max(0.1f, arcHeight > 0f ? speed : speed * WalkSpeedFactor)),
-                ArcHeight = arcHeight
+                Duration = Mathf.Max(0.2f, duration),
+                ArcHeight = arcHeight,
+                Bobs = Mathf.Max(1, Mathf.RoundToInt(distance / StrideLength))
             };
         }
 

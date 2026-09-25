@@ -509,6 +509,13 @@ namespace SailwindVirtualCrew
                     + " headDirection=" + headDirection);
         }
 
+        // Where someone tending a bed stands: halfway along the sleeper's body, facing up the bed.
+        internal static void GetBedsideWorldPose(Component bed, Vector3 boatUp, out Vector3 standWorld, out Quaternion standWorldRotation)
+        {
+            GetBedSleepPose(bed, boatUp, out _, out standWorld, out _, out _, out Vector3 headDirection);
+            standWorldRotation = Quaternion.LookRotation(headDirection, boatUp);
+        }
+
         private static Transform GetBedSleepView(Component bed)
         {
             // Sleep.Update uses the first child, not the sleepPos field, so match it.

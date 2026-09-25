@@ -347,6 +347,17 @@ namespace SailwindVirtualCrew
             return false;
         }
 
+        internal static bool IsCurrentBoatAnchoredFast()
+        {
+            var context = CrewBoatContextResolver.Resolve();
+            if (context == null)
+                return false;
+
+            var mooringRopes = context.TopBoat.GetComponent<BoatMooringRopes>()
+                ?? context.WorldBoat.GetComponentInParent<BoatMooringRopes>();
+            return mooringRopes != null && mooringRopes.anchor && mooringRopes.anchor.IsSet();
+        }
+
         internal static bool TryFindActiveRoute(Vector3 fromWorld, out ActiveMooringRoute route)
         {
             route = null;

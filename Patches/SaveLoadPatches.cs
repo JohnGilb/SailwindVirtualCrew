@@ -63,9 +63,10 @@ namespace SailwindVirtualCrew
                 firstOfficerSettingsVersion = 1,
                 firstOfficerAutoTrimEnabled = mgr.FirstOfficerAutoTrimEnabled,
                 firstOfficerStandingOrdersEnabled = mgr.FirstOfficerStandingOrdersEnabled,
-                stewardSettingsVersion = 1,
+                stewardSettingsVersion = 2,
                 stewardThirstLimitPercent = mgr.StewardThirstLimitPercent,
                 stewardHungerLimitPercent = mgr.StewardHungerLimitPercent,
+                stewardTuckInEnabled = mgr.StewardTuckInEnabled,
                 maintenanceSettingsVersion = 3,
                 maintenanceBailOneDeckhandThresholdPercent = mgr.MaintenanceBailOneDeckhandThresholdPercent,
                 maintenanceBailTwoDeckhandsThresholdPercent = mgr.MaintenanceBailTwoDeckhandsThresholdPercent,
@@ -124,7 +125,8 @@ namespace SailwindVirtualCrew
                 data.firstOfficerSettingsVersion,
                 data.firstOfficerAutoTrimEnabled,
                 data.firstOfficerStandingOrdersEnabled);
-            VirtualCrewManager.Instance.RestoreStewardSettings(data.stewardSettingsVersion, data.stewardThirstLimitPercent, data.stewardHungerLimitPercent);
+            VirtualCrewManager.Instance.RestoreStewardSettings(data.stewardSettingsVersion, data.stewardThirstLimitPercent, data.stewardHungerLimitPercent,
+                data.stewardTuckInEnabled);
             VirtualCrewManager.Instance.RestoreMaintenanceSettings(
                 data.maintenanceSettingsVersion,
                 data.maintenanceBailOneDeckhandThresholdPercent,

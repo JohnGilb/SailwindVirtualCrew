@@ -507,6 +507,23 @@ namespace SailwindVirtualCrew
             }
             if (lanternRefillToCancel != null) manager.CancelLanternRefillRequest(lanternRefillToCancel);
 
+            if (pilotTask != null)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"[{pilotTask.AssignedCrewman.Name}] On Pilot Duty");
+                if (GUILayout.Button("X", GUILayout.Width(28))) manager.StopPilot();
+                GUILayout.EndHorizontal();
+            }
+
+            if (lookoutTask != null)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"[{lookoutTask.AssignedCrewman.Name}] On Watch");
+                if (GUILayout.Button("X", GUILayout.Width(28))) manager.StopLookout();
+                GUILayout.EndHorizontal();
+            }
+
+            // Sleeping crew are listed last so active work stays at the top.
             SleepRequest sleepToCancel = null;
             foreach (var sleep in sleepRequests)
             {
@@ -535,22 +552,6 @@ namespace SailwindVirtualCrew
                 }
             }
             if (sleepToCancel != null) manager.CancelSleepRequest(sleepToCancel);
-
-            if (pilotTask != null)
-            {
-                GUILayout.BeginHorizontal();
-                GUILayout.Label($"[{pilotTask.AssignedCrewman.Name}] On Pilot Duty");
-                if (GUILayout.Button("X", GUILayout.Width(28))) manager.StopPilot();
-                GUILayout.EndHorizontal();
-            }
-
-            if (lookoutTask != null)
-            {
-                GUILayout.BeginHorizontal();
-                GUILayout.Label($"[{lookoutTask.AssignedCrewman.Name}] On Watch");
-                if (GUILayout.Button("X", GUILayout.Width(28))) manager.StopLookout();
-                GUILayout.EndHorizontal();
-            }
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();

@@ -64,7 +64,7 @@ namespace SailwindVirtualCrew
                 Interrupt("player motion");
         }
 
-        private static bool HasMotionInput()
+        internal static bool HasMotionInput()
         {
             return Input.GetKey(KeyCode.W)
                 || Input.GetKey(KeyCode.A)

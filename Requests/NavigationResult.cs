@@ -105,7 +105,7 @@ namespace SailwindVirtualCrew
         private static float RoundToQuarterDegree(float v) =>
             (float)Math.Round(v / 0.25) * 0.25f;
 
-        private static string FormatLat(float lat)
+        internal static string FormatLat(float lat)
         {
             lat = RoundToQuarterDegree(lat);
             string hemi = lat < 0 ? "S" : "N";
@@ -115,7 +115,7 @@ namespace SailwindVirtualCrew
             return $"{deg}° {min:D2}' {hemi}";
         }
 
-        private static string FormatLon(float lon)
+        internal static string FormatLon(float lon)
         {
             lon = RoundToQuarterDegree(lon);
             string hemi = lon < 0 ? "W" : "E";

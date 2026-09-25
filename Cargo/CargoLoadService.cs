@@ -56,9 +56,9 @@ namespace SailwindVirtualCrew
                 return false;
             }
 
-            if (!MooringLocator.IsCurrentBoatMooredFast())
+            if (!ShoreRoute.IsBoatHeld())
             {
-                reason = "Moor the boat to load cargo.";
+                reason = "Moor or anchor the boat to load cargo.";
                 return false;
             }
 
@@ -156,7 +156,7 @@ namespace SailwindVirtualCrew
             return manager != null
                 && manager.Crew.Any(c => c.Role == ShipRole.Deckhand)
                 && CrewRoleAvailability.HasAwakeCrew(ShipRole.Supercargo)
-                && MooringLocator.IsCurrentBoatMooredFast()
+                && ShoreRoute.IsBoatHeld()
                 && area != null && area.RunCount > 0;
         }
 

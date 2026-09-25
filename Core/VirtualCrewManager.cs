@@ -33,6 +33,7 @@ namespace SailwindVirtualCrew
         public List<StewardWaterRequest> StewardWaterRequests { get; private set; }
         public List<StewardFoodRequest> StewardFoodRequests { get; private set; }
         public StewardPhilosophyRequest ActiveStewardPhilosophyRequest { get; private set; }
+        public StewardTuckInRequest ActiveStewardTuckInRequest { get; private set; }
         public int ActiveSwabDecksRequestCount => SwabDecksRequests.Count(r => r.Status != WorkRequestStatus.Complete);
         public int SwabDecksRequestCapacity => Crew.Count(IsDeckhandCapable);
         public Dictionary<GPButtonRopeWinch, WinchTarget> crewWinchInstructions;
@@ -42,12 +43,19 @@ namespace SailwindVirtualCrew
         private const float OffShiftSleepStaminaRatio = 0.8f;
         private const float FirstOfficerTrimIntervalHours = 2f;
         private const float FirstOfficerStandingOrderReturnDelayHours = 1f;
+        // Special standing-order triggers must hold for this many consecutive ticks (seconds) so a
+        // single wave roll doesn't fire them, and re-arm only once the reading drops past a margin.
+        private const int StandingOrderSpecialTriggerSustainTicks = 3;
+        private const float StandingOrderHeelRearmMarginDegrees = 5f;
+        private const float StandingOrderWaterRearmMarginPercent = 5f;
         private const float DayShiftStartHour = 6f;
         private const float NightShiftStartHour = 18f;
         private const float ShiftSleepDelayHours = 5f / 60f;
         private const float NavigatorMapNoonWindowHours = 1f;
         private const float NavigatorMapIslandRangeMeters = 500f;
         private const float StewardSourceScanCooldownSeconds = 10f;
+        private const float StewardTuckInEnergyPercent = 5f;
+        private const float StewardTuckInSuppressGameMinutes = 10f;
         private const float LanternAutoScanIntervalSeconds = 30f;
         private const float LanternRefillScanIntervalGameHours = 1f;
         private const float DefaultLanternLightHour = 18f;
@@ -61,10 +69,16 @@ namespace SailwindVirtualCrew
         private StandingOrderWindState _pendingStandingOrdersReturnState = StandingOrderWindState.None;
         private StandingOrderWindState _lastStandingOrdersObservedState = StandingOrderWindState.None;
         private float _standingOrdersReturnStartedGameHours = -1f;
+        private readonly Dictionary<StandingOrderWindState, int> _specialStandingOrderSustainTicks =
+            new Dictionary<StandingOrderWindState, int>();
+        private readonly HashSet<StandingOrderWindState> _firedSpecialStandingOrders =
+            new HashSet<StandingOrderWindState>();
         private float _lastShiftLocalTime = -1f;
         private PilotTask _pilotShiftHandoffTask;
         private float _nextStewardWaterSourceScanRealtime;
         private float _nextStewardFoodSourceScanRealtime;
+        private float _nextStewardTuckInBedScanRealtime;
+        private float _stewardTuckInSuppressedUntilGameHours = -1f;
         private float _nextLanternAutoScanRealtime;
         private float _lastLanternRefillScanGameHours = -1f;
         private bool? _lastLanternWantedLit;
@@ -85,6 +99,7 @@ namespace SailwindVirtualCrew
         public bool FirstOfficerStandingOrdersEnabled { get; private set; }
         public float StewardThirstLimitPercent { get; private set; } = 50f;
         public float StewardHungerLimitPercent { get; private set; } = 50f;
+        public bool StewardTuckInEnabled { get; private set; }
         public float MaintenanceBailOneDeckhandThresholdPercent { get; private set; } = 15f;
         public float MaintenanceBailTwoDeckhandsThresholdPercent { get; private set; } = 35f;
         public float MaintenanceBailAllDeckhandsThresholdPercent { get; private set; } = 66f;
@@ -1427,6 +1442,10 @@ namespace SailwindVirtualCrew
             StewardWaterRequests = new List<StewardWaterRequest>();
             StewardFoodRequests = new List<StewardFoodRequest>();
             ActiveStewardPhilosophyRequest = null;
+            ActiveStewardTuckInRequest?.Cancel();
+            ActiveStewardTuckInRequest = null;
+            _stewardTuckInSuppressedUntilGameHours = -1f;
+            _nextStewardTuckInBedScanRealtime = 0f;
             crewWinchInstructions = new Dictionary<GPButtonRopeWinch, WinchTarget>();
             AnchorWinches = new List<GPButtonRopeWinch>();
             _lastGlobalTime = -1f;
@@ -1469,6 +1488,12 @@ namespace SailwindVirtualCrew
         public Crewman Steward   => Crew.FirstOrDefault(c => c.Role == ShipRole.Steward);
         public Crewman FirstOfficer => Crew.FirstOrDefault(c => c.Role == ShipRole.ChiefOfficer);
         public IReadOnlyList<Crewman> FirstOfficers => Crew.Where(c => c.Role == ShipRole.ChiefOfficer).ToList().AsReadOnly();
+
+        // The First Officer can send the Pilot to a Navigator-plotted island only with all three aboard.
+        public bool CanSetFirstOfficerDestination =>
+            Crew.Any(c => c.Role == ShipRole.ChiefOfficer)
+            && Crew.Any(c => c.Role == ShipRole.Navigator)
+            && Crew.Any(c => c.Role == ShipRole.Pilot);
         public int FirstOfficerCount => Crew.Count(c => c.Role == ShipRole.ChiefOfficer);
         public bool HasFirstOfficer => Crew.Any(c => c.Role == ShipRole.ChiefOfficer);
         public IReadOnlyList<string> RecentNavigationResults => recentNavigationResults.AsReadOnly();
@@ -1535,6 +1560,14 @@ namespace SailwindVirtualCrew
 
             NotificationUi.instance?.ShowNotification("All hands on deck!");
             CrewNavigationCoordinator.Instance.ForceRingLookoutBell();
+        }
+
+        // A night at an inn leaves the whole crew fully rested, clearing any adrenaline crash. Crew still
+        // asleep finish their SleepRequest on the next tick.
+        public void RestAllCrewAtInn()
+        {
+            foreach (var crewman in Crew)
+                crewman.SetStaminaToMax();
         }
 
         private void TickPanic()
@@ -2132,6 +2165,7 @@ namespace SailwindVirtualCrew
             if (ActiveLookoutTask?.AssignedCrewman == c) StopLookout();
             if (ActiveSkullingRequest != null && ActiveSkullingRequest.HasCrew(c)) CancelSkullingRequest();
             if (ActiveStewardPhilosophyRequest?.AssignedCrewman == c) CancelStewardPhilosophy();
+            if (ActiveStewardTuckInRequest?.AssignedCrewman == c) CancelStewardTuckIn(suppress: false);
             if (_assignedNavigator == c) _assignedNavigator = null;
             var sleepReq = SleepRequests.FirstOrDefault(r => r.AssignedCrewman == c);
             if (sleepReq != null) CancelSleepRequest(sleepReq);
@@ -2238,10 +2272,19 @@ namespace SailwindVirtualCrew
             StewardHungerLimitPercent = Mathf.Clamp(percent, 0f, 100f);
         }
 
-        public void RestoreStewardSettings(int settingsVersion, float thirstLimitPercent, float hungerLimitPercent)
+        public void SetStewardTuckInEnabled(bool enabled)
+        {
+            StewardTuckInEnabled = enabled;
+            if (!enabled)
+                CancelStewardTuckIn(suppress: false);
+        }
+
+        public void RestoreStewardSettings(int settingsVersion, float thirstLimitPercent, float hungerLimitPercent,
+                                           bool tuckInEnabled)
         {
             StewardThirstLimitPercent = settingsVersion <= 0 ? 50f : Mathf.Clamp(thirstLimitPercent, 0f, 100f);
             StewardHungerLimitPercent = settingsVersion <= 0 ? 50f : Mathf.Clamp(hungerLimitPercent, 0f, 100f);
+            StewardTuckInEnabled = settingsVersion >= 2 && tuckInEnabled;
         }
 
         public void SetMaintenanceBailOneDeckhandThreshold(float percent)
@@ -3885,6 +3928,18 @@ namespace SailwindVirtualCrew
             ActiveStewardPhilosophyRequest = null;
         }
 
+        // suppress: the player refused (moved), so leave them be for a while.
+        public void CancelStewardTuckIn(bool suppress)
+        {
+            if (ActiveStewardTuckInRequest == null)
+                return;
+
+            ActiveStewardTuckInRequest.Cancel();
+            ActiveStewardTuckInRequest = null;
+            if (suppress)
+                _stewardTuckInSuppressedUntilGameHours = GetCurrentGameHours() + StewardTuckInSuppressGameMinutes / 60f;
+        }
+
         // Frame on which carried haul-sell cargo was put back for a save; -1 when not suspended. The game
         // captures item state at the end of that frame, so a few frames is ample; after that, hauls resume
         // on their own even if the save never ran.
@@ -3923,6 +3978,7 @@ namespace SailwindVirtualCrew
             }
 
             CancelStewardPhilosophy();
+            CancelStewardTuckIn(suppress: false);
         }
 
         // Called once the game has captured item state for the save.
@@ -3966,12 +4022,28 @@ namespace SailwindVirtualCrew
                     ActiveStewardPhilosophyRequest = null;
             }
 
+            if (ActiveStewardTuckInRequest != null)
+            {
+                ActiveStewardTuckInRequest.Tick();
+                if (ActiveStewardTuckInRequest.Status == WorkRequestStatus.Complete)
+                    ActiveStewardTuckInRequest = null;
+            }
+
             if (PlayerNeeds.instance == null)
                 return;
 
             var steward = FreshestCrewman(ShipRole.Steward);
             if (steward == null)
                 return;
+
+            if (ShouldStartStewardTuckIn() && TryFindStewardTuckInBed(out var tuckInBed))
+            {
+                ActiveStewardTuckInRequest = new StewardTuckInRequest(tuckInBed);
+                ActiveStewardTuckInRequest.Begin(steward);
+                if (ActiveStewardTuckInRequest.Status == WorkRequestStatus.Complete)
+                    ActiveStewardTuckInRequest = null;
+                return;
+            }
 
             if (PlayerNeeds.water < StewardThirstLimitPercent
                 && !StewardWaterRequests.Any(r => r.Status != WorkRequestStatus.Complete)
@@ -4006,8 +4078,53 @@ namespace SailwindVirtualCrew
             }
         }
 
+        private bool ShouldStartStewardTuckIn()
+        {
+            return StewardTuckInEnabled
+                && ActiveStewardTuckInRequest == null
+                && PlayerNeeds.sleep < StewardTuckInEnergyPercent
+                && GetCurrentGameHours() >= _stewardTuckInSuppressedUntilGameHours
+                && Time.realtimeSinceStartup >= _nextStewardTuckInBedScanRealtime
+                && !GameState.inBed
+                && !GameState.sleeping
+                && !GameState.recovering
+                && !GameState.currentlyLoading
+                && !GameState.onRatlines
+                && !GameState.inCursorMenu
+                && !PlayerSwimming.swimming
+                && !PlayerWaitingState.IsActive
+                && Refs.observerMirror != null
+                && Refs.charController != null;
+        }
+
+        // The free bed nearest the player. Beds claimed by sleeping crew are left alone.
+        private bool TryFindStewardTuckInBed(out Component bed)
+        {
+            bed = null;
+            float bestDistance = float.MaxValue;
+            Vector3 playerPosition = Refs.observerMirror.transform.position;
+            foreach (var candidate in LocatorUtils.FindBedsOnBoat())
+            {
+                if (SleepRequests.Any(s => s.AssignedBed == candidate))
+                    continue;
+
+                float distance = (candidate.transform.position - playerPosition).sqrMagnitude;
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bed = candidate;
+                }
+            }
+
+            if (bed == null)
+                _nextStewardTuckInBedScanRealtime = Time.realtimeSinceStartup + StewardSourceScanCooldownSeconds;
+            return bed != null;
+        }
+
         private void CancelStewardSurvivalRequests()
         {
+            CancelStewardTuckIn(suppress: false);
+
             if (StewardWaterRequests != null)
             {
                 foreach (var request in StewardWaterRequests.ToList())
@@ -4604,6 +4721,10 @@ namespace SailwindVirtualCrew
                 return;
             }
 
+            // Special triggers go first so their (usually safety) orders claim the winches before
+            // any wind-change orders issued in the same tick.
+            TickSpecialStandingOrderTriggers();
+
             if (!WindAngleUtils.TryGetApparentWindAngle(out float apparentWindAngle))
                 return;
 
@@ -4657,6 +4778,65 @@ namespace SailwindVirtualCrew
 
             IssueStandingOrdersForWindState(state);
             RecordStandingOrdersIssuedState(state);
+        }
+
+        private void TickSpecialStandingOrderTriggers()
+        {
+            if (WindAngleUtils.TryGetHeelAngle(out float heel))
+            {
+                // Check the steeper trigger first; when it fires, the 20 degree trigger is
+                // considered fired too so its gentler orders don't follow and fight it.
+                if (TickSpecialStandingOrderTrigger(StandingOrderWindState.HeelAbove40, heel, 40f,
+                        StandingOrderHeelRearmMarginDegrees))
+                {
+                    _firedSpecialStandingOrders.Add(StandingOrderWindState.HeelAbove20);
+                    _specialStandingOrderSustainTicks[StandingOrderWindState.HeelAbove20] = 0;
+                }
+
+                TickSpecialStandingOrderTrigger(StandingOrderWindState.HeelAbove20, heel, 20f,
+                    StandingOrderHeelRearmMarginDegrees);
+            }
+
+            var damage = GetCurrentBoatDamage();
+            if (damage != null)
+                TickSpecialStandingOrderTrigger(StandingOrderWindState.WaterAbove30, damage.waterLevel * 100f, 30f,
+                    StandingOrderWaterRearmMarginPercent);
+        }
+
+        // Fires the trigger's saved orders once when the reading stays above the threshold, then
+        // waits for it to fall below threshold - rearmMargin before it can fire again.
+        private bool TickSpecialStandingOrderTrigger(StandingOrderWindState trigger, float value,
+                                                     float threshold, float rearmMargin)
+        {
+            if (_firedSpecialStandingOrders.Contains(trigger))
+            {
+                if (value < threshold - rearmMargin)
+                {
+                    _firedSpecialStandingOrders.Remove(trigger);
+                    CrewDebugLog.Info("StandingOrders",
+                        WindAngleUtils.GetStateLabel(trigger) + " re-armed at " + value.ToString("0.0") + ".");
+                }
+                return false;
+            }
+
+            if (value <= threshold)
+            {
+                _specialStandingOrderSustainTicks[trigger] = 0;
+                return false;
+            }
+
+            _specialStandingOrderSustainTicks.TryGetValue(trigger, out int ticks);
+            ticks++;
+            _specialStandingOrderSustainTicks[trigger] = ticks;
+            if (ticks < StandingOrderSpecialTriggerSustainTicks)
+                return false;
+
+            _specialStandingOrderSustainTicks[trigger] = 0;
+            _firedSpecialStandingOrders.Add(trigger);
+            CrewDebugLog.Info("StandingOrders",
+                WindAngleUtils.GetStateLabel(trigger) + " triggered at " + value.ToString("0.0") + ".");
+            IssueStandingOrdersForWindState(trigger);
+            return true;
         }
 
         private void IssueStandingOrdersForWindState(StandingOrderWindState state)
@@ -4795,6 +4975,8 @@ namespace SailwindVirtualCrew
             _pendingStandingOrdersReturnState = StandingOrderWindState.None;
             _lastStandingOrdersObservedState = StandingOrderWindState.None;
             _standingOrdersReturnStartedGameHours = -1f;
+            _specialStandingOrderSustainTicks.Clear();
+            _firedSpecialStandingOrders.Clear();
         }
 
         private void RotateWatchCrew()
@@ -5584,7 +5766,8 @@ namespace SailwindVirtualCrew
                     if (sleep.Status != WorkRequestStatus.Open) continue;
                     if (sleep.AssignedCrewman.CurrentTask != sleep) continue;
                     if (availableBeds == null) availableBeds = LocatorUtils.FindBedsOnBoat();
-                    var bed = availableBeds.FirstOrDefault(b => !SleepRequests.Any(s => s.AssignedBed == b));
+                    var bed = availableBeds.FirstOrDefault(b => !SleepRequests.Any(s => s.AssignedBed == b)
+                                                             && b != ActiveStewardTuckInRequest?.Bed);
                     if (bed == null) break;
                     if (navCoord.BeginSleep(sleep, sleep.AssignedCrewman, bed))
                     {
@@ -6100,6 +6283,13 @@ namespace SailwindVirtualCrew
 
             using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.StewardPhilosophyRequest"))
                 ActiveStewardPhilosophyRequest?.UpdateFrame();
+
+            using (PerformanceInstrumentation.Measure("VirtualCrewManager.TrimTick.StewardTuckInRequest"))
+            {
+                if (ActiveStewardTuckInRequest != null && PlayerWaitingState.HasMotionInput())
+                    CancelStewardTuckIn(suppress: true);
+                ActiveStewardTuckInRequest?.UpdateFrame();
+            }
         }
 
         public void deployAllSails()

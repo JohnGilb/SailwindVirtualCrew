@@ -137,6 +137,10 @@
     <Compile Include="CrewMovement\CrewBoatContext.cs" />
     <Compile Include="CrewMovement\CrewBoatContextResolver.cs" />
     <Compile Include="CrewMovement\CrewDowntime.cs" />
+    <Compile Include="CrewMovement\Shore\ColliderStandInBuilder.cs" />
+    <Compile Include="CrewMovement\Shore\ShoreNavMesh.cs" />
+    <Compile Include="CrewMovement\Shore\ShoreRoute.cs" />
+    <Compile Include="CrewMovement\Shore\ShoreNavMeshProbe.cs" />
     <Compile Include="CrewMovement\CrewNavigationCoordinator.cs" />
     <Compile Include="CrewMovement\CrewSpaceMapper.cs" />
     <Compile Include="CrewMovement\Proxy\ProxyBoat.cs" />
@@ -164,6 +168,7 @@
     <Compile Include="Requests\StewardFoodRequest.cs" />
     <Compile Include="Requests\StewardPhilosophyRequest.cs" />
     <Compile Include="Requests\StewardRequestNavigation.cs" />
+    <Compile Include="Requests\StewardTuckInRequest.cs" />
     <Compile Include="Requests\StewardWaterRequest.cs" />
     <Compile Include="Requests\SkullingRequest.cs" />
     <Compile Include="Requests\SwabDecksRequest.cs" />
@@ -193,6 +198,7 @@
     <Compile Include="Windows\StewardWindow.cs" />
     <Compile Include="Windows\FirstOfficerWindow.cs" />
     <Compile Include="Windows\StandingOrdersWindow.cs" />
+    <Compile Include="Windows\FirstOfficerDestinationWindow.cs" />
     <Compile Include="Windows\NavigatorWindow.cs" />
     <Compile Include="Windows\NavigatorMapWindow.cs" />
     <Compile Include="Windows\NavigatorShipLogWindow.cs" />

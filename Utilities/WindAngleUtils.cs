@@ -12,7 +12,12 @@ namespace SailwindVirtualCrew
         StbdClose,
         StbdBeam,
         StbdBroad,
-        StbdRun
+        StbdRun,
+        // Special triggers. These are not wind directions, but share the same saved
+        // standing-order storage; they fire once when their condition becomes true.
+        HeelAbove20,
+        HeelAbove40,
+        WaterAbove30
     }
 
     internal static class WindAngleUtils
@@ -62,6 +67,25 @@ namespace SailwindVirtualCrew
             return boat.GetComponent<Rigidbody>() ?? boat.GetComponentInParent<Rigidbody>();
         }
 
+        // Heel is the boat's roll from vertical, ignoring pitch, so bow-down waves don't count.
+        public static bool TryGetHeelAngle(out float heel)
+        {
+            heel = 0f;
+            Transform boat = GetSailInfoBoatTransform();
+            if (boat == null)
+                return false;
+
+            heel = Mathf.Asin(Mathf.Clamp01(Mathf.Abs(boat.right.y))) * Mathf.Rad2Deg;
+            return true;
+        }
+
+        public static bool IsSpecialTrigger(StandingOrderWindState state)
+        {
+            return state == StandingOrderWindState.HeelAbove20
+                || state == StandingOrderWindState.HeelAbove40
+                || state == StandingOrderWindState.WaterAbove30;
+        }
+
         public static StandingOrderWindState ClassifyStandingOrderWindState(float angle)
         {
             float abs = Mathf.Abs(angle);
@@ -102,6 +126,9 @@ namespace SailwindVirtualCrew
                 case StandingOrderWindState.StbdBeam: return "Stbd Beam";
                 case StandingOrderWindState.StbdBroad: return "Stbd Broad";
                 case StandingOrderWindState.StbdRun: return "Stbd Run";
+                case StandingOrderWindState.HeelAbove20: return "Heel > 20°";
+                case StandingOrderWindState.HeelAbove40: return "Heel > 40°";
+                case StandingOrderWindState.WaterAbove30: return "Water > 30%";
                 default: return "Ahead";
             }
         }

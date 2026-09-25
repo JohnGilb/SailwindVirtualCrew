@@ -7,14 +7,14 @@ namespace SailwindVirtualCrew
     public class StandingOrdersWindow : MonoBehaviour, IWindowPosition
     {
         private bool showWindow = false;
-        private Rect windowRect = new Rect(860, 340, 460, 560);
+        private Rect windowRect = new Rect(860, 340, 460, 620);
         private static readonly int windowId = "VirtualCrewStandingOrdersWindow".GetHashCode();
 
         private WindowResizer _resizer;
         private SailGroup _selectedGroup;
         private StandingOrderWindState _selectedState = StandingOrderWindState.PortClose;
 
-        private const float DefaultHeight = 560f;
+        private const float DefaultHeight = 620f;
 
         public string WindowKey => "StandingOrdersWindow";
         public float[] GetPosition() => new[] { windowRect.x, windowRect.y, _resizer.UserHeight };
@@ -87,6 +87,13 @@ namespace SailwindVirtualCrew
             DrawWindStateButton("Stbd Beam", StandingOrderWindState.StbdBeam);
             DrawWindStateButton("Stbd Broad", StandingOrderWindState.StbdBroad);
             DrawWindStateButton("Stbd Run", StandingOrderWindState.StbdRun);
+            GUILayout.EndHorizontal();
+
+            GUILayout.Label("Special Triggers");
+            GUILayout.BeginHorizontal();
+            DrawWindStateButton("Heel > 20°", StandingOrderWindState.HeelAbove20);
+            DrawWindStateButton("Heel > 40°", StandingOrderWindState.HeelAbove40);
+            DrawWindStateButton("Water > 30%", StandingOrderWindState.WaterAbove30);
             GUILayout.EndHorizontal();
         }
 
@@ -277,7 +284,9 @@ namespace SailwindVirtualCrew
                 onTrim: null);
 
             GUILayout.Space(4);
-            if (GUILayout.Button("Clear saved orders for this group / wind"))
+            if (GUILayout.Button(WindAngleUtils.IsSpecialTrigger(_selectedState)
+                    ? "Clear saved orders for this group / trigger"
+                    : "Clear saved orders for this group / wind"))
                 manager.ClearStandingOrdersForGroup(_selectedState, _selectedGroup);
         }
     }

@@ -25,6 +25,10 @@ namespace SailwindVirtualCrew
                 holdWindAngle = holdWindAngle,
                 playerSelectedHeading = playerSelectedHeading,
                 playerSelectedWindAngle = playerSelectedWindAngle,
+                holdDestination = holdDestination,
+                destinationName = destinationName,
+                destinationLatitude = destinationLatitude,
+                destinationLongitude = destinationLongitude,
                 pilotCrewId = VirtualCrewManager.Instance.ActivePilotTask?.AssignedCrewman?.Id
             };
         }
@@ -47,13 +51,21 @@ namespace SailwindVirtualCrew
             playerSelectedHeading = PilotController.Normalize(data.playerSelectedHeading);
             playerSelectedWindAngle = Mathf.Clamp(data.playerSelectedWindAngle, -179f, 179f);
             hasPlayerSelection = true;
-            holdWindAngle = data.holdWindAngle;
+            holdWindAngle = data.holdWindAngle && !data.holdDestination;
+            holdDestination = data.holdDestination;
+            destinationName = data.destinationName;
+            destinationLatitude = data.destinationLatitude;
+            destinationLongitude = data.destinationLongitude;
+            destinationBeating = false;
+            nextDestinationEvalTime = 0f;
             autopilotEngaged = data.autopilotEngaged;
             restoredOrderPending = true;
             restoredAutopilotPending = autopilotEngaged;
             pilotHeadingError = ComputePilotError();
 
-            if (holdWindAngle)
+            if (holdDestination)
+                UpdateDestinationTarget(updateOnly: false);
+            else if (holdWindAngle)
                 UpdateWindAngleTarget(updateOnly: false);
             else
                 controller.SetTarget(playerSelectedHeading + pilotHeadingError);
@@ -83,6 +95,21 @@ namespace SailwindVirtualCrew
         private float filteredHeading = 0f;
         private int headingFrame = -1;
         private float cachedHeading = 0f;
+
+        // Destination order from the First Officer: the pilot re-aims at a plotted island
+        // every few seconds, bearing off the wind when the island lies dead to windward.
+        private bool   holdDestination = false;
+        private string destinationName;
+        private float  destinationLatitude;
+        private float  destinationLongitude;
+        private bool   destinationBeating = false;
+        private float  nextDestinationEvalTime = 0f;
+        private const float DestinationEvalIntervalSeconds = 5f;
+        // Roughly 900 m in globe degrees (world units / 9000); close enough to hand back to the player.
+        private const float DestinationArrivalDegrees = 0.1f;
+        // Matches WindAngleUtils: an apparent wind under 10 degrees off the bow is "Ahead".
+        private const float AheadWindAngleDegrees = 10f;
+        private const float DestinationCloseMarginDegrees = 5f;
 
         // Compass circle
         private const int CircleRadius = 100;
@@ -152,6 +179,9 @@ namespace SailwindVirtualCrew
 
             if (holdWindAngle)
                 UpdateWindAngleTarget(updateOnly: true);
+
+            if (holdDestination && Time.time >= nextDestinationEvalTime)
+                UpdateDestinationTarget(updateOnly: true);
 
             if (!controller.TargetHeading.HasValue)
             {
@@ -246,7 +276,9 @@ namespace SailwindVirtualCrew
         private void RetargetPilotOrderForNewPilot()
         {
             pilotHeadingError = ComputePilotError();
-            if (holdWindAngle)
+            if (holdDestination)
+                UpdateDestinationTarget(updateOnly: false);
+            else if (holdWindAngle)
                 UpdateWindAngleTarget(updateOnly: false);
             else
                 controller.SetTarget(playerSelectedHeading + pilotHeadingError);
@@ -257,6 +289,7 @@ namespace SailwindVirtualCrew
             controller.ClearTarget();
             hasPlayerSelection = false;
             holdWindAngle = false;
+            ClearDestination();
             restoredOrderPending = false;
             restoredAutopilotPending = false;
             pilotHeadingError = 0f;
@@ -371,6 +404,7 @@ namespace SailwindVirtualCrew
             playerSelectedHeading = PilotController.Normalize(heading);
             hasPlayerSelection    = true;
             holdWindAngle         = false;
+            ClearDestination();
             pilotHeadingError     = ComputePilotError();
             controller.SetTarget(playerSelectedHeading + pilotHeadingError);
         }
@@ -380,6 +414,7 @@ namespace SailwindVirtualCrew
             playerSelectedWindAngle = Mathf.Clamp(angle, -179f, 179f);
             hasPlayerSelection      = true;
             holdWindAngle           = true;
+            ClearDestination();
             pilotHeadingError       = ComputePilotError();
             UpdateWindAngleTarget(updateOnly: false);
         }
@@ -387,6 +422,8 @@ namespace SailwindVirtualCrew
         private void AdjustPlayerTarget(float delta)
         {
             if (!hasPlayerSelection) return;
+            // A manual nudge takes the helm off the destination and holds the adjusted heading.
+            ClearDestination();
             if (holdWindAngle)
             {
                 playerSelectedWindAngle = Mathf.Clamp(playerSelectedWindAngle + delta, -179f, 179f);
@@ -411,13 +448,36 @@ namespace SailwindVirtualCrew
         {
             if (!TryGetSailInfoApparentWind(out Vector3 apparentWind)) return;
 
-            // SailInfo reports AWA as SignedAngle(-boat.forward, apparentWind, up).
-            // Solve that equation directly for boat.forward:
-            //   apparentWind = Rotate(desiredAwa) * -forward
-            //   forward = -Rotate(-desiredAwa) * apparentWind
-            Vector3 targetForward = -(Quaternion.AngleAxis(-playerSelectedWindAngle, Vector3.up) * apparentWind.normalized);
-            targetForward.y = 0f;
-            if (targetForward.sqrMagnitude < 0.001f) return;
+            Vector3 targetForward = ForwardForApparentWindAngle(apparentWind, playerSelectedWindAngle);
+            if (!TryHullForwardToHelmHeading(targetForward, out float heading)) return;
+
+            playerSelectedHeading = heading;
+
+            float helmHeading = PilotController.Normalize(playerSelectedHeading + pilotHeadingError);
+            if (updateOnly)
+                controller.UpdateTarget(helmHeading);
+            else
+                controller.SetTarget(helmHeading);
+        }
+
+        // SailInfo reports AWA as SignedAngle(-boat.forward, apparentWind, up).
+        // Solve that equation directly for boat.forward:
+        //   apparentWind = Rotate(desiredAwa) * -forward
+        //   forward = -Rotate(-desiredAwa) * apparentWind
+        private static Vector3 ForwardForApparentWindAngle(Vector3 apparentWind, float windAngle)
+        {
+            Vector3 forward = -(Quaternion.AngleAxis(-windAngle, Vector3.up) * apparentWind.normalized);
+            forward.y = 0f;
+            return forward;
+        }
+
+        // Converts a desired hull direction (in the SailInfo boat's frame, which apparent wind is
+        // measured against) into a helm heading measured from the world boat's forward.
+        private bool TryHullForwardToHelmHeading(Vector3 hullForward, out float heading)
+        {
+            heading = 0f;
+            hullForward.y = 0f;
+            if (hullForward.sqrMagnitude < 0.001f) return false;
 
             Transform sailInfoBoat = GetSailInfoBoatTransform();
             Transform worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
@@ -427,17 +487,90 @@ namespace SailwindVirtualCrew
                 float worldHeading;
                 if (!TryHeadingFromForward(sailInfoBoat.forward, out sailInfoHeading)
                     || !TryHeadingFromForward(worldBoat.transform.forward, out worldHeading))
-                    return;
+                    return false;
 
                 float headingDelta = Mathf.DeltaAngle(sailInfoHeading, worldHeading);
-                targetForward = Quaternion.AngleAxis(headingDelta, Vector3.up) * targetForward;
-                targetForward.y = 0f;
-                if (targetForward.sqrMagnitude < 0.001f) return;
+                hullForward = Quaternion.AngleAxis(headingDelta, Vector3.up) * hullForward;
             }
 
-            playerSelectedHeading = PilotController.Normalize(
-                HeadingFromHorizontalForward(targetForward.normalized));
+            return TryHeadingFromForward(hullForward, out heading);
+        }
 
+        public bool HasDestination => holdDestination;
+        public string DestinationName => destinationName;
+
+        // Orders the active pilot to steer for a plotted island and engages the autopilot.
+        public bool SetDestination(string name, float latitude, float longitude)
+        {
+            // Pick up a pilot who was just put on the helm first, so the task change
+            // doesn't reset the new order on the next frame.
+            SyncActivePilotTask();
+            if (VirtualCrewManager.Instance.ActivePilotTask == null)
+                return false;
+
+            destinationName      = string.IsNullOrEmpty(name) ? "Island" : name;
+            destinationLatitude  = latitude;
+            destinationLongitude = longitude;
+            holdDestination      = true;
+            destinationBeating   = false;
+            holdWindAngle        = false;
+            hasPlayerSelection   = true;
+            pilotHeadingError    = ComputePilotError();
+            UpdateDestinationTarget(updateOnly: false);
+
+            if (steeringWheel != null && holdDestination)
+                autopilotEngaged = true;
+            return true;
+        }
+
+        public void ClearDestination()
+        {
+            holdDestination = false;
+            destinationBeating = false;
+        }
+
+        // Leaves the next evaluation time alone when the boat can't be resolved, so it retries next frame.
+        private void UpdateDestinationTarget(bool updateOnly)
+        {
+            Transform worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+            if (worldBoat == null || FloatingOriginManager.instance == null) return;
+
+            // Globe coords are world position / 9000, so lat/lon deltas map straight onto world Z/X.
+            Vector3 coords = FloatingOriginManager.instance.GetGlobeCoords(worldBoat);
+            Vector3 toDestination = new Vector3(destinationLongitude - coords.x, 0f, destinationLatitude - coords.z);
+            if (toDestination.magnitude <= DestinationArrivalDegrees)
+            {
+                // Arrived: hold the last course and leave the approach to the player.
+                CrewDebugLog.Info("Piloting", "Arrived near destination '" + destinationName + "'.");
+                ClearDestination();
+                return;
+            }
+
+            Vector3 desiredForward = toDestination.normalized;
+            destinationBeating = false;
+            if (TryGetSailInfoApparentWind(out Vector3 apparentWind))
+            {
+                float goalWindAngle = Vector3.SignedAngle(-desiredForward, apparentWind.normalized, Vector3.up);
+                if (Mathf.Abs(goalWindAngle) < AheadWindAngleDegrees)
+                {
+                    // The island is in the no-go zone: bear away until the wind is at least 5 degrees
+                    // into "Close". Keep to the tack the boat is already on so the pilot doesn't
+                    // flip-flop across the wind each evaluation; the boat tacks naturally once the
+                    // island's bearing clears the no-go zone on the other side.
+                    float currentWindAngle = GetApparentWindAngle();
+                    float side = Mathf.Abs(currentWindAngle) >= AheadWindAngleDegrees
+                        ? Mathf.Sign(currentWindAngle)
+                        : (goalWindAngle >= 0f ? 1f : -1f);
+                    desiredForward = ForwardForApparentWindAngle(apparentWind,
+                        side * (AheadWindAngleDegrees + DestinationCloseMarginDegrees));
+                    destinationBeating = true;
+                }
+            }
+
+            if (!TryHullForwardToHelmHeading(desiredForward, out float heading)) return;
+
+            nextDestinationEvalTime = Time.time + DestinationEvalIntervalSeconds;
+            playerSelectedHeading = heading;
             float helmHeading = PilotController.Normalize(playerSelectedHeading + pilotHeadingError);
             if (updateOnly)
                 controller.UpdateTarget(helmHeading);
@@ -625,14 +758,14 @@ namespace SailwindVirtualCrew
             GUILayout.BeginHorizontal();
             GUILayout.Label("Mode", noWrapLabel, GUILayout.Width(58));
             GUI.enabled = false;
-            GUILayout.TextField(holdWindAngle ? "Wind Angle" : "Heading", GUILayout.Width(96));
+            GUILayout.TextField(holdDestination ? "Destination" : holdWindAngle ? "Wind Angle" : "Heading", GUILayout.Width(96));
             GUI.enabled = true;
             GUILayout.Space(12);
             GUILayout.Label("Target", noWrapLabel, GUILayout.Width(72));
             GUI.enabled = false;
-            GUILayout.TextField(hasPlayerSelection
-                ? FormatTarget(playerSelectedHeading, playerSelectedWindAngle, holdWindAngle)
-                : "-", GUILayout.Width(118));
+            GUILayout.TextField(!hasPlayerSelection ? "-"
+                : holdDestination ? destinationName + (destinationBeating ? " (beating)" : "")
+                : FormatTarget(playerSelectedHeading, playerSelectedWindAngle, holdWindAngle), GUILayout.Width(118));
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 

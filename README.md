@@ -113,6 +113,7 @@ Tools:
 - Keeps the captain healthy and can pass the time in philosophical discussion.
   - Will keep the captain quenched with water, and fed with food, selecting the best food for the captain's long-term health.
   - Discussing philosophy keeps you distracted, accelerating time until WASD is pressed. 
+  - Optional "Tuck In": once your energy falls below 5%, the steward carries you to a free bed on the ship and puts you to bed. Pressing WASD or Space cancels it, and the steward leaves you be for 10 in-game minutes.
 
 #### First Officer
 
@@ -124,6 +125,8 @@ Tools:
 - They instruct the Navigator (if available/awake) to take their measurements at the proper times.
 - Can be configured to periodically call for the sails to be trimmed.
 - Can set "Standing Orders" for each main point of sail
+  - Special triggers fire once when the boat heels past 20° or 40°, or takes on more than 30% water (e.g. reef sails to reduce heeling).
+- With a Pilot and Navigator aboard, can "Set Destination" to one of the Navigator's plotted islands. The Pilot steers for it, re-checking every 5 seconds, and bears away to a close-hauled course when the island lies dead upwind.
 - Their Charisma acts as a buff (or detriment) to the statistics of other crew members.
 
 ---

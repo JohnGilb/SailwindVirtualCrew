@@ -12,6 +12,8 @@ namespace SailwindVirtualCrew
         private int _keptCargoCount;
         private bool _canBulkSellUnmarkedCargo;
         private bool _isCurrentBoatMoored;
+        private bool _isCurrentBoatAnchored;
+        private PortDude _tradeDude;
         private int _loadableDockCargoCount;
         private CargoArea _statsArea;
         private int _statsVersion = -1;
@@ -38,7 +40,7 @@ namespace SailwindVirtualCrew
             if (!showWindow) return;
             SailwindGuiStyle.Apply();
 
-            float contentHeight = ButtonHeight * 12 + 32f;
+            float contentHeight = ButtonHeight * 14 + 32f;
             windowRect.height = _resizer.UserHeight > 0f ? _resizer.UserHeight : contentHeight + 40f;
             windowRect = WindowLayoutUtility.DrawClampedWindow(windowId, windowRect, DrawWindow, "Supercargo");
         }
@@ -52,7 +54,12 @@ namespace SailwindVirtualCrew
             RefreshSnapshotIfNeeded();
 
             GUILayout.Label("Cargo Orders");
-            GUILayout.Label(_isCurrentBoatMoored ? "Boat moored" : "Boat not moored");
+            GUILayout.Label(_isCurrentBoatMoored ? "Boat moored"
+                : _isCurrentBoatAnchored ? "Boat anchored"
+                : "Boat not moored");
+
+            DrawPortTraderControls();
+
             GUILayout.Label("Kept cargo: " + _keptCargoCount);
 
             GUI.enabled = _canBulkSellUnmarkedCargo;
@@ -83,6 +90,25 @@ namespace SailwindVirtualCrew
 
             _resizer.HandleInWindow(ref windowRect);
             GUI.DragWindow();
+        }
+
+        // Opens the nearby port trader's trade book or mission list without walking to the trader.
+        private void DrawPortTraderControls()
+        {
+            bool haveDude = _tradeDude;
+            GUILayout.Label(haveDude
+                ? "Trader: " + _tradeDude.GetPort().GetPortName()
+                : "Trader: none within reach");
+
+            bool gameUiOpen = (EconomyUI.instance && EconomyUI.instance.uiActive) || GameState.inPortMissionList;
+            GUI.enabled = haveDude && !gameUiOpen;
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Trade Book"))
+                _tradeDude.ActivateMissionListUI(openEconomyUI: true);
+            if (GUILayout.Button("Mission List"))
+                _tradeDude.ActivateMissionListUI(openEconomyUI: false);
+            GUILayout.EndHorizontal();
+            GUI.enabled = true;
         }
 
         // Painting the cargo area: walk through the space to be used for cargo while painting (erasing takes it out).
@@ -165,7 +191,9 @@ namespace SailwindVirtualCrew
 
             _nextSnapshotRefreshTime = Time.realtimeSinceStartup + 1f;
             _isCurrentBoatMoored = MooringLocator.IsCurrentBoatMooredFast();
-            if (!_isCurrentBoatMoored)
+            _isCurrentBoatAnchored = !_isCurrentBoatMoored && MooringLocator.IsCurrentBoatAnchoredFast();
+            SupercargoTradeService.TryGetRemoteTradeDude(_isCurrentBoatMoored || _isCurrentBoatAnchored, out _tradeDude);
+            if (!_isCurrentBoatMoored && !_isCurrentBoatAnchored)
             {
                 _keptCargoCount = 0;
                 _canBulkSellUnmarkedCargo = false;
