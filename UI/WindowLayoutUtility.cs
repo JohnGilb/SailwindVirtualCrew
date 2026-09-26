@@ -1,3 +1,4 @@
+using BepInEx.Configuration;
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -7,8 +8,12 @@ namespace SailwindVirtualCrew
     {
         private const float VisibleEdge = 40f;
 
-        private static int _toggleFrame = -1;
-        private static bool _togglePressedThisFrame;
+        private const float FreeMouseHoldSeconds = 0.33f;
+
+        private static bool _crewKeyHeld;
+        private static bool _crewKeyFreedMouse;
+        private static bool _crewKeyLayerWasVisible;
+        private static float _crewKeyDownTime;
         private static bool _modLayerVisible;
         private static readonly Dictionary<int, Vector2> _windowScrollPositions = new Dictionary<int, Vector2>();
         private static readonly List<Rect> _imguiWindowRects = new List<Rect>();
@@ -28,25 +33,46 @@ namespace SailwindVirtualCrew
                 Plugin.LockWindowPositions.Value = locked;
         }
 
-        internal static void ToggleModLayer()
-        {
-            _modLayerVisible = !_modLayerVisible;
-        }
-
         internal static bool ShouldToggleWindowsThisFrame()
         {
             return false;
         }
 
-        internal static bool ShouldToggleLauncherThisFrame()
+        // Tap B: show the windows, or hide them (and end free mouse) if already shown.
+        // Hold B: show the windows if needed and free the mouse, keeping the windows up on release.
+        internal static void TickCrewWindowKey()
         {
-            if (_toggleFrame != Time.frameCount)
+            KeyboardShortcut shortcut = Plugin.ToggleCrewWindow.Value;
+
+            if (!_crewKeyHeld)
             {
-                _toggleFrame = Time.frameCount;
-                _togglePressedThisFrame = Plugin.ToggleCrewWindow.Value.IsDown() && !Input.GetMouseButton(0);
+                if (!shortcut.IsDown() || Input.GetMouseButton(0) || TextInputHotkeySuppressor.ShouldSuppressFavoriteActionHotkeys)
+                    return;
+
+                _crewKeyHeld = true;
+                _crewKeyFreedMouse = false;
+                _crewKeyDownTime = Time.unscaledTime;
+                _crewKeyLayerWasVisible = _modLayerVisible;
+                _modLayerVisible = true;
+                return;
             }
 
-            return _togglePressedThisFrame;
+            if (Input.GetKey(shortcut.MainKey))
+            {
+                if (!_crewKeyFreedMouse && Time.unscaledTime - _crewKeyDownTime >= FreeMouseHoldSeconds)
+                {
+                    _crewKeyFreedMouse = true;
+                    FreeMouseMode.Enable();
+                }
+                return;
+            }
+
+            _crewKeyHeld = false;
+            if (_crewKeyLayerWasVisible && !_crewKeyFreedMouse)
+            {
+                _modLayerVisible = false;
+                FreeMouseMode.Disable();
+            }
         }
 
         internal static float GetScrollableContentHeight(Rect windowRect)

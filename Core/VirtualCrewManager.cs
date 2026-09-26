@@ -3452,6 +3452,84 @@ namespace SailwindVirtualCrew
             if (result.HasLongitude) coords += result.LongitudeText;
             AddNavigationResult(result.Header + "\n" + coords);
             RecordNavigatorMapMeasurement(result);
+            RecordLastNavigatorFix(result);
+        }
+
+        // Keeps the latest reading of each coordinate separately, since some tools
+        // (quadrant, chronometer) only measure one of them.
+        private void RecordLastNavigatorFix(NavigationResult result)
+        {
+            if (result == null || result.IsFailure || (!result.HasLatitude && !result.HasLongitude))
+                return;
+
+            var vesselData = GetCurrentVesselData();
+            if (vesselData == null)
+                return;
+
+            if (vesselData.lastNavigatorFix == null)
+                vesselData.lastNavigatorFix = new NavigatorFixSaveData();
+
+            if (result.HasLatitude)
+            {
+                vesselData.lastNavigatorFix.hasLatitude = true;
+                vesselData.lastNavigatorFix.latitude = result.Latitude;
+            }
+
+            if (result.HasLongitude)
+            {
+                vesselData.lastNavigatorFix.hasLongitude = true;
+                vesselData.lastNavigatorFix.longitude = result.Longitude;
+            }
+        }
+
+        public bool TryGetLastNavigatorFix(out float latitude, out float longitude)
+        {
+            var fix = GetCurrentVesselData()?.lastNavigatorFix;
+            latitude = fix != null ? fix.latitude : 0f;
+            longitude = fix != null ? fix.longitude : 0f;
+            return fix != null && fix.hasLatitude && fix.hasLongitude;
+        }
+
+        // Gives the island's live world position only when the on-watch Lookout has it in sight
+        // (full certainty) and has identified it, by the same rules the Lookout window reports with.
+        public bool TryGetLookoutSightedIsland(string islandKey, out Vector3 islandWorldPosition)
+        {
+            islandWorldPosition = Vector3.zero;
+            var lookout = Lookout;
+            var tracker = IslandDistanceTracker.instance;
+            if (lookout == null || string.IsNullOrEmpty(islandKey)
+                || tracker == null || tracker.islands == null)
+                return false;
+
+            var island = tracker.islands.FirstOrDefault(i => i != null && LookoutVisibility.GetIslandKey(i) == islandKey);
+            if (island == null || GetLookoutCertainty(island) < 1f)
+                return false;
+
+            bool identified = TryGetRememberedLookoutIslandName(island, out _);
+            if (!identified)
+            {
+                Vector3 observer;
+                if (!CrewNavigationCoordinator.Instance.TryGetLookoutEyeWorldPosition(lookout, out observer))
+                {
+                    var worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
+                    if (worldBoat == null)
+                        return false;
+                    observer = worldBoat.position;
+                }
+
+                if (LookoutIslandKnowledge.TryIdentifyIsland(island, observer, lookout,
+                        GetLookoutSpyglassZoom(), out string islandName, out _))
+                {
+                    RememberLookoutIslandName(island, islandName);
+                    identified = true;
+                }
+            }
+
+            if (!identified)
+                return false;
+
+            islandWorldPosition = island.GetPosition();
+            return true;
         }
 
         private void RecordNavigatorMapMeasurement(NavigationResult result)

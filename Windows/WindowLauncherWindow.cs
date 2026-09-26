@@ -55,8 +55,7 @@ namespace SailwindVirtualCrew
 
         private void Update()
         {
-            if (WindowLayoutUtility.ShouldToggleLauncherThisFrame())
-                WindowLayoutUtility.ToggleModLayer();
+            WindowLayoutUtility.TickCrewWindowKey();
         }
 
         private void OnGUI()

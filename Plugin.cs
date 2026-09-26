@@ -100,7 +100,8 @@ namespace SailwindVirtualCrew
             LockWindowPositions = Config.Bind("UI", "LockWindowPositions", false,
                 "Prevent Virtual Crew windows from being dragged. Toggled by the Lock/Unlock Windows button in the launcher.");
 
-            ToggleCrewWindow = Config.Bind("CrewHotkeys", "ToggleCrewWindow", new KeyboardShortcut(KeyCode.B));
+            ToggleCrewWindow = Config.Bind("CrewHotkeys", "ToggleCrewWindow", new KeyboardShortcut(KeyCode.B),
+                "Tap to show or hide the Virtual Crew windows. Hold to free the mouse cursor so the windows can be clicked.");
             ResetWindowPositions = Config.Bind("CrewHotkeys", "ResetWindowPositions", new KeyboardShortcut(KeyCode.Backslash));
             SupercargoSellAtPortKey = Config.Bind("CrewHotkeys", "SupercargoSellAtPort", new KeyboardShortcut(KeyCode.X));
             SupercargoKeepCargoKey = Config.Bind("CrewHotkeys", "SupercargoKeepCargo", new KeyboardShortcut(KeyCode.N));
@@ -185,6 +186,8 @@ namespace SailwindVirtualCrew
                 using (PerformanceInstrumentation.Measure("ShoreNavMesh.Tick"))
                     ShoreNavMesh.Tick();
                 ShoreNavMeshProbe.Tick();
+
+                FreeMouseMode.Tick();
 
                 if (ResetWindowPositions.Value.IsDown())
                     ResetAllWindowPositions();

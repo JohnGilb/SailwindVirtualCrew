@@ -154,11 +154,21 @@ namespace SailwindVirtualCrew
         public float playerSelectedWindAngle;
         // First Officer destination order: the pilot steers for this plotted island.
         public bool holdDestination;
+        public string destinationKey;
         public string destinationName;
         public float destinationLatitude;
         public float destinationLongitude;
         // Crewman.Id of the pilot on the helm when saved; null if none (or a save from before this field).
         public string pilotCrewId;
+    }
+
+    [Serializable]
+    public class NavigatorFixSaveData
+    {
+        public bool hasLatitude;
+        public float latitude;
+        public bool hasLongitude;
+        public float longitude;
     }
 
     [Serializable]
@@ -175,6 +185,8 @@ namespace SailwindVirtualCrew
         public List<FavoriteAction> favoriteActions = new List<FavoriteAction>();
         public List<int> keptCargoInstanceIds = new List<int>();
         public List<NavigatorShipLogEntrySaveData> navigatorShipLog = new List<NavigatorShipLogEntrySaveData>();
+        // Most recent Navigator reading of each coordinate; the Pilot steers for destinations from here.
+        public NavigatorFixSaveData lastNavigatorFix;
         // Painted cargo area (CargoArea.ToSaveString), in boat-local space; null when nothing is painted.
         public string cargoArea;
     }

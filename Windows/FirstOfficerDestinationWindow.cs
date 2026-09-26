@@ -68,6 +68,11 @@ namespace SailwindVirtualCrew
                     GUILayout.EndHorizontal();
                 }
 
+                bool hasFix = manager.TryGetLastNavigatorFix(out float fixLatitude, out float fixLongitude);
+                GUILayout.Label(hasFix
+                    ? "Last fix: " + NavigationResult.FormatLat(fixLatitude) + ", " + NavigationResult.FormatLon(fixLongitude)
+                    : "No full Navigator fix yet (latitude and longitude). Only islands the Lookout has in sight can be set.");
+
                 List<NavigatorIslandMapEntrySaveData> islands = GetPlottedIslands(manager);
                 if (islands.Count == 0)
                 {
@@ -79,13 +84,17 @@ namespace SailwindVirtualCrew
                     _scroll = GUILayout.BeginScrollView(_scroll);
                     foreach (var island in islands)
                     {
+                        bool sighted = manager.TryGetLookoutSightedIsland(island.key, out _);
+                        GUI.enabled = hasFix || sighted;
                         string label = GetIslandName(island) + "   "
                             + NavigationResult.FormatLat(island.Latitude) + ", "
-                            + NavigationResult.FormatLon(island.Longitude);
+                            + NavigationResult.FormatLon(island.Longitude)
+                            + (sighted ? "   (in sight)" : "");
                         if (GUILayout.Button(label))
                             SendDestination(manager, pilotingWindow, island);
                     }
                     GUILayout.EndScrollView();
+                    GUI.enabled = true;
                 }
             }
 
@@ -106,7 +115,7 @@ namespace SailwindVirtualCrew
             if (manager.ActivePilotTask == null)
                 manager.StartPilot(manager.FreshestCrewman(ShipRole.Pilot));
 
-            if (pilotingWindow.SetDestination(GetIslandName(island), island.Latitude, island.Longitude))
+            if (pilotingWindow.SetDestination(island.key, GetIslandName(island), island.Latitude, island.Longitude))
             {
                 CrewDebugLog.Info("Piloting", "First Officer set destination '" + GetIslandName(island) + "'.");
                 showWindow = false;

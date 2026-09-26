@@ -26,6 +26,7 @@ namespace SailwindVirtualCrew
                 playerSelectedHeading = playerSelectedHeading,
                 playerSelectedWindAngle = playerSelectedWindAngle,
                 holdDestination = holdDestination,
+                destinationKey = destinationKey,
                 destinationName = destinationName,
                 destinationLatitude = destinationLatitude,
                 destinationLongitude = destinationLongitude,
@@ -53,10 +54,12 @@ namespace SailwindVirtualCrew
             hasPlayerSelection = true;
             holdWindAngle = data.holdWindAngle && !data.holdDestination;
             holdDestination = data.holdDestination;
+            destinationKey = data.destinationKey;
             destinationName = data.destinationName;
             destinationLatitude = data.destinationLatitude;
             destinationLongitude = data.destinationLongitude;
             destinationBeating = false;
+            destinationSighted = false;
             nextDestinationEvalTime = 0f;
             autopilotEngaged = data.autopilotEngaged;
             restoredOrderPending = true;
@@ -99,10 +102,13 @@ namespace SailwindVirtualCrew
         // Destination order from the First Officer: the pilot re-aims at a plotted island
         // every few seconds, bearing off the wind when the island lies dead to windward.
         private bool   holdDestination = false;
+        private string destinationKey;
         private string destinationName;
         private float  destinationLatitude;
         private float  destinationLongitude;
         private bool   destinationBeating = false;
+        // True while the Lookout has the island in sight and is calling its live position.
+        private bool   destinationSighted = false;
         private float  nextDestinationEvalTime = 0f;
         private const float DestinationEvalIntervalSeconds = 5f;
         // Roughly 900 m in globe degrees (world units / 9000); close enough to hand back to the player.
@@ -500,14 +506,18 @@ namespace SailwindVirtualCrew
         public string DestinationName => destinationName;
 
         // Orders the active pilot to steer for a plotted island and engages the autopilot.
-        public bool SetDestination(string name, float latitude, float longitude)
+        public bool SetDestination(string key, string name, float latitude, float longitude)
         {
             // Pick up a pilot who was just put on the helm first, so the task change
             // doesn't reset the new order on the next frame.
             SyncActivePilotTask();
-            if (VirtualCrewManager.Instance.ActivePilotTask == null)
+            var manager = VirtualCrewManager.Instance;
+            if (manager.ActivePilotTask == null
+                || (!manager.TryGetLastNavigatorFix(out _, out _)
+                    && !manager.TryGetLookoutSightedIsland(key, out _)))
                 return false;
 
+            destinationKey       = key;
             destinationName      = string.IsNullOrEmpty(name) ? "Island" : name;
             destinationLatitude  = latitude;
             destinationLongitude = longitude;
@@ -527,21 +537,42 @@ namespace SailwindVirtualCrew
         {
             holdDestination = false;
             destinationBeating = false;
+            destinationSighted = false;
         }
 
-        // Leaves the next evaluation time alone when the boat can't be resolved, so it retries next frame.
+        // Leaves the next evaluation time alone when there's no fix or heading, so it retries next frame.
         private void UpdateDestinationTarget(bool updateOnly)
         {
+            var manager = VirtualCrewManager.Instance;
+            Vector3 toDestination;
             Transform worldBoat = CrewBoatContextResolver.GetActiveWorldBoat();
-            if (worldBoat == null || FloatingOriginManager.instance == null) return;
+            if (worldBoat != null && manager.TryGetLookoutSightedIsland(destinationKey, out Vector3 islandWorld))
+            {
+                // Once the Lookout has the island in sight, they call its bearing and range on each
+                // evaluation. Globe degrees are world units / 9000, so scale to match the fix path.
+                if (!destinationSighted)
+                    CrewDebugLog.Info("Piloting", "Lookout has destination '" + destinationName + "' in sight.");
+                destinationSighted = true;
+                toDestination = (islandWorld - worldBoat.position) / 9000f;
+                toDestination.y = 0f;
+            }
+            else
+            {
+                // Otherwise the course is worked from the Navigator's last recorded fix, not the
+                // ship's true position, so it only moves on when a new measurement comes in.
+                destinationSighted = false;
+                if (!manager.TryGetLastNavigatorFix(out float fixLatitude, out float fixLongitude))
+                    return;
 
-            // Globe coords are world position / 9000, so lat/lon deltas map straight onto world Z/X.
-            Vector3 coords = FloatingOriginManager.instance.GetGlobeCoords(worldBoat);
-            Vector3 toDestination = new Vector3(destinationLongitude - coords.x, 0f, destinationLatitude - coords.z);
+                // Globe coords are world position / 9000, so lat/lon deltas map straight onto world Z/X.
+                toDestination = new Vector3(destinationLongitude - fixLongitude, 0f, destinationLatitude - fixLatitude);
+            }
+
             if (toDestination.magnitude <= DestinationArrivalDegrees)
             {
                 // Arrived: hold the last course and leave the approach to the player.
-                CrewDebugLog.Info("Piloting", "Arrived near destination '" + destinationName + "'.");
+                CrewDebugLog.Info("Piloting", "Arrived near destination '" + destinationName + "' ("
+                    + (destinationSighted ? "Lookout sighting" : "Navigator's fix") + ").");
                 ClearDestination();
                 return;
             }
@@ -764,7 +795,7 @@ namespace SailwindVirtualCrew
             GUILayout.Label("Target", noWrapLabel, GUILayout.Width(72));
             GUI.enabled = false;
             GUILayout.TextField(!hasPlayerSelection ? "-"
-                : holdDestination ? destinationName + (destinationBeating ? " (beating)" : "")
+                : holdDestination ? destinationName + (destinationSighted ? " (sighted)" : "") + (destinationBeating ? " (beating)" : "")
                 : FormatTarget(playerSelectedHeading, playerSelectedWindAngle, holdWindAngle), GUILayout.Width(118));
             GUI.enabled = true;
             GUILayout.EndHorizontal();
