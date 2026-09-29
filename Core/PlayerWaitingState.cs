@@ -6,6 +6,10 @@ namespace SailwindVirtualCrew
     {
         private const float WaitTimeScale = 16f;
         private const float WaitFixedDeltaMultiplier = 10f;
+        private const float MaxWaterLevel = 0.1f;
+
+        // Fraction of incoming water that still reaches the hull while waiting (see WaitingWaterIntakePatches).
+        internal const float WaterIntakeMultiplier = 0.1f;
 
         private static object owner;
         private static float previousTimeScale = 1f;
@@ -62,6 +66,15 @@ namespace SailwindVirtualCrew
 
             if (HasMotionInput())
                 Interrupt("player motion");
+            else if (IsShipFlooding())
+                Interrupt("ship taking on water");
+        }
+
+        private static bool IsShipFlooding()
+        {
+            var topBoat = CrewBoatContextResolver.GetActiveTopBoat();
+            var damage = topBoat ? topBoat.GetComponent<BoatDamage>() : null;
+            return damage != null && damage.waterLevel > MaxWaterLevel;
         }
 
         internal static bool HasMotionInput()
