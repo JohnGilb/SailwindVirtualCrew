@@ -126,7 +126,7 @@ Tools:
 - Can be configured to periodically call for the sails to be trimmed.
 - Can set "Standing Orders" for each main point of sail
   - Special triggers fire once when the boat heels past 20° or 40°, or takes on more than 30% water (e.g. reef sails to reduce heeling).
-- With a Pilot and Navigator aboard, can "Set Destination" to one of the Navigator's plotted islands. The Pilot steers for it, re-checking every 5 seconds, and bears away to a close-hauled course when the island lies dead upwind.
+- With a First Officer, Pilot, and Navigator aboard, the First Officer can "Set Destination" to one of the Navigator's plotted islands. The Pilot steers for it, re-checking every 5 seconds, and bears away to a close-hauled course when the island lies dead upwind.
 - Their Charisma acts as a buff (or detriment) to the statistics of other crew members.
 
 ---
